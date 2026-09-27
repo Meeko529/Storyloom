@@ -39,12 +39,24 @@ import {
   type IndexSettings,
   type ToolPermissionMode,
 } from "@/settings/config";
+import {
+  EDITOR_FONT_KEY,
+  EDITOR_FONT_OPTIONS,
+  EDITOR_FONT_SIZE_KEY,
+  MAX_EDITOR_FONT_SIZE,
+  MIN_EDITOR_FONT_SIZE,
+  normalizeEditorFont,
+  normalizeEditorFontSize,
+  type EditorFontId,
+} from "@/settings/editor-prefs";
 import { clearProjectIndex, getProjectIndexStats, indexProject } from "@/search/indexer";
 import { getLocalModelStatus, warmUpLocalModels } from "@/search/local-models";
 import {
+  ALL_OPTIONAL_RESOURCE_KINDS,
   getRuntimeResourceState,
-  installMissingRuntimeResources,
+  installOptionalResources,
   LOCAL_MODEL_INFO,
+  type OptionalResourceKind,
   type RuntimeResourceState,
 } from "@/settings/remote-resources";
 import {
@@ -67,6 +79,7 @@ import type { Model } from "@/types";
 
 export type SettingsCategory =
   | "general"
+  | "editor"
   | "connections"
   | "models"
   | "index"
@@ -80,6 +93,7 @@ export type SettingsCategory =
 
 const TITLES: Record<Exclude<SettingsCategory, "models">, string> = {
   general: "通用",
+  editor: "编辑器",
   connections: "连接",
   index: "索引",
   context: "上下文",
@@ -92,6 +106,54 @@ const TITLES: Record<Exclude<SettingsCategory, "models">, string> = {
 };
 
 const EMPTY_OH_STORY_STATE: OhStoryUpdateState = { installed: null, previous: null, lastCheck: null };
+
+const PERMISSION_MODES: Array<{ id: ToolPermissionMode; label: string }> = [
+  { id: "allow", label: "允许" },
+  { id: "ask", label: "每次询问" },
+  { id: "deny", label: "禁止" },
+];
+
+type IndexNumberKey = "chunkSize" | "chunkOverlap" | "retrievalTopK" | "rerankTopK";
+type IndexNumberDraft = Record<IndexNumberKey, string>;
+
+function draftFromSettings(settings: IndexSettings): IndexNumberDraft {
+  return {
+    chunkSize: String(settings.chunkSize),
+    chunkOverlap: String(settings.chunkOverlap),
+    retrievalTopK: String(settings.retrievalTopK),
+    rerankTopK: String(settings.rerankTopK),
+  };
+}
+
+/**
+ * 「可选内容」区块的展示信息。
+ * 这些内容不随安装包分发，按需下载；不装不影响写作、对话与章节管理。
+ */
+const OPTIONAL_RESOURCE_DESCRIPTIONS: Array<{
+  id: OptionalResourceKind;
+  title: string;
+  sizeMb: number;
+  purpose: string;
+}> = [
+  {
+    id: "lorn-style",
+    title: "Lorn 原版文风 Skill",
+    sizeMb: 1,
+    purpose: "用于从导入的参考小说中蒸馏文风。该内容上游未声明开源许可，因此不随安装包分发，需手动下载。",
+  },
+  {
+    id: "embedding",
+    title: "本地嵌入模型（语义检索）",
+    sizeMb: Math.round(LOCAL_MODEL_INFO.embedding.bytes / 1024 / 1024),
+    purpose: "将文本转换为向量以支持语义检索，完全在本地运行，不联网。",
+  },
+  {
+    id: "rerank",
+    title: "本地重排模型（结果精排）",
+    sizeMb: Math.round(LOCAL_MODEL_INFO.rerank.bytes / 1024 / 1024),
+    purpose: "对语义检索结果进行精排以提升准确度，非必需项。",
+  },
+];
 
 function SettingRow({ label, value, onPress, destructive = false }: {
   label: string;
@@ -124,6 +186,11 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [indexSettings, setIndexSettings] = useState<IndexSettings>(DEFAULT_INDEX_SETTINGS);
+  // 索引的 4 个数字框用「草稿字符串」承接：若直接绑数字，清空输入会立刻被兜底值覆盖，导致删不掉重输。
+  const [indexDraft, setIndexDraft] = useState<IndexNumberDraft>(() => draftFromSettings(DEFAULT_INDEX_SETTINGS));
+  const [indexNeedsRebuild, setIndexNeedsRebuild] = useState(false);
+  const [rebuilding, setRebuilding] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [indexStats, setIndexStats] = useState({ sources: 0, chunks: 0 });
   const [indexProgress, setIndexProgress] = useState("");
   const [rules, setRules] = useState<AgentRule[]>([]);
@@ -132,6 +199,9 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
   const [availableModels, setAvailableModels] = useState<Model[]>([]);
   const [permissions, setPermissions] = useState<Record<string, ToolPermissionMode>>({});
   const [activeAgentId, setActiveAgentId] = useState("");
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
+  const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
   const [ruleName, setRuleName] = useState("");
   const [ruleContent, setRuleContent] = useState("");
   const [skillName, setSkillName] = useState("");
@@ -145,6 +215,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
   const [compression, setCompression] = useState(false);
   const [autoSaveDelay, setAutoSaveDelay] = useState("1000");
   const [editorFontSize, setEditorFontSize] = useState("17");
+  const [editorFontId, setEditorFontId] = useState<EditorFontId>("system");
   const [requestTimeout, setRequestTimeout] = useState("120000");
   const [ohStoryState, setOhStoryState] = useState<OhStoryUpdateState>(EMPTY_OH_STORY_STATE);
   const [ohStoryProgress, setOhStoryProgress] = useState("");
@@ -172,7 +243,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
     setLoading(true);
     setError(null);
     try {
-      const [nextIndex, nextRules, nextSkills, nextAgents, nextPermissions, active, history, compress, autoSave, fontSize, timeout, nextModels, nextOhStoryState, nextResourceState] = await Promise.all([
+      const [nextIndex, nextRules, nextSkills, nextAgents, nextPermissions, active, history, compress, autoSave, fontSize, fontFamily, timeout, nextModels, nextOhStoryState, nextResourceState] = await Promise.all([
         getIndexSettings(),
         getAgentRules(),
         getAgentSkills(),
@@ -182,7 +253,8 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
         getSetting("context.historyLimit"),
         getSetting("context.compressSystemPrompts"),
         getSetting("general.autoSaveDelay"),
-        getSetting("general.editorFontSize"),
+        getSetting(EDITOR_FONT_SIZE_KEY),
+        getSetting(EDITOR_FONT_KEY),
         getSetting("connections.requestTimeout"),
         listModels(),
         getOhStoryUpdateState(),
@@ -190,6 +262,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       ]);
       setAppUpdate(await getLastAppUpdateCheck());
       setIndexSettings(nextIndex);
+      setIndexDraft(draftFromSettings(nextIndex));
       setRules(nextRules);
       setSkills(nextSkills);
       setAgents(nextAgents);
@@ -203,7 +276,8 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       setHistoryLimit(history ?? "30");
       setCompression(compress === "true");
       setAutoSaveDelay(autoSave ?? "1000");
-      setEditorFontSize(fontSize ?? "17");
+      setEditorFontSize(String(normalizeEditorFontSize(fontSize)));
+      setEditorFontId(normalizeEditorFont(fontFamily));
       setRequestTimeout(timeout ?? "120000");
       setAvailableModels(nextModels);
       setOhStoryState(nextOhStoryState);
@@ -220,34 +294,74 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
     void load();
   }, [load]));
 
-  const savePreference = async (key: string, value: string) => {
+  // 轻提示：保存成功之类的短消息，2 秒后自动消失。
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), 2000);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  /**
+   * 保存一项键值设置。
+   * restore 用于在保存失败时把输入框改回库里真正的值 —— 否则界面显示「已改」、
+   * 实际没存进去，下次进来又变回去，用户会以为改了没生效。
+   */
+  const savePreference = async (key: string, value: string, restore?: (value: string) => void) => {
     setSaving(true);
     setError(null);
+    setNotice(null);
     try {
       await setSetting(key, value);
+      setNotice("已保存");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : String(saveError));
+      const stored = await getSetting(key).catch(() => null);
+      if (stored !== null) restore?.(stored);
     } finally {
       setSaving(false);
     }
   };
 
-  const downloadResources = async () => {
+  /** 把一组键值恢复为默认值，并重新载入。 */
+  const restoreDefaults = (label: string, entries: Array<{ key: string; value: string }>) => {
+    Alert.alert("恢复默认值", `将「${label}」下的设置恢复为默认值。`, [
+      { text: "取消", style: "cancel" },
+      {
+        text: "恢复",
+        onPress: async () => {
+          setSaving(true);
+          setError(null);
+          try {
+            for (const entry of entries) await setSetting(entry.key, entry.value);
+            await load();
+            setNotice("已恢复默认值");
+          } catch (restoreError) {
+            setError(restoreError instanceof Error ? restoreError.message : String(restoreError));
+          } finally {
+            setSaving(false);
+          }
+        },
+      },
+    ]);
+  };
+
+  const downloadResources = async (kinds: OptionalResourceKind[] = ALL_OPTIONAL_RESOURCE_KINDS) => {
     setResourceBusy(true);
     setError(null);
-    setResourceProgress("准备一键拉取运行资源…");
+    setResourceProgress("准备下载…");
     try {
-      const next = await installMissingRuntimeResources((item) => {
+      const { state: next, errors } = await installOptionalResources(kinds, (item) => {
         if (item.totalBytes && item.totalBytes > 0 && item.bytesWritten !== undefined) {
           setResourceProgress(`${item.label} · ${Math.min(100, Math.round(item.bytesWritten / item.totalBytes * 100))}%`);
         } else {
-          setResourceProgress(item.total > 1 ? `${item.label} · ${item.completed}/${item.total}` : item.label);
+          setResourceProgress(item.label);
         }
       });
       setResourceState(next);
-      setResourceProgress("正在预热本地检索模型…");
-      await warmUpLocalModels();
-      setResourceProgress("全部运行资源已就绪");
+      setResourceProgress(errors.length ? errors.join("\n") : "所选内容已就绪");
+      if (kinds.some((kind) => kind === "embedding" || kind === "rerank")) {
+        void warmUpLocalModels().catch(() => undefined);
+      }
     } catch (resourceError) {
       setError(resourceError instanceof Error ? resourceError.message : String(resourceError));
       setResourceState(await getRuntimeResourceState().catch(() => null));
@@ -259,9 +373,19 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
   const saveIndex = async (next: IndexSettings) => {
     setSaving(true);
     setError(null);
+    setNotice(null);
     try {
+      const previous = indexSettings;
       await saveIndexSettings(next);
-      setIndexSettings(await getIndexSettings());
+      const stored = await getIndexSettings();
+      setIndexSettings(stored);
+      setIndexDraft(draftFromSettings(stored));
+      const numbersChanged = previous.chunkSize !== stored.chunkSize
+        || previous.chunkOverlap !== stored.chunkOverlap
+        || previous.retrievalTopK !== stored.retrievalTopK
+        || previous.rerankTopK !== stored.rerankTopK;
+      if (numbersChanged) setIndexNeedsRebuild(true);
+      setNotice("已保存");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : String(saveError));
     } finally {
@@ -269,12 +393,26 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
     }
   };
 
+  /**
+   * 索引数字框失焦时提交：为空或非法一律回落到默认值，并把回显值写回草稿。
+   * 这样用户可以先清空再重输 —— 以前直接绑数字，一删就被兜底值覆盖，等于删不动。
+   */
+  const commitIndexNumber = async (key: IndexNumberKey) => {
+    const parsed = Number(indexDraft[key]);
+    const valid = Number.isFinite(parsed) && parsed > 0;
+    const finalValue = valid ? Math.round(parsed) : DEFAULT_INDEX_SETTINGS[key];
+    setIndexDraft({ ...indexDraft, [key]: String(finalValue) });
+    await saveIndex({ ...indexSettings, [key]: finalValue });
+  };
+
   const rebuildIndex = async () => {
     if (!projectId) {
       setError("请先从书架打开一部作品");
       return;
     }
-    setSaving(true);
+    // 用独立的 rebuilding 状态：以前复用 saving，导致切换索引开关时
+    // 「重建索引」按钮会莫名其妙变成「索引中」并被禁用。
+    setRebuilding(true);
     setIndexProgress("准备索引…");
     setError(null);
     try {
@@ -284,10 +422,11 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       });
       setIndexStats(await getProjectIndexStats(projectId));
       setIndexProgress("索引完成");
+      setIndexNeedsRebuild(false);
     } catch (indexError) {
       setError(indexError instanceof Error ? indexError.message : String(indexError));
     } finally {
-      setSaving(false);
+      setRebuilding(false);
     }
   };
 
@@ -305,6 +444,84 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       setError(persistError instanceof Error ? persistError.message : String(persistError));
       return false;
     }
+  };
+
+  /** 删除前的统一确认。规则 / 技能 / 智能体的内容删掉就找不回来了，必须拦一道。 */
+  const confirmDelete = (title: string, message: string, onConfirm: () => void) => {
+    Alert.alert(title, message, [
+      { text: "取消", style: "cancel" },
+      { text: "删除", style: "destructive", onPress: onConfirm },
+    ]);
+  };
+
+  // —— 编辑（以前只能删除后重新录入，改一个字要重输全文）——
+  const startEditRule = (rule: AgentRule) => {
+    setRuleName(rule.name);
+    setRuleContent(rule.content);
+    setEditingRuleId(rule.id);
+  };
+
+  const cancelEditRule = () => {
+    setEditingRuleId(null);
+    setRuleName("");
+    setRuleContent("");
+  };
+
+  const saveRuleEdit = async () => {
+    if (!editingRuleId || !ruleName.trim() || !ruleContent.trim()) return;
+    const next = rules.map((item) => item.id === editingRuleId
+      ? { ...item, name: ruleName.trim(), content: ruleContent.trim() }
+      : item);
+    if (!await persistManagedState(next, saveAgentRules, setRules)) return;
+    cancelEditRule();
+  };
+
+  const startEditSkill = (skill: AgentSkill) => {
+    setSkillName(skill.name);
+    setSkillDescription(skill.description);
+    setSkillInstructions(skill.instructions);
+    setEditingSkillId(skill.id);
+  };
+
+  const cancelEditSkill = () => {
+    setEditingSkillId(null);
+    setSkillName("");
+    setSkillDescription("");
+    setSkillInstructions("");
+  };
+
+  const saveSkillEdit = async () => {
+    if (!editingSkillId || !skillName.trim() || !skillInstructions.trim()) return;
+    const next = skills.map((item) => item.id === editingSkillId
+      ? { ...item, name: skillName.trim(), description: skillDescription.trim(), instructions: skillInstructions.trim() }
+      : item);
+    if (!await persistManagedState(next, saveAgentSkills, setSkills)) return;
+    cancelEditSkill();
+  };
+
+  const startEditAgent = (agent: AgentDefinition) => {
+    setAgentName(agent.name);
+    setAgentDescription(agent.description);
+    setAgentPrompt(agent.systemPrompt);
+    setAgentModelId(agent.modelId);
+    setEditingAgentId(agent.id);
+  };
+
+  const cancelEditAgent = () => {
+    setEditingAgentId(null);
+    setAgentName("");
+    setAgentDescription("");
+    setAgentPrompt("");
+    setAgentModelId("");
+  };
+
+  const saveAgentEdit = async () => {
+    if (!editingAgentId || !agentName.trim() || !agentPrompt.trim()) return;
+    const next = agents.map((item) => item.id === editingAgentId
+      ? { ...item, name: agentName.trim(), description: agentDescription.trim(), systemPrompt: agentPrompt.trim(), modelId: agentModelId }
+      : item);
+    if (!await persistManagedState(next, saveAgentDefinitions, setAgents)) return;
+    cancelEditAgent();
   };
 
   const addRule = async () => {
@@ -355,10 +572,15 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
     setAgentModelId("");
   };
 
-  const cyclePermission = async (key: string) => {
-    const current = permissions[key] ?? "ask";
-    const nextMode: ToolPermissionMode = current === "allow" ? "ask" : current === "ask" ? "deny" : "allow";
-    const next = { ...permissions, [key]: nextMode };
+  /** 直接设定某个工具的权限（取代原来的「点一下循环切换」）。 */
+  const setPermission = async (key: string, mode: ToolPermissionMode) => {
+    await persistManagedState({ ...permissions, [key]: mode }, saveToolPermissions, setPermissions);
+  };
+
+  /** 批量设定全部工具权限。 */
+  const setAllPermissions = async (mode: ToolPermissionMode) => {
+    const next: Record<string, ToolPermissionMode> = {};
+    for (const tool of TOOL_CATALOG) next[tool.key] = mode;
     await persistManagedState(next, saveToolPermissions, setPermissions);
   };
 
@@ -503,40 +725,108 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
     <Screen scroll>
       <Header title={TITLES[category]} onBack={onBack} />
       {error ? <View style={styles.errorWrap}><ErrorNotice message={error} onRetry={() => void load()} /></View> : null}
+      {notice ? <View style={styles.noticeWrap}><Text style={styles.noticeText}>{notice}</Text></View> : null}
       {category === "general" ? (
         <View style={styles.section}>
-          <Field label="自动保存延迟（毫秒）" value={autoSaveDelay} onChangeText={setAutoSaveDelay} onBlur={() => void savePreference("general.autoSaveDelay", autoSaveDelay)} keyboardType="number-pad" />
-          <Field label="编辑器字号" value={editorFontSize} onChangeText={setEditorFontSize} onBlur={() => void savePreference("general.editorFontSize", editorFontSize)} keyboardType="number-pad" />
+          <Field label="自动保存延迟（毫秒）" value={autoSaveDelay} onChangeText={setAutoSaveDelay} onBlur={() => void savePreference("general.autoSaveDelay", autoSaveDelay, setAutoSaveDelay)} keyboardType="number-pad" />
+          <Text style={styles.sectionHint}>可填 250 ~ 10000。数值越大写入频率越低，数值越小保存越及时。</Text>
           <SettingRow label="数据位置" value="本机 SQLite · API Key 使用 SecureStore" />
+          <Button label="恢复默认" variant="secondary" onPress={() => restoreDefaults("通用", [
+            { key: "general.autoSaveDelay", value: "1000" },
+          ])} />
+        </View>
+      ) : null}
+      {category === "editor" ? (
+        <View style={styles.section}>
+          <Field
+            label={`正文字号（可填 ${MIN_EDITOR_FONT_SIZE} ~ ${MAX_EDITOR_FONT_SIZE}）`}
+            value={editorFontSize}
+            onChangeText={setEditorFontSize}
+            onBlur={() => {
+              const normalized = normalizeEditorFontSize(editorFontSize);
+              setEditorFontSize(String(normalized));
+              void savePreference(EDITOR_FONT_SIZE_KEY, String(normalized));
+            }}
+            keyboardType="number-pad"
+          />
+          <Text style={styles.sectionHint}>行距按字号自动换算。</Text>
+          <Text style={styles.subsectionTitle}>正文字体</Text>
+          <View style={styles.modelChoices}>
+            {EDITOR_FONT_OPTIONS.map((option) => (
+              <Pressable
+                key={option.id}
+                onPress={() => {
+                  setEditorFontId(option.id);
+                  void savePreference(EDITOR_FONT_KEY, option.id);
+                }}
+                style={[styles.modelChoice, editorFontId === option.id && styles.modelChoiceActive]}
+              >
+                <Text style={styles.modelChoiceText}>{option.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.sectionHint}>
+            {EDITOR_FONT_OPTIONS.find((option) => option.id === editorFontId)?.hint}
+          </Text>
+          <Text style={styles.previewSample}>她推开那扇门，院子里落着一地月光。</Text>
         </View>
       ) : null}
       {category === "connections" ? (
         <View style={styles.section}>
-          <Field label="模型请求超时（毫秒）" value={requestTimeout} onChangeText={setRequestTimeout} onBlur={() => void savePreference("connections.requestTimeout", requestTimeout)} keyboardType="number-pad" />
+          <Field label="模型请求超时（毫秒）" value={requestTimeout} onChangeText={setRequestTimeout} onBlur={() => void savePreference("connections.requestTimeout", requestTimeout, setRequestTimeout)} keyboardType="number-pad" />
+          <Text style={styles.sectionHint}>请求超过这个时间仍未返回即判定失败。</Text>
           <SettingRow label="供应商和模型" value="在“模型”分类中管理" />
           <SettingRow label="网络边界" value="只有调用用户配置的模型 API 时联网；作品数据保存在本机" />
+          <Button label="恢复默认" variant="secondary" onPress={() => restoreDefaults("连接", [
+            { key: "connections.requestTimeout", value: "120000" },
+          ])} />
         </View>
       ) : null}
       {category === "index" ? (
         <View style={styles.section}>
+          <Text style={styles.sectionHint}>将稿件切分为片段并转换为向量存储，用于语义检索。</Text>
           <ToggleRow label="启用本地语义索引" value={indexSettings.enabled} onChange={(value) => void saveIndex({ ...indexSettings, enabled: value })} />
-          <ToggleRow label="启用本地重排模型" value={indexSettings.rerankEnabled} onChange={(value) => void saveIndex({ ...indexSettings, rerankEnabled: value })} />
-          <Field label="分块大小（字符）" value={String(indexSettings.chunkSize)} onChangeText={(value) => setIndexSettings({ ...indexSettings, chunkSize: Number(value) || 120 })} onBlur={() => void saveIndex(indexSettings)} keyboardType="number-pad" />
-          <Field label="分块重叠（字符）" value={String(indexSettings.chunkOverlap)} onChangeText={(value) => setIndexSettings({ ...indexSettings, chunkOverlap: Number(value) || 0 })} onBlur={() => void saveIndex(indexSettings)} keyboardType="number-pad" />
-          <Field label="召回数量" value={String(indexSettings.retrievalTopK)} onChangeText={(value) => setIndexSettings({ ...indexSettings, retrievalTopK: Number(value) || 1 })} onBlur={() => void saveIndex(indexSettings)} keyboardType="number-pad" />
-          <Field label="重排数量" value={String(indexSettings.rerankTopK)} onChangeText={(value) => setIndexSettings({ ...indexSettings, rerankTopK: Number(value) || 1 })} onBlur={() => void saveIndex(indexSettings)} keyboardType="number-pad" />
+          <ToggleRow label="用重排模型再排一次结果" value={indexSettings.rerankEnabled} onChange={(value) => void saveIndex({ ...indexSettings, rerankEnabled: value })} />
+          <Text style={styles.sectionHint}>启用重排可提升结果准确度，但需要下载重排模型（约 209 MB）。</Text>
+          <Field label="切分片段大小（字符）" value={indexDraft.chunkSize} onChangeText={(value) => setIndexDraft({ ...indexDraft, chunkSize: value })} onBlur={() => void commitIndexNumber("chunkSize")} keyboardType="number-pad" />
+          <Field label="相邻片段重叠（字符）" value={indexDraft.chunkOverlap} onChangeText={(value) => setIndexDraft({ ...indexDraft, chunkOverlap: value })} onBlur={() => void commitIndexNumber("chunkOverlap")} keyboardType="number-pad" />
+          <Field label="检索召回条数" value={indexDraft.retrievalTopK} onChangeText={(value) => setIndexDraft({ ...indexDraft, retrievalTopK: value })} onBlur={() => void commitIndexNumber("retrievalTopK")} keyboardType="number-pad" />
+          <Field label="精排输出条数" value={indexDraft.rerankTopK} onChangeText={(value) => setIndexDraft({ ...indexDraft, rerankTopK: value })} onBlur={() => void commitIndexNumber("rerankTopK")} keyboardType="number-pad" />
+          <Text style={styles.sectionHint}>片段越大上下文越完整；重叠用于避免语义在切分处被截断。</Text>
           <Text style={styles.statusText}>当前索引：{indexStats.sources} 个资料源 · {indexStats.chunks} 个分块</Text>
-          <Button label={saving ? "索引中" : "重建当前作品索引"} onPress={() => void rebuildIndex()} disabled={!projectId || saving} loading={saving} />
+          {indexNeedsRebuild ? (
+            <Text style={styles.warnText}>参数已修改，需执行「重建索引」后新设置才会对已有内容生效。</Text>
+          ) : null}
+          <Button label={rebuilding ? "索引中" : "重建当前作品索引"} onPress={() => void rebuildIndex()} disabled={!projectId || rebuilding} loading={rebuilding} />
           {indexProgress ? <Text style={styles.progressText}>{indexProgress}</Text> : null}
+          <Button
+            label="恢复默认参数"
+            variant="secondary"
+            onPress={() => {
+              Alert.alert(
+                "恢复默认参数",
+                `切分 ${DEFAULT_INDEX_SETTINGS.chunkSize}、重叠 ${DEFAULT_INDEX_SETTINGS.chunkOverlap}、候选 ${DEFAULT_INDEX_SETTINGS.retrievalTopK}、精选 ${DEFAULT_INDEX_SETTINGS.rerankTopK}。`,
+                [
+                  { text: "取消", style: "cancel" },
+                  { text: "恢复", onPress: () => void saveIndex({ ...DEFAULT_INDEX_SETTINGS }) },
+                ],
+              );
+            }}
+          />
         </View>
       ) : null}
       {category === "context" ? (
         <View style={styles.section}>
-          <Field label="保留最近消息数" value={historyLimit} onChangeText={setHistoryLimit} onBlur={() => void savePreference("context.historyLimit", historyLimit)} keyboardType="number-pad" />
+          <Field label="保留最近消息数" value={historyLimit} onChangeText={setHistoryLimit} onBlur={() => void savePreference("context.historyLimit", historyLimit, setHistoryLimit)} keyboardType="number-pad" />
+          <Text style={styles.sectionHint}>决定多少条历史消息参与后续对话，数量越大上下文越长。</Text>
           <ToggleRow label="压缩系统提示词" value={compression} onChange={(value) => {
             setCompression(value);
-            void savePreference("context.compressSystemPrompts", String(value));
+            void savePreference("context.compressSystemPrompts", String(value), (stored) => setCompression(stored === "true"));
           }} />
+          <Button label="恢复默认" variant="secondary" onPress={() => restoreDefaults("上下文", [
+            { key: "context.historyLimit", value: "30" },
+            { key: "context.compressSystemPrompts", value: "false" },
+          ])} />
         </View>
       ) : null}
       {category === "style" ? (
@@ -546,18 +836,38 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       ) : null}
       {category === "agent-tools" ? (
         <View style={styles.section}>
-          <Text style={styles.sectionHint}>点击权限状态循环切换：允许、每次询问、禁止。</Text>
-          {TOOL_CATALOG.map((tool) => (
-            <Pressable key={tool.key} onPress={() => void cyclePermission(tool.key)} style={styles.permissionRow}>
-              <View style={styles.permissionText}>
-                <Text style={styles.settingLabel}>{tool.name}</Text>
-                <Text style={styles.settingValue}>{tool.key}</Text>
+          <Text style={styles.sectionHint}>控制助手能否读写你的内容。设为「每次询问」时，助手调用前会先征求同意。</Text>
+          <View style={styles.presetRow}>
+            {PERMISSION_MODES.map((mode) => (
+              <Pressable key={mode.id} onPress={() => void setAllPermissions(mode.id)} style={styles.presetChip}>
+                <Text style={styles.presetChipText}>全部{mode.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {TOOL_CATALOG.map((tool) => {
+            const current = permissions[tool.key] ?? "ask";
+            return (
+              <View key={tool.key} style={styles.permissionCard}>
+                <View style={styles.manageText}>
+                  <Text style={styles.settingLabel}>{tool.name}</Text>
+                  <Text style={styles.settingValue}>{tool.readonly ? "只读" : "可写入"}</Text>
+                </View>
+                <View style={styles.modeChoices}>
+                  {PERMISSION_MODES.map((mode) => (
+                    <Pressable
+                      key={mode.id}
+                      onPress={() => void setPermission(tool.key, mode.id)}
+                      style={[styles.modeChip, current === mode.id && (mode.id === "deny" ? styles.modeChipDeny : styles.modeChipActive)]}
+                    >
+                      <Text style={[styles.modeChipText, current === mode.id && (mode.id === "deny" ? styles.modeChipTextDeny : styles.modeChipTextActive)]}>
+                        {mode.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
               </View>
-              <Text style={[styles.permissionMode, permissions[tool.key] === "deny" && styles.dangerText]}>
-                {permissions[tool.key] === "allow" ? "允许" : permissions[tool.key] === "deny" ? "禁止" : "每次询问"}
-              </Text>
-            </Pressable>
-          ))}
+            );
+          })}
         </View>
       ) : null}
       {category === "rules" ? (
@@ -572,15 +882,30 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
                 const next = rules.map((item) => item.id === rule.id ? { ...item, enabled } : item);
                 void persistManagedState(next, saveAgentRules, setRules);
               }} trackColor={{ false: colors.border, true: colors.primary }} />
-              <Pressable accessibilityLabel="删除规则" onPress={() => {
-                const next = rules.filter((item) => item.id !== rule.id);
-                void persistManagedState(next, saveAgentRules, setRules);
-              }} style={styles.iconButton}><Ionicons name="trash-outline" size={19} color={colors.textMuted} /></Pressable>
+              <Pressable accessibilityLabel="编辑规则" onPress={() => startEditRule(rule)} style={styles.iconButton}>
+                <Ionicons name="create-outline" size={19} color={colors.textMuted} />
+              </Pressable>
+              <Pressable accessibilityLabel="删除规则" onPress={() => confirmDelete(
+                "删除规则",
+                `删除「${rule.name}」？删除后无法恢复。`,
+                () => {
+                  const next = rules.filter((item) => item.id !== rule.id);
+                  void persistManagedState(next, saveAgentRules, setRules);
+                },
+              )} style={styles.iconButton}><Ionicons name="trash-outline" size={19} color={colors.textMuted} /></Pressable>
             </View>
           ))}
+          <Text style={styles.subsectionTitle}>{editingRuleId ? "编辑规则" : "添加规则"}</Text>
           <Field label="规则名称" value={ruleName} onChangeText={setRuleName} />
           <Field label="规则内容" value={ruleContent} onChangeText={setRuleContent} multiline style={styles.multiline} />
-          <Button label="添加规则" onPress={() => void addRule()} disabled={!ruleName.trim() || !ruleContent.trim()} />
+          {editingRuleId ? (
+            <>
+              <Button label="保存修改" onPress={() => void saveRuleEdit()} disabled={!ruleName.trim() || !ruleContent.trim()} />
+              <Button label="取消" variant="secondary" onPress={cancelEditRule} />
+            </>
+          ) : (
+            <Button label="添加规则" onPress={() => void addRule()} disabled={!ruleName.trim() || !ruleContent.trim()} />
+          )}
         </View>
       ) : null}
       {category === "skills" ? (
@@ -599,17 +924,33 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
                 void persistManagedState(next, saveAgentSkills, setSkills);
               }} trackColor={{ false: colors.border, true: colors.primary }} />
               {skill.source === "custom" ? (
-                <Pressable accessibilityLabel="删除技能" onPress={() => {
-                  const next = skills.filter((item) => item.id !== skill.id);
-                  void persistManagedState(next, saveAgentSkills, setSkills);
-                }} style={styles.iconButton}><Ionicons name="trash-outline" size={19} color={colors.textMuted} /></Pressable>
+                <>
+                  <Pressable accessibilityLabel="编辑技能" onPress={() => startEditSkill(skill)} style={styles.iconButton}>
+                    <Ionicons name="create-outline" size={19} color={colors.textMuted} />
+                  </Pressable>
+                  <Pressable accessibilityLabel="删除技能" onPress={() => confirmDelete(
+                  "删除技能",
+                  `删除「${skill.name}」？删除后无法恢复。`,
+                  () => {
+                    const next = skills.filter((item) => item.id !== skill.id);
+                    void persistManagedState(next, saveAgentSkills, setSkills);
+                  },
+                )} style={styles.iconButton}><Ionicons name="trash-outline" size={19} color={colors.textMuted} /></Pressable>
               ) : <View style={styles.iconButton}><Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} /></View>}
             </View>
           ))}
+          <Text style={styles.subsectionTitle}>{editingSkillId ? "编辑技能" : "添加技能"}</Text>
           <Field label="技能名称" value={skillName} onChangeText={setSkillName} />
           <Field label="技能说明" value={skillDescription} onChangeText={setSkillDescription} />
           <Field label="技能指令" value={skillInstructions} onChangeText={setSkillInstructions} multiline style={styles.multiline} />
-          <Button label="添加技能" onPress={() => void addSkill()} disabled={!skillName.trim() || !skillInstructions.trim()} />
+          {editingSkillId ? (
+            <>
+              <Button label="保存修改" onPress={() => void saveSkillEdit()} disabled={!skillName.trim() || !skillInstructions.trim()} />
+              <Button label="取消" variant="secondary" onPress={cancelEditSkill} />
+            </>
+          ) : (
+            <Button label="添加技能" onPress={() => void addSkill()} disabled={!skillName.trim() || !skillInstructions.trim()} />
+          )}
         </View>
       ) : null}
       {category === "agents" ? (
@@ -631,12 +972,21 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
                 </Pressable>
               ) : <View style={styles.iconButton}><Ionicons name="git-branch-outline" size={20} color={colors.textMuted} /></View>}
               {agent.source === "custom" ? (
-                <Pressable accessibilityLabel="删除智能体" onPress={() => void removeAgent(agent.id)} style={styles.iconButton}>
+                <>
+                  <Pressable accessibilityLabel="编辑智能体" onPress={() => startEditAgent(agent)} style={styles.iconButton}>
+                    <Ionicons name="create-outline" size={19} color={colors.textMuted} />
+                  </Pressable>
+                  <Pressable accessibilityLabel="删除智能体" onPress={() => confirmDelete(
+                  "删除智能体",
+                  `删除「${agent.name}」？它的系统提示词会一起丢失，无法恢复。`,
+                  () => void removeAgent(agent.id),
+                )} style={styles.iconButton}>
                   <Ionicons name="trash-outline" size={19} color={colors.textMuted} />
                 </Pressable>
               ) : <View style={styles.iconButton}><Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} /></View>}
             </View>
           ))}
+          <Text style={styles.subsectionTitle}>{editingAgentId ? "编辑智能体" : "添加智能体"}</Text>
           <Field label="智能体名称" value={agentName} onChangeText={setAgentName} />
           <Field label="智能体说明" value={agentDescription} onChangeText={setAgentDescription} />
           <Field label="系统提示词" value={agentPrompt} onChangeText={setAgentPrompt} multiline style={styles.multiline} />
@@ -651,7 +1001,14 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
               </Pressable>
             ))}
           </View>
-          <Button label="添加智能体" onPress={() => void addAgent()} disabled={!agentName.trim() || !agentPrompt.trim()} />
+          {editingAgentId ? (
+            <>
+              <Button label="保存修改" onPress={() => void saveAgentEdit()} disabled={!agentName.trim() || !agentPrompt.trim()} />
+              <Button label="取消" variant="secondary" onPress={cancelEditAgent} />
+            </>
+          ) : (
+            <Button label="添加智能体" onPress={() => void addAgent()} disabled={!agentName.trim() || !agentPrompt.trim()} />
+          )}
         </View>
       ) : null}
       {category === "advanced" ? (
@@ -705,12 +1062,34 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
           ) : null}
           {ohStoryProgress ? <Text style={styles.progressText}>{ohStoryProgress}</Text> : null}
           <View style={styles.subsectionDivider} />
-          <Text style={styles.subsectionTitle}>本地检索模型</Text>
-          <SettingRow label="嵌入模型" value={`${LOCAL_MODEL_INFO.embedding.name} · 约 15 MB`} />
-          <SettingRow label="重排模型" value={`${LOCAL_MODEL_INFO.rerank.name} · 约 209 MB`} />
-          <SettingRow label="当前加载状态" value={`嵌入：${getLocalModelStatus().embeddingLoaded ? "已加载" : "未加载"} · 重排：${getLocalModelStatus().rerankLoaded ? "已加载" : "未加载"}`} />
-          <SettingRow label="运行资源状态" value={resourceState?.ready ? "完整" : `缺少 ${resourceState?.missing.length ?? "未知"} 项`} />
-          <Button label={resourceBusy ? "拉取中" : "一键拉取缺失资源"} onPress={() => void downloadResources()} disabled={resourceBusy} loading={resourceBusy} />
+          <Text style={styles.subsectionTitle}>可选内容（不影响基本使用）</Text>
+          <Text style={styles.sectionHint}>
+            未安装不影响写作与对话，仅影响对应的增强功能；下载时将自动尝试国内镜像。
+          </Text>
+          <SettingRow
+            label="当前加载状态"
+            value={`嵌入：${getLocalModelStatus().embeddingLoaded ? "已加载" : "未加载"} · 重排：${getLocalModelStatus().rerankLoaded ? "已加载" : "未加载"}`}
+          />
+          {OPTIONAL_RESOURCE_DESCRIPTIONS.map((entry) => {
+            const item = resourceState?.items.find((candidate) => candidate.id === entry.id);
+            const ready = item?.status === "ready";
+            return (
+              <View key={entry.id} style={styles.resourceCard}>
+                <Text style={styles.settingLabel}>{entry.title}</Text>
+                <Text style={styles.modelHint}>约 {entry.sizeMb} MB · {ready ? "已安装" : item?.detail ?? "未安装"}</Text>
+                <Text style={styles.sectionHint}>{entry.purpose}</Text>
+                {ready ? null : (
+                  <Button
+                    label={resourceBusy ? "处理中" : `下载（约 ${entry.sizeMb} MB）`}
+                    variant="secondary"
+                    onPress={() => void downloadResources([entry.id])}
+                    disabled={resourceBusy}
+                  />
+                )}
+              </View>
+            );
+          })}
+          <Button label={resourceBusy ? "处理中" : "一键补齐全部"} onPress={() => void downloadResources()} disabled={resourceBusy} loading={resourceBusy} />
           {resourceProgress ? <Text style={styles.progressText}>{resourceProgress}</Text> : null}
           <Button label="清除当前作品索引" variant="secondary" onPress={() => {
             if (!projectId) return;
@@ -728,6 +1107,9 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
 const styles = StyleSheet.create({
   loading: { flex: 1, alignItems: "center", justifyContent: "center" },
   errorWrap: { padding: spacing.lg, paddingBottom: 0 },
+  noticeWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  noticeText: { color: colors.primary, fontSize: 13, fontWeight: "600" },
+  warnText: { color: colors.accent, fontSize: 13, lineHeight: 18 },
   section: { gap: spacing.md, padding: spacing.lg },
   subsectionTitle: { color: colors.text, fontSize: 17, fontWeight: "700" },
   subsectionDivider: { height: StyleSheet.hairlineWidth, marginVertical: spacing.sm, backgroundColor: colors.border },
@@ -748,6 +1130,19 @@ const styles = StyleSheet.create({
   statusText: { color: colors.textMuted, fontSize: 13 },
   modelHint: { color: colors.primary, fontSize: 12 },
   modelChoices: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  resourceCard: { gap: spacing.sm, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm },
+  permissionCard: { gap: spacing.sm, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm },
+  presetRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  presetChip: { minHeight: 36, justifyContent: "center", paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: 999 },
+  presetChipText: { color: colors.textMuted, fontSize: 13, fontWeight: "600" },
+  modeChoices: { flexDirection: "row", gap: spacing.xs },
+  modeChip: { flex: 1, minHeight: 34, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm },
+  modeChipActive: { borderColor: colors.primary },
+  modeChipDeny: { borderColor: colors.danger },
+  modeChipText: { color: colors.textMuted, fontSize: 12, fontWeight: "600" },
+  modeChipTextActive: { color: colors.primary },
+  modeChipTextDeny: { color: colors.danger },
+  previewSample: { color: colors.text, fontSize: 15, lineHeight: 24, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm },
   modelChoice: { maxWidth: "100%", minHeight: 40, justifyContent: "center", paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm },
   modelChoiceActive: { borderColor: colors.primary, backgroundColor: "#E6F3EF" },
   modelChoiceText: { color: colors.text, fontSize: 13, fontWeight: "600" },

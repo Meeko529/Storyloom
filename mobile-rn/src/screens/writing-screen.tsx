@@ -42,6 +42,7 @@ import {
   setActiveStyleProfile,
 } from "@/data/style-repositories";
 import { resolveModelSelection } from "@/llm/selection";
+import { editorFontFamily, readEditorPrefs, type EditorFontId } from "@/settings/editor-prefs";
 import { evolveAuthorStyle } from "@/settings/lorn-style-plugin";
 import { useAppStore } from "@/store/app-store";
 import { colors, radius, spacing } from "@/theme";
@@ -85,6 +86,7 @@ export function WritingScreen() {
   const [error, setError] = useState<string | null>(null);
   const [autoSaveDelay, setAutoSaveDelay] = useState(AUTO_SAVE_DELAY_MS);
   const [editorFontSize, setEditorFontSize] = useState(17);
+  const [editorFont, setEditorFont] = useState<EditorFontId>("system");
   const [chapterPickerVisible, setChapterPickerVisible] = useState(false);
   const [directoryTarget, setDirectoryTarget] = useState<DirectoryTarget | null>(null);
   const [nameDialog, setNameDialog] = useState<NameDialog | null>(null);
@@ -105,12 +107,12 @@ export function WritingScreen() {
   useEffect(() => {
     void Promise.all([
       getSetting("general.autoSaveDelay"),
-      getSetting("general.editorFontSize"),
-    ]).then(([delayValue, fontValue]) => {
+      readEditorPrefs(),
+    ]).then(([delayValue, prefs]) => {
       const delay = Number(delayValue);
-      const fontSize = Number(fontValue);
       if (Number.isInteger(delay) && delay >= 250 && delay <= 10_000) setAutoSaveDelay(delay);
-      if (Number.isFinite(fontSize) && fontSize >= 14 && fontSize <= 28) setEditorFontSize(fontSize);
+      setEditorFontSize(prefs.fontSize);
+      setEditorFont(prefs.fontFamily);
     }).catch((settingsError) => {
       setError(settingsError instanceof Error ? settingsError.message : String(settingsError));
     });
@@ -119,6 +121,16 @@ export function WritingScreen() {
   const activeChapter = useMemo(
     () => chapters.find((chapter) => chapter.id === currentChapterId) ?? chapters[0] ?? null,
     [chapters, currentChapterId],
+  );
+
+  /** 正文的字号、行高与字体，集中一处，编辑框与预览共用。 */
+  const editorTextStyle = useMemo(
+    () => ({
+      fontSize: editorFontSize,
+      lineHeight: Math.round(editorFontSize * 1.65),
+      fontFamily: editorFontFamily(editorFont),
+    }),
+    [editorFontSize, editorFont],
   );
 
   const activeVolume = useMemo(
@@ -588,7 +600,7 @@ export function WritingScreen() {
                 <TextInput
                   value={content}
                   onChangeText={(value) => updateDraft(title, value)}
-                  style={[styles.contentInput, { fontSize: editorFontSize, lineHeight: Math.round(editorFontSize * 1.65) }]}
+                  style={[styles.contentInput, editorTextStyle]}
                   placeholder="开始写作..."
                   placeholderTextColor={colors.textMuted}
                   multiline
@@ -615,7 +627,7 @@ export function WritingScreen() {
                   </Pressable>
                 </View>
                 <ScrollView style={styles.previewScroll} contentContainerStyle={styles.previewContent} showsVerticalScrollIndicator>
-                  <Text selectable style={[styles.previewText, { fontSize: editorFontSize, lineHeight: Math.round(editorFontSize * 1.65) }]}>
+                  <Text selectable style={[styles.previewText, editorTextStyle]}>
                     {content || "本章暂无正文，点击右上角编辑开始写作。"}
                   </Text>
                 </ScrollView>

@@ -2,6 +2,7 @@ import * as Crypto from "expo-crypto";
 import { Directory, File, Paths } from "expo-file-system";
 import { z } from "zod";
 
+import builtinAgentCatalogJson from "../../assets/builtin/openficm-agent-catalog.json";
 import { getSetting, setSetting } from "@/data/repositories";
 import { sha256File } from "@/lib/sha256";
 import type { AgentDefinition, AgentSkill } from "@/settings/config";
@@ -77,7 +78,7 @@ const catalogSchema = z.object({
 });
 
 const openFicMCatalogPackageSchema = z.object({
-  source: z.literal("openficm-github"),
+  source: z.enum(["openficm-github", "builtin-apk"]),
   version: z.literal(1),
   installedAt: z.string().min(1),
   sha256: z.string().regex(/^[a-f0-9]{64}$/),
@@ -123,15 +124,23 @@ export const LOCAL_MODEL_INFO = {
     name: "BGE small zh v1.5 Q4_K_M",
     fileName: "bge-small-zh-v1.5-q4_k_m.gguf",
     url: "https://huggingface.co/CompendiumLabs/bge-small-zh-v1.5-gguf/resolve/main/bge-small-zh-v1.5-q4_k_m.gguf",
+    mirrors: [
+      "https://hf-mirror.com/CompendiumLabs/bge-small-zh-v1.5-gguf/resolve/main/bge-small-zh-v1.5-q4_k_m.gguf",
+    ],
     bytes: 15_448_256,
     sha256: "0c17cc6ed7ec697db6768c2db6dd22c4e816a12c68ed14ff4d764927338532f8",
+    purpose: "语义检索：把文字转成可比较的向量，用于「搜我以前写过什么」",
   },
   rerank: {
     name: "BGE reranker base Q4_K_M",
     fileName: "bge-reranker-base-q4_k_m.gguf",
     url: "https://huggingface.co/sabafallah/bge-reranker-base-Q4_K_M-GGUF/resolve/main/bge-reranker-base-q4_k_m.gguf",
+    mirrors: [
+      "https://hf-mirror.com/sabafallah/bge-reranker-base-Q4_K_M-GGUF/resolve/main/bge-reranker-base-q4_k_m.gguf",
+    ],
     bytes: 219_068_480,
     sha256: "18a10177d2494696616d252d55d42dc1046efe8b6b005aa911b5c167dc731f1c",
+    purpose: "检索结果精排：让搜索结果排序更准，属于锦上添花，不装也能用",
   },
 } as const;
 
@@ -141,12 +150,19 @@ export interface ResourceItemState {
   status: "ready" | "missing" | "incomplete";
   detail: string;
   bytes?: number;
+  /** 缺了它还能不能进 App。false = 属于「可选增强」，不装也不影响主流程。 */
+  required: boolean;
+  /** 这个资源是干什么用的 —— 给用户看的白话说明。 */
+  purpose?: string;
 }
 
 export interface RuntimeResourceState {
   ready: boolean;
   items: ResourceItemState[];
+  /** 必需但缺失的资源。 */
   missing: ResourceItemState[];
+  /** 可选且尚未安装的资源。 */
+  optional: ResourceItemState[];
 }
 
 export interface ResourceInstallProgress {
@@ -303,10 +319,44 @@ export async function getLornDistillationInstructions(): Promise<string> {
     ));
 }
 
+/**
+ * 解析打包在 APK 内的基础内容包。内容与远端固定提交一致，
+ * 因此这里只做结构校验，不做任何网络请求。
+ */
+function readBuiltinCatalog(): OpenFicMCatalog | null {
+  try {
+    return catalogSchema.parse(builtinAgentCatalogJson) as OpenFicMCatalog;
+  } catch {
+    return null;
+  }
+}
+
+async function persistBuiltinCatalog(catalog: OpenFicMCatalog): Promise<void> {
+  await setSetting(OPENFICM_CATALOG_KEY, JSON.stringify({
+    source: "builtin-apk",
+    version: 1,
+    installedAt: new Date().toISOString(),
+    sha256: OPENFICM_CATALOG_SHA256,
+    catalog,
+  }));
+}
+
+/**
+ * 读取基础 Agent/Skill 内容包。
+ *
+ * 优先用本地已安装的（用户可主动更新到远端版本）；
+ * 本地没有（首次启动）则直接使用**打包进 APK 的内置版本** ——
+ * 首次启动因此完全不需要联网下载，装上即可进入应用。
+ */
 export async function getInstalledOpenFicMCatalog(): Promise<OpenFicMCatalog | null> {
   const parsed = openFicMCatalogPackageSchema.safeParse(await readStoredJson(OPENFICM_CATALOG_KEY));
-  if (!parsed.success || parsed.data.sha256 !== OPENFICM_CATALOG_SHA256) return null;
-  return parsed.data.catalog as OpenFicMCatalog;
+  if (parsed.success && parsed.data.sha256 === OPENFICM_CATALOG_SHA256) {
+    return parsed.data.catalog as OpenFicMCatalog;
+  }
+  const builtin = readBuiltinCatalog();
+  if (!builtin) return null;
+  await persistBuiltinCatalog(builtin).catch(() => undefined);
+  return builtin;
 }
 
 export async function getInstalledLornStylePackage(): Promise<LornStylePackage | null> {
@@ -380,7 +430,7 @@ async function installLornStylePackage(onProgress?: (progress: ResourceInstallPr
 async function verifyModel(kind: LocalModelKind, onProgress?: (bytesRead: number, totalBytes: number) => void): Promise<ResourceItemState> {
   const info = LOCAL_MODEL_INFO[kind];
   const file = getLocalModelFile(kind);
-  const base = { id: kind, label: info.name, bytes: info.bytes } as const;
+  const base = { id: kind, label: info.name, bytes: info.bytes, required: false, purpose: info.purpose } as const;
   if (!file.exists) return { ...base, status: "missing", detail: "尚未下载" };
   if (file.size !== info.bytes) return { ...base, status: "incomplete", detail: `文件大小异常：${file.size}/${info.bytes}` };
   const cached = modelVerificationSchema.safeParse(await readStoredJson(verificationKey(kind)));
@@ -408,49 +458,60 @@ async function downloadModel(kind: LocalModelKind, onProgress?: (progress: Resou
   const directory = modelDirectory();
   directory.create({ intermediates: true, idempotent: true });
   const target = getLocalModelFile(kind);
-  const temporary = new File(directory, `${info.fileName}.download`);
-  if (temporary.exists) temporary.delete();
-  const task = File.createDownloadTask(info.url, temporary, {
-    headers: { Accept: "application/octet-stream", "User-Agent": "OpenFicM-Android" },
-    onProgress: ({ bytesWritten, totalBytes }) => onProgress?.({
-      stage: kind,
-      label: `下载 ${info.name}`,
-      completed: 0,
-      total: 1,
-      bytesWritten,
-      totalBytes: totalBytes > 0 ? totalBytes : info.bytes,
-    }),
-  });
-  try {
-    const downloaded = await task.downloadAsync();
-    if (!downloaded) throw new Error(`${info.name} 下载被暂停`);
-    if (downloaded.size !== info.bytes) throw new Error(`${info.name} 下载不完整：${downloaded.size}/${info.bytes}`);
-    onProgress?.({ stage: kind, label: `校验 ${info.name}`, completed: 0, total: 1, bytesWritten: 0, totalBytes: info.bytes });
-    const sha256 = await sha256File(downloaded, (bytesRead, totalBytes) => onProgress?.({
-      stage: kind,
-      label: `校验 ${info.name}`,
-      completed: 0,
-      total: 1,
-      bytesWritten: bytesRead,
-      totalBytes,
-    }));
-    if (sha256 !== info.sha256) throw new Error(`${info.name} SHA-256 校验失败`);
-    if (target.exists) target.delete();
-    await downloaded.move(target);
-    await setSetting(verificationKey(kind), JSON.stringify({
-      fileName: info.fileName,
-      bytes: info.bytes,
-      sha256,
-      lastModified: target.lastModified,
-      verifiedAt: new Date().toISOString(),
-    }));
-    onProgress?.({ stage: kind, label: `${info.name} 已就绪`, completed: 1, total: 1, bytesWritten: info.bytes, totalBytes: info.bytes });
-  } catch (error) {
+
+  const sources = [info.url, ...info.mirrors];
+  const failures: string[] = [];
+
+  for (const source of sources) {
+    const sourceLabel = source.includes("hf-mirror.com") ? "国内镜像" : "HuggingFace";
+    const temporary = new File(directory, `${info.fileName}.download`);
     if (temporary.exists) temporary.delete();
-    throw error;
-  } finally {
-    task.release();
+    const task = File.createDownloadTask(source, temporary, {
+      headers: { Accept: "application/octet-stream", "User-Agent": "OpenFicM-Android" },
+      onProgress: ({ bytesWritten, totalBytes }) => onProgress?.({
+        stage: kind,
+        label: `下载 ${info.name}（${sourceLabel}）`,
+        completed: 0,
+        total: 1,
+        bytesWritten,
+        totalBytes: totalBytes > 0 ? totalBytes : info.bytes,
+      }),
+    });
+    try {
+      const downloaded = await task.downloadAsync();
+      if (!downloaded) throw new Error(`${info.name} 下载被暂停`);
+      if (downloaded.size !== info.bytes) throw new Error(`${info.name} 下载不完整：${downloaded.size}/${info.bytes}`);
+      onProgress?.({ stage: kind, label: `校验 ${info.name}`, completed: 0, total: 1, bytesWritten: 0, totalBytes: info.bytes });
+      const sha256 = await sha256File(downloaded, (bytesRead, totalBytes) => onProgress?.({
+        stage: kind,
+        label: `校验 ${info.name}`,
+        completed: 0,
+        total: 1,
+        bytesWritten: bytesRead,
+        totalBytes,
+      }));
+      if (sha256 !== info.sha256) throw new Error(`${info.name} SHA-256 校验失败`);
+      if (target.exists) target.delete();
+      await downloaded.move(target);
+      await setSetting(verificationKey(kind), JSON.stringify({
+        fileName: info.fileName,
+        bytes: info.bytes,
+        sha256,
+        lastModified: target.lastModified,
+        verifiedAt: new Date().toISOString(),
+      }));
+      onProgress?.({ stage: kind, label: `${info.name} 已就绪`, completed: 1, total: 1, bytesWritten: info.bytes, totalBytes: info.bytes });
+      return;
+    } catch (error) {
+      if (temporary.exists) temporary.delete();
+      failures.push(`${sourceLabel}：${error instanceof Error ? error.message : String(error)}`);
+      onProgress?.({ stage: kind, label: `${sourceLabel} 下载失败，正在尝试下一个下载源`, completed: 0, total: 1 });
+    } finally {
+      task.release();
+    }
   }
+
+  throw new Error(`${info.name} 所有下载源均失败 —— ${failures.join("；")}`);
 }
 
 export async function getRuntimeResourceState(): Promise<RuntimeResourceState> {
@@ -464,34 +525,60 @@ export async function getRuntimeResourceState(): Promise<RuntimeResourceState> {
   const items: ResourceItemState[] = [
     {
       id: "openficm-content",
-      label: "OpenFicM 基础 Agent/Skill",
+      label: "基础 Agent / Skill",
       status: catalog ? "ready" : "missing",
-      detail: catalog ? `${catalog.agents.length} 个智能体 · ${catalog.skills.length} 个技能` : "尚未安装或校验失败",
+      detail: catalog ? `${catalog.agents.length} 个智能体 · ${catalog.skills.length} 个技能（随安装包内置）` : "内置内容包解析失败",
+      required: true,
+      purpose: "写作助手的核心内容，含智能体分工与写作技能。已随安装包内置，无需下载。",
     },
     {
       id: "oh-story",
-      label: "oh-story Agent/Skill",
+      label: "oh-story 进阶内容包",
       status: ohStory ? "ready" : "missing",
-      detail: ohStory ? `${ohStory.version} · ${ohStory.agents.length} 个智能体 · ${ohStory.skills.length} 个技能` : "尚未安装",
+      detail: ohStory ? `${ohStory.version} · ${ohStory.agents.length} 个智能体 · ${ohStory.skills.length} 个技能` : "未安装（可选）",
+      required: false,
+      purpose: "网文全流程进阶技能（扫榜 / 拆文 / 去 AI 味等），可选安装",
     },
     {
       id: "lorn-style",
       label: "Lorn 原版文风 Skill",
       status: lorn ? "ready" : "missing",
-      detail: lorn ? `${lorn.commitSha.slice(0, 8)} · ${lorn.skills.length} 个技能` : "尚未安装",
+      detail: lorn ? `${lorn.commitSha.slice(0, 8)} · ${lorn.skills.length} 个技能` : "未安装（可选）",
+      required: false,
+      purpose: "用于从导入的参考小说中蒸馏文风。该内容未声明开源许可，需手动获取。",
     },
     embedding,
     rerank,
   ];
-  const missing = items.filter((item) => item.status !== "ready");
-  return { ready: missing.length === 0, items, missing };
+  const missingAll = items.filter((item) => item.status !== "ready");
+  const missing = missingAll.filter((item) => item.required);
+  return {
+    ready: missing.length === 0,
+    items,
+    missing,
+    optional: missingAll.filter((item) => !item.required),
+  };
 }
 
-export async function installMissingRuntimeResources(
+export type OptionalResourceKind = "oh-story" | "lorn-style" | LocalModelKind;
+
+export const ALL_OPTIONAL_RESOURCE_KINDS: OptionalResourceKind[] = ["oh-story", "lorn-style", "embedding", "rerank"];
+
+/**
+ * 安装指定的「可选增强」资源。
+ *
+ * 与旧版的关键区别：**任一资源失败都不会中断整体，也不会阻塞进入应用**。
+ * 资源缺失只影响对应功能（语义检索、文风蒸馏等），主流程照常可用。
+ */
+export async function installOptionalResources(
+  kinds: OptionalResourceKind[],
   onProgress?: (progress: ResourceInstallProgress) => void,
-): Promise<RuntimeResourceState> {
+): Promise<{ state: RuntimeResourceState; errors: string[] }> {
   const before = await getRuntimeResourceState();
   const errors: string[] = [];
+  const wanted = new Set<string>(kinds);
+  const isMissing = (id: string) => before.items.some((item) => item.id === id && item.status !== "ready");
+
   const run = async (label: string, task: () => Promise<void>) => {
     try {
       await task();
@@ -500,11 +587,13 @@ export async function installMissingRuntimeResources(
     }
   };
 
+  // 内置基础内容包万一解析失败，尝试从远端补一份（正常情况不会走到这里）。
   if (before.missing.some((item) => item.id === "openficm-content")) {
-    await run("OpenFicM 基础内容", () => installOpenFicMCatalog(onProgress));
+    await run("基础内容包", () => installOpenFicMCatalog(onProgress));
   }
-  if (before.missing.some((item) => item.id === "oh-story")) {
-    await run("oh-story", async () => {
+
+  if (wanted.has("oh-story") && isMissing("oh-story")) {
+    await run("oh-story 内容包", async () => {
       onProgress?.({ stage: "oh-story", label: "检查 GitHub Release", completed: 0, total: 1 });
       const release = await checkOhStoryRelease();
       await installOhStoryRelease(release, ({ completed, total, label }) => onProgress?.({
@@ -513,28 +602,32 @@ export async function installMissingRuntimeResources(
       onProgress?.({ stage: "oh-story", label: `oh-story ${release.version} 已安装`, completed: 1, total: 1 });
     });
   }
-  if (before.missing.some((item) => item.id === "lorn-style")) {
+
+  if (wanted.has("lorn-style") && isMissing("lorn-style")) {
     await run("Lorn 文风包", () => installLornStylePackage(onProgress));
   }
 
-  const missingModelBytes = before.missing
-    .filter((item): item is ResourceItemState & { id: LocalModelKind } => item.id === "embedding" || item.id === "rerank")
-    .reduce((total, item) => total + LOCAL_MODEL_INFO[item.id].bytes, 0);
+  const modelKinds = (["embedding", "rerank"] as const).filter((kind) => wanted.has(kind) && isMissing(kind));
+  const missingModelBytes = modelKinds.reduce((total, kind) => total + LOCAL_MODEL_INFO[kind].bytes, 0);
   if (missingModelBytes && Paths.availableDiskSpace < missingModelBytes + DOWNLOAD_SPACE_RESERVE) {
     errors.push(`本地模型：存储空间不足，至少需要 ${Math.ceil((missingModelBytes + DOWNLOAD_SPACE_RESERVE) / 1024 / 1024)} MB 可用空间`);
   } else {
-    for (const kind of ["embedding", "rerank"] as const) {
-      if (before.missing.some((item) => item.id === kind)) {
-        await run(LOCAL_MODEL_INFO[kind].name, () => downloadModel(kind, onProgress));
-      }
+    for (const kind of modelKinds) {
+      await run(LOCAL_MODEL_INFO[kind].name, () => downloadModel(kind, onProgress));
     }
   }
 
-  const after = await getRuntimeResourceState();
-  if (errors.length || !after.ready) {
-    const missing = after.missing.map((item) => item.label).join("、");
-    throw new Error([...errors, missing ? `仍缺少：${missing}` : ""].filter(Boolean).join("\n"));
+  const state = await getRuntimeResourceState();
+  if (!errors.length) {
+    onProgress?.({ stage: "complete", label: "所选资源已全部就绪", completed: 1, total: 1 });
   }
-  onProgress?.({ stage: "complete", label: "全部运行资源已就绪", completed: 1, total: 1 });
-  return after;
+  return { state, errors };
+}
+
+/** 安装全部可选资源（设置页「一键补齐」按钮使用）。失败不抛错，只回报错误列表。 */
+export async function installMissingRuntimeResources(
+  onProgress?: (progress: ResourceInstallProgress) => void,
+): Promise<RuntimeResourceState> {
+  const { state } = await installOptionalResources(ALL_OPTIONAL_RESOURCE_KINDS, onProgress);
+  return state;
 }

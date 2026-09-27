@@ -3,7 +3,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,7 +18,7 @@ import { WritingScreen } from "@/screens/writing-screen";
 import { NotesScreen } from "@/screens/notes-screen";
 import { WorldInfoScreen } from "@/screens/world-info-screen";
 import { colors } from "@/theme";
-import { installMissingRuntimeResources, getRuntimeResourceState, type RuntimeResourceState } from "@/settings/remote-resources";
+import { getRuntimeResourceState, type RuntimeResourceState } from "@/settings/remote-resources";
 import { warmUpLocalModels } from "@/search/local-models";
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
@@ -73,76 +73,49 @@ export default function App() {
 
 function RuntimeResourceGate() {
   const [state, setState] = useState<RuntimeResourceState | null>(null);
-  const [warmed, setWarmed] = useState(false);
-  const [busy, setBusy] = useState(true);
-  const [progress, setProgress] = useState("正在检查运行资源…");
+  const [checking, setChecking] = useState(true);
+  const [skipped, setSkipped] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const checkAndWarm = useCallback(async () => {
-    setBusy(true);
-    setWarmed(false);
-    setError(null);
-    try {
-      const next = await getRuntimeResourceState();
-      setState(next);
-      if (!next.ready) {
-        setProgress("部分运行资源尚未安装");
-        return;
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const next = await getRuntimeResourceState();
+        if (!cancelled) setState(next);
+      } catch (checkError) {
+        if (!cancelled) setError(checkError instanceof Error ? checkError.message : String(checkError));
+      } finally {
+        if (!cancelled) setChecking(false);
       }
-      setProgress("正在预热本地检索模型…");
-      await warmUpLocalModels();
-      setWarmed(true);
-      setProgress("本地检索模型已就绪");
-    } catch (checkError) {
-      setError(checkError instanceof Error ? checkError.message : String(checkError));
-      setProgress("运行资源检查失败");
-    } finally {
-      setBusy(false);
-    }
+      // 本地检索模型改为后台静默预热：即便失败也不影响进入应用。
+      void warmUpLocalModels().catch(() => undefined);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  useEffect(() => {
-    void checkAndWarm();
-  }, [checkAndWarm]);
+  if (checking) {
+    return (
+      <View style={styles.resourceLoading}>
+        <StatusBar style="dark" />
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.resourceProgress}>正在准备…</Text>
+      </View>
+    );
+  }
 
-  const download = async () => {
-    setBusy(true);
-    setWarmed(false);
-    setError(null);
-    setProgress("准备一键拉取运行资源…");
-    try {
-      const next = await installMissingRuntimeResources((item) => {
-        if (item.totalBytes && item.totalBytes > 0 && item.bytesWritten !== undefined) {
-          const percent = Math.min(100, Math.round(item.bytesWritten / item.totalBytes * 100));
-          setProgress(`${item.label} · ${percent}%`);
-        } else {
-          setProgress(item.total > 1 ? `${item.label} · ${item.completed}/${item.total}` : item.label);
-        }
-      });
-      setState(next);
-      setProgress("正在预热本地检索模型…");
-      await warmUpLocalModels();
-      setWarmed(true);
-      setProgress("全部运行资源已就绪");
-    } catch (downloadError) {
-      setError(downloadError instanceof Error ? downloadError.message : String(downloadError));
-      setProgress("资源拉取未完成，可稍后继续");
-      const next = await getRuntimeResourceState().catch(() => null);
-      if (next) setState(next);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (!state?.ready || !warmed) {
-    const resourcesReady = state?.ready === true;
+  // 只有「必需」内容缺失才拦人 —— 而且必须留一条退路，绝不把用户锁死在启动页。
+  // 可选资源（检索模型、进阶内容包）缺失一律不阻塞，进应用后在设置里按需补齐。
+  if (state && !state.ready && !skipped) {
     return (
       <View style={styles.resourceGate}>
         <StatusBar style="dark" />
-        <Text style={styles.resourceTitle}>{resourcesReady ? "预热本地检索" : "准备 OpenFicM"}</Text>
-        <Text style={styles.resourceSubtitle}>{resourcesReady ? "运行资源已完整，进入应用前需要加载嵌入和重排模型。" : "首次使用需要下载 Agent、Skill 和本地检索模型。"}</Text>
+        <Text style={styles.resourceTitle}>缺少必需内容</Text>
+        <Text style={styles.resourceSubtitle}>以下内容为助手运行所需。缺失部分仅影响对应功能，可先进入应用，稍后在设置中处理。</Text>
         <View style={styles.resourceList}>
-          {(state?.missing ?? []).map((item) => (
+          {state.missing.map((item) => (
             <View key={item.id} style={styles.resourceRow}>
               <View style={styles.resourceDot} />
               <View style={styles.resourceCopy}>
@@ -152,19 +125,12 @@ function RuntimeResourceGate() {
             </View>
           ))}
         </View>
-        <Text style={styles.resourceProgress}>{error ?? progress}</Text>
-        <Pressable accessibilityRole="button" disabled={busy} onPress={() => void (resourcesReady ? checkAndWarm() : download())} style={[styles.downloadButton, busy && styles.downloadButtonDisabled]}>
-          {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.downloadButtonText}>{resourcesReady ? "重新预热" : "一键拉取并预热"}</Text>}
-        </Pressable>
-        <Pressable accessibilityRole="button" disabled={busy} onPress={() => void checkAndWarm()} style={styles.retryResourceButton}>
-          <Text style={styles.retryResourceText}>重新检查</Text>
+        {error ? <Text style={styles.resourceProgress}>{error}</Text> : null}
+        <Pressable accessibilityRole="button" onPress={() => setSkipped(true)} style={styles.downloadButton}>
+          <Text style={styles.downloadButtonText}>跳过并进入应用</Text>
         </Pressable>
       </View>
     );
-  }
-
-  if (busy) {
-    return <View style={styles.resourceLoading}><StatusBar style="dark" /><ActivityIndicator size="large" color={colors.primary} /><Text style={styles.resourceProgress}>{progress}</Text></View>;
   }
 
   return (

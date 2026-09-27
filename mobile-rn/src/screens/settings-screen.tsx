@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { Button, ErrorNotice, Field, Header, Screen, SheetBackdrop } from "@/components/ui";
@@ -37,12 +37,33 @@ const providerDefaults: Record<ProviderType, { name: string; url: string }> = {
   anthropic: { name: "Anthropic", url: "https://api.anthropic.com/v1" },
 };
 
+/**
+ * 常用服务商预设：点一下自动填好「显示名称 + Base URL」。
+ * 用户只需要去对应站点注册、生成一个 API Key 粘进来即可，不用自己查地址和格式。
+ * 这些厂商都提供 OpenAI 兼容接口，所以统一走 openai-compatible 档。
+ */
+const PROVIDER_PRESETS: Array<{
+  id: string;
+  label: string;
+  name: string;
+  url: string;
+  modelHint: string;
+}> = [
+  { id: "zhipu", label: "智谱", name: "智谱 GLM", url: "https://open.bigmodel.cn/api/paas/v4", modelHint: "glm-4.7-flash" },
+  { id: "deepseek", label: "DeepSeek", name: "DeepSeek", url: "https://api.deepseek.com/v1", modelHint: "deepseek-chat" },
+  { id: "dashscope", label: "通义千问", name: "阿里云百炼", url: "https://dashscope.aliyuncs.com/compatible-mode/v1", modelHint: "qwen-turbo" },
+  { id: "siliconflow", label: "硅基流动", name: "硅基流动", url: "https://api.siliconflow.cn/v1", modelHint: "Qwen/Qwen2.5-7B-Instruct" },
+  { id: "moonshot", label: "Kimi", name: "月之暗面 Kimi", url: "https://api.moonshot.cn/v1", modelHint: "moonshot-v1-8k" },
+  { id: "custom", label: "中转站 / 自定义", name: "", url: "", modelHint: "" },
+];
+
 const settingsCategories: Array<{
   id: SettingsCategory;
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
 }> = [
   { id: "general", label: "通用", icon: "options-outline" },
+  { id: "editor", label: "编辑器", icon: "text-outline" },
   { id: "connections", label: "连接", icon: "link-outline" },
   { id: "models", label: "模型与供应商", icon: "hardware-chip-outline" },
   { id: "index", label: "索引", icon: "layers-outline" },
@@ -117,6 +138,7 @@ export function SettingsScreen() {
   const [models, setModels] = useState<Model[]>([]);
   const [activeModelId, setActiveModelId] = useState<string | null>(null);
   const [providerType, setProviderType] = useState<ProviderType>("openai-compatible");
+  const [presetId, setPresetId] = useState("custom");
   const [providerName, setProviderName] = useState(providerDefaults["openai-compatible"].name);
   const [baseUrl, setBaseUrl] = useState(providerDefaults["openai-compatible"].url);
   const [apiKey, setApiKey] = useState("");
@@ -174,9 +196,22 @@ export function SettingsScreen() {
     setProviderType(type);
     setProviderName(providerDefaults[type].name);
     setBaseUrl(providerDefaults[type].url);
+    setPresetId("custom");
     setNewAdvanced({ ...DEFAULT_PROVIDER_ADVANCED });
     setShowNewAdvanced(false);
   };
+
+  /** 套用常用服务商预设：自动填好类型、名称与地址，用户只需粘贴 API Key。 */
+  const applyPreset = (preset: (typeof PROVIDER_PRESETS)[number]) => {
+    setPresetId(preset.id);
+    setProviderType("openai-compatible");
+    setProviderName(preset.name);
+    setBaseUrl(preset.url);
+    setNewAdvanced({ ...DEFAULT_PROVIDER_ADVANCED });
+    setShowNewAdvanced(false);
+  };
+
+  const activePreset = PROVIDER_PRESETS.find((item) => item.id === presetId) ?? null;
 
   const addProvider = async () => {
     if (!providerName.trim() || !baseUrl.trim() || !apiKey.trim()) return;
@@ -302,6 +337,13 @@ export function SettingsScreen() {
       || model.id.toLowerCase().includes(keyword));
   }, [modelFilter, remoteModels]);
 
+  // 「作者文风」有独立页面。之前它只是分类页里的一句空壳提示 —— 点了没有任何反应。
+  useEffect(() => {
+    if (activeCategory !== "style") return;
+    setActiveCategory(null);
+    rootNavigation.navigate("StyleLibrary");
+  }, [activeCategory, rootNavigation]);
+
   if (activeCategory && activeCategory !== "models") {
     return <SettingsCategoryScreen category={activeCategory} onBack={() => setActiveCategory(null)} />;
   }
@@ -336,6 +378,19 @@ export function SettingsScreen() {
       {error ? <View style={styles.errorWrap}><ErrorNotice message={error} onRetry={() => void load()} /></View> : null}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>供应商</Text>
+        <Text style={styles.fieldHint}>选择常用服务商可自动填入接口地址。</Text>
+        <View style={styles.presetRow}>
+          {PROVIDER_PRESETS.map((preset) => (
+            <Pressable
+              key={preset.id}
+              onPress={() => applyPreset(preset)}
+              style={[styles.presetChip, presetId === preset.id && styles.presetChipActive]}
+            >
+              <Text style={[styles.presetChipText, presetId === preset.id && styles.presetChipTextActive]}>{preset.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={styles.sectionTitle}>或者手动填</Text>
         <View style={styles.segmented}>
           {(["openai-compatible", "google-genai", "anthropic"] as ProviderType[]).map((type) => (
             <Pressable key={type} onPress={() => chooseType(type)} style={[styles.segment, providerType === type && styles.segmentActive]}>
@@ -345,9 +400,12 @@ export function SettingsScreen() {
             </Pressable>
           ))}
         </View>
+        <Text style={styles.fieldHint}>OpenAI 为通用接口格式，国内多数厂商与中转服务均兼容此格式，并非特指 OpenAI 官方服务。</Text>
         <Field label="显示名称" value={providerName} onChangeText={setProviderName} />
         <Field label="Base URL" value={baseUrl} onChangeText={setBaseUrl} autoCapitalize="none" keyboardType="url" />
+        <Text style={styles.fieldHint}>接口地址填写至 /v1 或 /v4 层级即可，对话路径由程序自动拼接。</Text>
         <Field label="API Key" value={apiKey} onChangeText={setApiKey} autoCapitalize="none" secureTextEntry />
+        <Text style={styles.fieldHint}>密钥仅存于系统安全存储，不会写入数据库。</Text>
         <Button label="保存供应商" onPress={() => void addProvider()} disabled={!providerName.trim() || !baseUrl.trim() || !apiKey.trim()} loading={saving} />
         {providerType === "openai-compatible" ? (
           <>
@@ -419,9 +477,13 @@ export function SettingsScreen() {
             </Pressable>
           ))}
         </View>
-        <Field label="模型名称" value={modelName} onChangeText={setModelName} placeholder="Gemini 2.5 Pro" />
-        <Field label="模型 ID" value={modelId} onChangeText={setModelId} autoCapitalize="none" placeholder="gemini-2.5-pro" />
+        <Field label="模型名称（显示用）" value={modelName} onChangeText={setModelName} placeholder="Gemini 2.5 Pro" />
+        <Field label="模型 ID（服务商提供的标识）" value={modelId} onChangeText={setModelId} autoCapitalize="none" placeholder={activePreset?.modelHint || "gemini-2.5-pro"} />
+        <Text style={styles.fieldHint}>
+          需与服务商提供的模型标识完全一致{activePreset?.modelHint ? `，例如 ${activePreset.label} 可填 ${activePreset.modelHint}` : ""}；也可通过上方「获取模型」自动载入。
+        </Text>
         <Field label="温度" value={temperature} onChangeText={setTemperature} keyboardType="decimal-pad" />
+        <Text style={styles.fieldHint}>取值范围 0 ~ 2，数值越大生成结果越发散；小说创作建议 0.7 ~ 0.9。</Text>
         <Field label="最大输出 Token 数" value={maxTokens} onChangeText={setMaxTokens} keyboardType="number-pad" />
         <Text style={styles.fieldHint}>单次回复长度，不是上下文窗口；1M 上下文模型保持 {DEFAULT_MAX_OUTPUT_TOKENS} 或按需填写，最高 {MAX_CONFIGURED_OUTPUT_TOKENS}。</Text>
         <Button label="添加模型" onPress={() => void addModel()} disabled={!selectedProviderId || !modelName.trim() || !modelId.trim()} loading={savingModel} />
@@ -527,6 +589,11 @@ const styles = StyleSheet.create({
   segmentActive: { backgroundColor: colors.surface },
   segmentText: { color: colors.textMuted, fontSize: 13, fontWeight: "600" },
   segmentTextActive: { color: colors.primary },
+  presetRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  presetChip: { minHeight: 36, justifyContent: "center", paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: 999 },
+  presetChipActive: { borderColor: colors.primary, backgroundColor: "#E6F3EF" },
+  presetChipText: { color: colors.textMuted, fontSize: 13, fontWeight: "600" },
+  presetChipTextActive: { color: colors.primary },
   advancedToggle: { minHeight: 40, flexDirection: "row", alignItems: "center", gap: spacing.xs },
   advancedToggleText: { color: colors.primary, fontSize: 13, fontWeight: "700" },
   advancedGroup: { gap: spacing.md },

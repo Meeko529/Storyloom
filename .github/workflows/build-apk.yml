@@ -52,10 +52,13 @@ jobs:
       - name: 缓存 Gradle 依赖
         uses: actions/cache@v4
         with:
+          # 只缓存「下载产物」与 wrapper 发行包。
+          # 之前缓存整个 ~/.gradle/caches 会把 daemon 日志、文件锁一并打包，
+          # 导致 post 步骤出现 `/usr/bin/tar failed with exit code 2`。
           path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: "gradle-${{ runner.os }}-${{ hashFiles('mobile-rn/android/**/*.gradle*') }}"
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper/dists
+          key: "gradle-${{ runner.os }}-${{ hashFiles('mobile-rn/android/**/*.gradle*', 'mobile-rn/android/gradle/wrapper/gradle-wrapper.properties') }}"
           restore-keys: |
             gradle-${{ runner.os }}-
 
