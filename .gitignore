@@ -1,0 +1,24 @@
+# 依赖与构建产物由 mobile-rn/.gitignore 与 mobile-rn/android/.gitignore 负责
+# 这里是仓库根目录的补充规则
+
+# 构建产物
+*.apk
+*.aab
+*.apks
+
+# 签名材料：绝不入库
+*.jks
+*.keystore
+*.p12
+*.p8
+*.mobileprovision
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# 本地日志
+*.log

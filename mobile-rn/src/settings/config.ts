@@ -1,0 +1,357 @@
+import { getSetting, setSetting } from "@/data/repositories";
+
+import {
+  LORN_STYLE_SKILL_IDS,
+  isLornStyleSkillId,
+  shouldAttachLornStyleSkills,
+} from "./lorn-style-plugin";
+import { getInstalledOhStoryPackage } from "./oh-story-updater";
+import {
+  compactLornDistillationInstructions,
+  getInstalledLornStylePackage,
+  getInstalledOpenFicMCatalog,
+} from "./remote-resources";
+
+export type ToolPermissionMode = "allow" | "ask" | "deny";
+export type AgentKind = "primary" | "subagent";
+export type CatalogSource = "builtin" | "custom" | "plugin" | "remote";
+
+export interface IndexSettings {
+  enabled: boolean;
+  chunkSize: number;
+  chunkOverlap: number;
+  retrievalTopK: number;
+  rerankTopK: number;
+  rerankEnabled: boolean;
+}
+
+export interface AgentRule {
+  id: string;
+  name: string;
+  content: string;
+  enabled: boolean;
+}
+
+export interface AgentSkill {
+  id: string;
+  name: string;
+  description: string;
+  instructions: string;
+  enabled: boolean;
+  source: CatalogSource;
+}
+
+export interface AgentDefinition {
+  id: string;
+  name: string;
+  description: string;
+  systemPrompt: string;
+  modelId: string;
+  enabled: boolean;
+  kind: AgentKind;
+  skillIds: string[];
+  toolNames: string[];
+  delegatableAgentIds: string[];
+  source: CatalogSource;
+}
+
+export const DEFAULT_INDEX_SETTINGS: IndexSettings = {
+  enabled: true,
+  chunkSize: 360,
+  chunkOverlap: 60,
+  retrievalTopK: 8,
+  rerankTopK: 5,
+  rerankEnabled: true,
+};
+
+export const TOOL_CATALOG = [
+  { key: "list_chapters", name: "列出章节", readonly: true },
+  { key: "read_chapter", name: "读取章节", readonly: true },
+  { key: "search_chapters", name: "全文搜索章节", readonly: true },
+  { key: "search_knowledge", name: "语义检索项目资料", readonly: true },
+  { key: "list_characters", name: "列出角色", readonly: true },
+  { key: "read_character", name: "读取角色", readonly: true },
+  { key: "list_world_entries", name: "列出世界书条目", readonly: true },
+  { key: "read_world_entry", name: "读取世界书条目", readonly: true },
+  { key: "list_notes", name: "列出笔记", readonly: true },
+  { key: "read_note", name: "读取笔记", readonly: true },
+  { key: "write_note", name: "创建笔记", readonly: false },
+  { key: "edit_note", name: "编辑笔记", readonly: false },
+  { key: "move_note", name: "移动笔记归属", readonly: false },
+  { key: "delete_note", name: "删除笔记", readonly: false },
+  { key: "ask_user", name: "向用户提问", readonly: true },
+  { key: "activate_skill", name: "激活技能", readonly: true },
+  { key: "delegate_agent", name: "委派子智能体", readonly: true },
+  { key: "read_author_style_guide", name: "读取作者文风指南", readonly: true },
+  { key: "list_style_sources", name: "列出参考书", readonly: true },
+  { key: "read_style_source_sample", name: "读取参考书样本", readonly: true },
+  { key: "list_style_profiles", name: "列出文风版本", readonly: true },
+  { key: "read_style_profile", name: "读取文风版本", readonly: true },
+  { key: "select_style_profile", name: "切换创作文风", readonly: false },
+  { key: "save_reference_style_profile", name: "保存参考文风", readonly: false },
+  { key: "write_chapter", name: "创建章节", readonly: false },
+  { key: "edit_chapter", name: "修改章节", readonly: false },
+  { key: "create_character", name: "创建角色", readonly: false },
+  { key: "edit_character", name: "修改角色", readonly: false },
+  { key: "delete_character", name: "删除角色", readonly: false },
+  { key: "create_world_entry", name: "创建世界书条目", readonly: false },
+  { key: "edit_world_entry", name: "修改世界书条目", readonly: false },
+  { key: "delete_world_entry", name: "删除世界书条目", readonly: false },
+  { key: "save_author_style_guide", name: "保存作者文风指南", readonly: false },
+  { key: "evolve_author_style", name: "进化作者文风", readonly: false },
+] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+async function readJson(key: string): Promise<unknown> {
+  const value = await getSetting(key);
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+async function writeJson(key: string, value: unknown): Promise<void> {
+  await setSetting(key, JSON.stringify(value));
+}
+
+function boundedInteger(value: unknown, fallback: number, minimum: number, maximum: number): number {
+  return typeof value === "number" && Number.isInteger(value) && value >= minimum && value <= maximum
+    ? value
+    : fallback;
+}
+
+export async function getIndexSettings(): Promise<IndexSettings> {
+  const value = await readJson("index.settings");
+  if (!isRecord(value)) return DEFAULT_INDEX_SETTINGS;
+  const chunkSize = boundedInteger(value.chunkSize, DEFAULT_INDEX_SETTINGS.chunkSize, 120, 440);
+  const chunkOverlap = boundedInteger(value.chunkOverlap, DEFAULT_INDEX_SETTINGS.chunkOverlap, 0, chunkSize - 1);
+  return {
+    enabled: typeof value.enabled === "boolean" ? value.enabled : DEFAULT_INDEX_SETTINGS.enabled,
+    chunkSize,
+    chunkOverlap,
+    retrievalTopK: boundedInteger(value.retrievalTopK, DEFAULT_INDEX_SETTINGS.retrievalTopK, 1, 20),
+    rerankTopK: boundedInteger(value.rerankTopK, DEFAULT_INDEX_SETTINGS.rerankTopK, 1, 12),
+    rerankEnabled: typeof value.rerankEnabled === "boolean"
+      ? value.rerankEnabled
+      : DEFAULT_INDEX_SETTINGS.rerankEnabled,
+  };
+}
+
+export async function saveIndexSettings(settings: IndexSettings): Promise<void> {
+  if (settings.chunkOverlap >= settings.chunkSize) throw new Error("分块重叠必须小于分块大小");
+  const chunkSize = boundedInteger(settings.chunkSize, DEFAULT_INDEX_SETTINGS.chunkSize, 120, 440);
+  const chunkOverlap = boundedInteger(
+    settings.chunkOverlap,
+    Math.min(DEFAULT_INDEX_SETTINGS.chunkOverlap, chunkSize - 1),
+    0,
+    chunkSize - 1,
+  );
+  await writeJson("index.settings", {
+    enabled: Boolean(settings.enabled),
+    chunkSize,
+    chunkOverlap,
+    retrievalTopK: boundedInteger(settings.retrievalTopK, DEFAULT_INDEX_SETTINGS.retrievalTopK, 1, 20),
+    rerankTopK: boundedInteger(settings.rerankTopK, DEFAULT_INDEX_SETTINGS.rerankTopK, 1, 12),
+    rerankEnabled: Boolean(settings.rerankEnabled),
+  });
+}
+
+export async function getToolPermissions(): Promise<Record<string, ToolPermissionMode>> {
+  const value = await readJson("agent.toolPermissions");
+  const permissions: Record<string, ToolPermissionMode> = {};
+  for (const tool of TOOL_CATALOG) {
+    const mode = isRecord(value) ? value[tool.key] : undefined;
+    permissions[tool.key] = mode === "allow" || mode === "ask" || mode === "deny"
+      ? mode
+      : tool.readonly ? "allow" : "ask";
+  }
+  return permissions;
+}
+
+export async function saveToolPermissions(permissions: Record<string, ToolPermissionMode>): Promise<void> {
+  const normalized = Object.fromEntries(TOOL_CATALOG.map((tool) => {
+    const mode = permissions[tool.key];
+    return [tool.key, mode === "allow" || mode === "ask" || mode === "deny" ? mode : "ask"];
+  }));
+  await writeJson("agent.toolPermissions", normalized);
+}
+
+function parseRules(value: unknown): AgentRule[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!isRecord(item) || typeof item.id !== "string" || typeof item.name !== "string" || typeof item.content !== "string") return [];
+    return [{ id: item.id, name: item.name, content: item.content, enabled: item.enabled !== false }];
+  });
+}
+
+function parseSkills(value: unknown): AgentSkill[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!isRecord(item) || typeof item.id !== "string" || typeof item.name !== "string"
+      || typeof item.description !== "string" || typeof item.instructions !== "string") return [];
+    return [{
+      id: item.id,
+      name: item.name,
+      description: item.description,
+      instructions: item.instructions,
+      enabled: item.enabled !== false,
+      source: item.source === "builtin" || item.source === "plugin" || item.source === "remote" ? item.source : "custom",
+    }];
+  });
+}
+
+function parseStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())))];
+}
+
+function parseAgents(value: unknown): AgentDefinition[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!isRecord(item) || typeof item.id !== "string" || typeof item.name !== "string"
+      || typeof item.description !== "string" || typeof item.systemPrompt !== "string") return [];
+    return [{
+      id: item.id,
+      name: item.name,
+      description: item.description,
+      systemPrompt: item.systemPrompt,
+      modelId: typeof item.modelId === "string" ? item.modelId : "",
+      enabled: item.enabled !== false,
+      kind: item.kind === "subagent" ? "subagent" : "primary",
+      skillIds: parseStringArray(item.skillIds),
+      toolNames: parseStringArray(item.toolNames),
+      delegatableAgentIds: parseStringArray(item.delegatableAgentIds),
+      source: item.source === "builtin" || item.source === "plugin" || item.source === "remote" ? item.source : "custom",
+    }];
+  });
+}
+
+export async function getAgentRules(): Promise<AgentRule[]> {
+  return parseRules(await readJson("agent.rules"));
+}
+
+export async function saveAgentRules(rules: AgentRule[]): Promise<void> {
+  await writeJson("agent.rules", rules);
+}
+
+function attachPluginSkills(agent: AgentDefinition): AgentDefinition {
+  if (!shouldAttachLornStyleSkills(agent)) return agent;
+  return {
+    ...agent,
+    skillIds: [...new Set([...agent.skillIds, ...LORN_STYLE_SKILL_IDS])],
+  };
+}
+
+function adaptLornStyleSkill(skill: AgentSkill): AgentSkill {
+  if (skill.id === "plugin-lorn-style--distillation") {
+    return {
+      ...skill,
+      name: "Lorn 原版参考文风蒸馏",
+      description: "读取文风书库中的参考小说样本，使用 Lorn.NovelWriteSkills 方法生成独立参考文风版本。",
+      instructions: compactLornDistillationInstructions(skill.instructions
+        .replace(
+          /原文中的 Agents\.md 注册、蒸馏产物目录和作者风格模板文件统一映射为 save_author_style_guide；最终必须把完整 Markdown 指南保存到当前作品。/g,
+          "原文中的 Agents.md 注册、蒸馏产物目录和作者风格模板文件统一映射为 Storyloom 文风书库。",
+        )
+        .replace(
+          /完成蒸馏后必须调用 save_author_style_guide 保存完整结果。/g,
+          "先调用 list_style_sources 和 read_style_source_sample 读取用户选择的参考书，完成蒸馏后调用 save_reference_style_profile 保存独立参考文风版本。",
+        )),
+    };
+  }
+  if (skill.id === "plugin-lorn-style--evolution") {
+    return {
+      ...skill,
+      instructions: skill.instructions.replace(
+        /该工具会读取现有指南，优先调用已配置的 Lorn FastAPI 插件接口，未配置接口时使用当前模型完成对比，并把新版指南保存到当前作品。/g,
+        "该工具会读取现有作者文风，使用当前模型完成对比，并把新版指南保存为当前作品的新作者文风版本，不需要电脑后端。",
+      ),
+    };
+  }
+  return skill;
+}
+
+export async function getAgentSkills(): Promise<AgentSkill[]> {
+  const [value, openFicMCatalog, lornPackage, remotePackage] = await Promise.all([readJson("agent.skills"), getInstalledOpenFicMCatalog(), getInstalledLornStylePackage(), getInstalledOhStoryPackage()]);
+  const records = Array.isArray(value) ? value.filter(isRecord) : [];
+  const overrides = new Map(records.filter((item) => typeof item.id === "string").map((item) => [item.id as string, item]));
+  const managedBuiltins = (openFicMCatalog?.skills ?? []).map((skill) => ({ ...skill, source: "builtin" as const }));
+  const builtinIds = new Set(managedBuiltins.map((skill) => skill.id));
+  const pluginSkills = (lornPackage?.skills ?? []).map((skill) => adaptLornStyleSkill({ ...skill, source: "plugin" as const }));
+  const pluginIds = new Set(pluginSkills.map((skill) => skill.id));
+  const builtins = managedBuiltins.map((skill) => {
+    const override = overrides.get(skill.id);
+    return { ...skill, enabled: typeof override?.enabled === "boolean" ? override.enabled : skill.enabled };
+  });
+  const remoteSkills = (remotePackage?.skills ?? []).map((skill) => {
+    const override = overrides.get(skill.id);
+    return { ...skill, enabled: typeof override?.enabled === "boolean" ? override.enabled : skill.enabled };
+  });
+  const plugins = pluginSkills.map((skill) => {
+    const override = overrides.get(skill.id);
+    return { ...skill, enabled: typeof override?.enabled === "boolean" ? override.enabled : skill.enabled };
+  });
+  const managedIds = new Set([...builtinIds, ...pluginIds, ...remoteSkills.map((skill) => skill.id)]);
+  const custom = parseSkills(value)
+    .filter((skill) => !managedIds.has(skill.id))
+    .map((skill) => ({ ...skill, source: "custom" as const }));
+  return [...builtins, ...plugins, ...remoteSkills, ...custom];
+}
+
+export async function saveAgentSkills(skills: AgentSkill[]): Promise<void> {
+  const [openFicMCatalog, lornPackage, remotePackage] = await Promise.all([getInstalledOpenFicMCatalog(), getInstalledLornStylePackage(), getInstalledOhStoryPackage()]);
+  const managedIds = new Set([...(openFicMCatalog?.skills ?? []).map((skill) => skill.id), ...(lornPackage?.skills ?? []).map((skill) => skill.id), ...(remotePackage?.skills ?? []).map((skill) => skill.id)]);
+  await writeJson("agent.skills", skills.map((skill) => managedIds.has(skill.id)
+    ? { id: skill.id, enabled: skill.enabled }
+    : { ...skill, source: "custom" }));
+}
+
+export async function getAgentDefinitions(): Promise<AgentDefinition[]> {
+  const [value, openFicMCatalog, remotePackage] = await Promise.all([readJson("agent.definitions"), getInstalledOpenFicMCatalog(), getInstalledOhStoryPackage()]);
+  const records = Array.isArray(value) ? value.filter(isRecord) : [];
+  const overrides = new Map(records.filter((item) => typeof item.id === "string").map((item) => [item.id as string, item]));
+  const managedBuiltins = (openFicMCatalog?.agents ?? []).map((agent) => ({ ...agent, source: "builtin" as const }));
+  const builtinIds = new Set(managedBuiltins.map((agent) => agent.id));
+  const remoteAgents = (remotePackage?.agents ?? []).map((agent) => {
+    const override = overrides.get(agent.id);
+    return {
+      ...agent,
+      modelId: typeof override?.modelId === "string" ? override.modelId : agent.modelId,
+      enabled: typeof override?.enabled === "boolean" ? override.enabled : agent.enabled,
+    };
+  });
+  const remoteAgentIds = remoteAgents.map((agent) => agent.id);
+  const builtins = managedBuiltins.map((agent) => {
+    const override = overrides.get(agent.id);
+    return {
+      ...agent,
+      modelId: typeof override?.modelId === "string" ? override.modelId : agent.modelId,
+      enabled: typeof override?.enabled === "boolean" ? override.enabled : agent.enabled,
+      delegatableAgentIds: agent.kind === "primary"
+        ? [...new Set([...agent.delegatableAgentIds, ...remoteAgentIds])]
+        : agent.delegatableAgentIds,
+    };
+  });
+  const managedIds = new Set([...builtinIds, ...remoteAgentIds]);
+  const custom = parseAgents(value)
+    .filter((agent) => !managedIds.has(agent.id))
+    .map((agent) => ({ ...agent, source: "custom" as const }));
+  return [...builtins, ...remoteAgents, ...custom].map(attachPluginSkills);
+}
+
+export async function saveAgentDefinitions(agents: AgentDefinition[]): Promise<void> {
+  const [openFicMCatalog, remotePackage] = await Promise.all([getInstalledOpenFicMCatalog(), getInstalledOhStoryPackage()]);
+  const managedIds = new Set([...(openFicMCatalog?.agents ?? []).map((agent) => agent.id), ...(remotePackage?.agents ?? []).map((agent) => agent.id)]);
+  await writeJson("agent.definitions", agents.map((agent) => managedIds.has(agent.id)
+    ? { id: agent.id, enabled: agent.enabled, modelId: agent.modelId }
+    : { ...agent, source: "custom" }));
+}
+
+export function isManagedPluginSkill(skill: AgentSkill): boolean {
+  return skill.source === "plugin" && isLornStyleSkillId(skill.id);
+}

@@ -1,0 +1,71 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mobile-rn/**"
+      - ".github/workflows/build-apk.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "mobile-rn/**"
+      - ".github/workflows/build-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile-rn
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile-rn/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: 环境自检
+        run: |
+          node -v
+          java -version
+          echo "ANDROID_HOME=${ANDROID_HOME:-<未设置>}"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-<未设置>}"
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 类型体检
+        run: npm run type-check
+
+      - name: 构建可安装 APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleStandalone --no-daemon --stacktrace
+
+      - name: 列出产物
+        if: always()
+        run: find android/app/build/outputs -name "*.apk" -printf "%s %p\n" || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Storyloom-apk
+          if-no-files-found: error
+          retention-days: 30
+          path: mobile-rn/android/app/build/outputs/apk/standalone/*.apk
