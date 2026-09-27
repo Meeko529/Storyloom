@@ -936,6 +936,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
                     void persistManagedState(next, saveAgentSkills, setSkills);
                   },
                 )} style={styles.iconButton}><Ionicons name="trash-outline" size={19} color={colors.textMuted} /></Pressable>
+                </>
               ) : <View style={styles.iconButton}><Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} /></View>}
             </View>
           ))}
@@ -983,6 +984,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
                 )} style={styles.iconButton}>
                   <Ionicons name="trash-outline" size={19} color={colors.textMuted} />
                 </Pressable>
+                </>
               ) : <View style={styles.iconButton}><Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} /></View>}
             </View>
           ))}
