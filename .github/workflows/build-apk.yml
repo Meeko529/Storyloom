@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: build-apk-${{ github.ref }}
@@ -50,6 +50,16 @@ jobs:
       - name: 安装依赖
         run: npm ci
 
+      # 缓存 Gradle 依赖：首次会下载一大堆，缓存后每次构建快很多
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('mobile-rn/android/**/*.gradle*', 'mobile-rn/android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
       - name: 类型体检
         run: npm run type-check
 
@@ -63,9 +73,29 @@ jobs:
         if: always()
         run: find android/app/build/outputs -name "*.apk" -printf "%s %p\n" || true
 
+      # 备份通道：Actions 产物（桌面网页可下，但要解压）
       - uses: actions/upload-artifact@v4
         with:
           name: Storyloom-apk
           if-no-files-found: error
           retention-days: 30
           path: mobile-rn/android/app/build/outputs/apk/standalone/*.apk
+
+      # 主通道：发布成 Release。手机上点一下就是 .apk，不用解压。
+      - name: 发布到 Release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          mkdir -p "$RUNNER_TEMP/out"
+          cp android/app/build/outputs/apk/standalone/*.apk "$RUNNER_TEMP/out/Storyloom-Android.apk"
+          ls -lh "$RUNNER_TEMP/out/Storyloom-Android.apk"
+          gh release create "v0.1.${GITHUB_RUN_NUMBER}" \
+            --title "Storyloom v0.1.${GITHUB_RUN_NUMBER}" \
+            --notes "自动构建产物，代码提交 ${GITHUB_SHA:0:7}。
+
+**手机安装**：直接点下面的 Storyloom-Android.apk 下载即可，不需要解压。
+
+包名 com.meeko529.storyloom，可与官方版共存。首次启动需要联网拉取运行资源（约 225MB）。" \
+            "$RUNNER_TEMP/out/Storyloom-Android.apk"
