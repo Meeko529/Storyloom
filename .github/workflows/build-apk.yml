@@ -45,18 +45,17 @@ jobs:
           node -v
           java -version
           echo "ANDROID_HOME=${ANDROID_HOME:-<未设置>}"
-          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-<未设置>}"
 
       - name: 安装依赖
         run: npm ci
 
-      # 缓存 Gradle 依赖：首次会下载一大堆，缓存后每次构建快很多
-      - uses: actions/cache@v4
+      - name: 缓存 Gradle 依赖
+        uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('mobile-rn/android/**/*.gradle*', 'mobile-rn/android/gradle/wrapper/gradle-wrapper.properties') }}
+          key: "gradle-${{ runner.os }}-${{ hashFiles('mobile-rn/android/**/*.gradle*') }}"
           restore-keys: |
             gradle-${{ runner.os }}-
 
@@ -73,29 +72,33 @@ jobs:
         if: always()
         run: find android/app/build/outputs -name "*.apk" -printf "%s %p\n" || true
 
-      # 备份通道：Actions 产物（桌面网页可下，但要解压）
-      - uses: actions/upload-artifact@v4
+      - name: 上传 Actions 产物
+        uses: actions/upload-artifact@v4
         with:
           name: Storyloom-apk
           if-no-files-found: error
           retention-days: 30
           path: mobile-rn/android/app/build/outputs/apk/standalone/*.apk
 
-      # 主通道：发布成 Release。手机上点一下就是 .apk，不用解压。
       - name: 发布到 Release
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
-          mkdir -p "$RUNNER_TEMP/out"
-          cp android/app/build/outputs/apk/standalone/*.apk "$RUNNER_TEMP/out/Storyloom-Android.apk"
-          ls -lh "$RUNNER_TEMP/out/Storyloom-Android.apk"
-          gh release create "v0.1.${GITHUB_RUN_NUMBER}" \
-            --title "Storyloom v0.1.${GITHUB_RUN_NUMBER}" \
-            --notes "自动构建产物，代码提交 ${GITHUB_SHA:0:7}。
-
-**手机安装**：直接点下面的 Storyloom-Android.apk 下载即可，不需要解压。
-
-包名 com.meeko529.storyloom，可与官方版共存。首次启动需要联网拉取运行资源（约 225MB）。" \
-            "$RUNNER_TEMP/out/Storyloom-Android.apk"
+          TAG="v0.1.${GITHUB_RUN_NUMBER}"
+          OUT="$RUNNER_TEMP/out"
+          mkdir -p "$OUT"
+          cp android/app/build/outputs/apk/standalone/*.apk "$OUT/Storyloom-Android.apk"
+          ls -lh "$OUT/Storyloom-Android.apk"
+          {
+            echo "自动构建产物，代码提交 ${GITHUB_SHA}。"
+            echo
+            echo "手机安装：直接点下面的 Storyloom-Android.apk 下载即可，不需要解压。"
+            echo
+            echo "包名 com.meeko529.storyloom，可与官方版共存。首次启动需要联网拉取运行资源（约 225MB）。"
+          } > "$OUT/notes.md"
+          gh release create "$TAG" \
+            --title "Storyloom $TAG" \
+            --notes-file "$OUT/notes.md" \
+            "$OUT/Storyloom-Android.apk"
