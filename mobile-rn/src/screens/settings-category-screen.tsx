@@ -340,10 +340,10 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
     try {
       const summary = await exportContentPack("storyloom-content-pack");
       if (summary.count === 0) {
-        Alert.alert("没有可导出的内容", "内容包只导出你自己创建的规则、技能与智能体；内置的不能导出。");
+        Alert.alert("没有可导出的内容", "内容包仅导出用户自行创建的规则、技能与智能体，内置内容不参与导出。");
         return;
       }
-      Alert.alert("导出完成", `共 ${summary.count} 项，已调出系统分享，请选择保存位置。`);
+      Alert.alert("导出完成", `共 ${summary.count} 项，请在分享面板中选择保存位置。`);
     } catch (error) {
       Alert.alert("导出失败", error instanceof Error ? error.message : String(error));
     } finally {
@@ -370,7 +370,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
     }
     const total = preview.pack.rules.length + preview.pack.skills.length + preview.pack.agents.length;
     if (total === 0) {
-      Alert.alert("内容包为空", "这个文件里没有可导入的条目。");
+      Alert.alert("内容包为空", "该文件不含可导入的条目。");
       return;
     }
     Alert.alert(
@@ -1193,7 +1193,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
           ))}
           <Text style={styles.subsectionTitle}>{editingAgentId ? "编辑智能体" : "添加智能体"}</Text>
           <Text style={styles.sectionHint}>
-            名称用于区分用途；系统提示词写明它的分工、执行步骤与输出要求。若暂无头绪，可先载入示例再按需要修改。
+            名称用于区分用途；系统提示词写明该智能体的分工、执行步骤与输出要求。可先载入示例，再按需要修改。
           </Text>
           {!editingAgentId ? (
             <Button label="载入示例" variant="secondary" onPress={fillAgentExample} />
@@ -1223,7 +1223,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
           <View style={styles.subsectionDivider} />
           <Text style={styles.subsectionTitle}>内容包</Text>
           <Text style={styles.sectionHint}>
-            把你自己创建的规则、技能与智能体打包成一个 JSON，分享给别的设备或别人；也可以导入他人分享的内容包。内置与远程内容不参与导出。
+            将自建的规则、技能与智能体打包为一个 JSON 文件，可导入到其他设备，也可导入他人分享的内容包。内置与远程内容不参与导出。
           </Text>
           <Button
             label={contentPackBusy ? "处理中" : "导出内容包"}
