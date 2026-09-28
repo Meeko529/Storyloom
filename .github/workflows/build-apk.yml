@@ -28,6 +28,10 @@ jobs:
         working-directory: mobile-rn
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 需要完整历史与标签，才能在 Release 说明里生成「本次变更」列表
+          fetch-depth: 0
+          fetch-tags: true
 
       - uses: actions/setup-node@v4
         with:
@@ -110,20 +114,40 @@ jobs:
           mkdir -p "$OUT"
           cp android/app/build/outputs/apk/standalone/*.apk "$OUT/Storyloom-Android.apk"
           ls -lh "$OUT/Storyloom-Android.apk"
+          PREV_TAG=$(git describe --tags --abbrev=0 --match 'v0.1.*' HEAD^ 2>/dev/null || echo "")
           {
-            echo "自动构建产物，代码提交 ${GITHUB_SHA}。"
+            echo "## 安装"
             echo
-            echo "安装：点下面的 Storyloom-Android.apk 下载后直接安装，无需解压。"
+            echo "下载下方的 **Storyloom-Android.apk** 直接安装，无需解压。"
             echo
-            echo "- 包名：com.meeko529.storyloom（可与官方 OpenFicM 共存）"
-            echo "- 首次启动：零下载，直接进入应用（基础 Agent/Skill 已内置）"
-            echo "- 配置模型：设置 → 模型与供应商 → 选常用服务商 → 粘贴自己的 API Key"
-            echo "- 升级说明：自本版本起使用固定签名证书，此后新版本可直接覆盖安装；若手机上装的是更早的调试签名版本，需先卸载一次"
+            echo "| 项目 | 说明 |"
+            echo "| --- | --- |"
+            echo "| 包名 | \`com.meeko529.storyloom\`，可与官方 OpenFicM 共存 |"
+            echo "| 首次启动 | 零下载，直接进入应用 |"
+            echo "| 升级 | 签名已固定，可直接覆盖安装 |"
             echo
-            echo "签名证书 SHA-256 指纹："
-            echo "\`EA:B4:3A:19:25:D9:B3:6D:6D:FB:2D:59:BD:40:A9:7C:24:FF:AB:D2:C6:07:12:00:50:62:68:56:73:07:68:E7\`"
+            echo "## 首次使用"
+            echo
+            echo "应用不内置模型。打开后进入 **设置 → 模型与供应商**，选择一个服务商（如智谱）并填入自己的 API Key，再添加一个模型即可开始写作。"
+            echo
+            echo "安装被手机安全机制拦下、或模型配置遇到问题，见 [安装与常见问题](https://github.com/Meeko529/Storyloom/blob/main/docs/安装与常见问题.md)。"
+            echo
+            echo "## 本次变更"
+            echo
+            if [ -n "$PREV_TAG" ]; then
+              git log --no-merges --pretty="- %s" "$PREV_TAG"..HEAD | head -40
+            else
+              echo "- 首次构建"
+            fi
+            echo
+            echo "> 完整变更历史见 [CHANGELOG](https://github.com/Meeko529/Storyloom/blob/main/CHANGELOG.md)。"
+            echo
+            echo "---"
+            echo
+            echo "签名证书 SHA-256：\`EA:B4:3A:19:25:D9:B3:6D:6D:FB:2D:59:BD:40:A9:7C:24:FF:AB:D2:C6:07:12:00:50:62:68:56:73:07:68:E7\`"
           } > "$OUT/notes.md"
           gh release create "$TAG" \
             --title "Storyloom $TAG" \
+            --target "$GITHUB_SHA" \
             --notes-file "$OUT/notes.md" \
             "$OUT/Storyloom-Android.apk"
