@@ -129,33 +129,42 @@ jobs:
           {
             echo "## 安装"
             echo
-            echo "下载下方的 **Storyloom-Android.apk** 直接安装，无需解压。"
-            echo
-            echo "| 项目 | 说明 |"
+            echo "| | |"
             echo "| --- | --- |"
+            echo "| 支持系统 | Android 9.0 及以上（arm64-v8a） |"
             echo "| 包名 | \`com.meeko529.storyloom\`，可与官方 OpenFicM 共存 |"
-            echo "| 首次启动 | 零下载，直接进入应用 |"
+            echo "| 首次启动 | 无需下载任何资源，直接进入应用 |"
             echo "| 升级 | 签名已固定，可直接覆盖安装 |"
             echo
             echo "## 首次使用"
             echo
-            echo "应用不内置模型。打开后进入 **设置 → 模型与供应商**，选择一个服务商（如智谱）并填入自己的 API Key，再添加一个模型即可开始写作。"
+            echo "应用不内置模型。进入 **设置 → 模型与供应商**，选择一个服务商（如智谱）并填入自己的 API Key，再添加一个模型即可开始写作。"
             echo
             echo "安装被手机安全机制拦下、或模型配置遇到问题，见 [安装与常见问题](https://github.com/Meeko529/Storyloom/blob/main/docs/安装与常见问题.md)。"
             echo
             echo "## 本次变更"
             echo
             if [ -n "$PREV_TAG" ]; then
-              git log --no-merges --pretty="- %s" "$PREV_TAG"..HEAD | head -40
+              # 只保留用户看得懂的改动（新增／修复）：过滤纯文档与构建类提交，并去掉英文前缀
+              CHANGES=$(git log --no-merges --pretty="- %s" "$PREV_TAG"..HEAD \
+                | grep -vE '^- (docs|ci|chore|test|style|refactor)(\(|:)' \
+                | sed -E 's/^- feat(\([^)]*\))?: /- [新增] /; s/^- fix(\([^)]*\))?: /- [修复] /' \
+                | head -40)
+              if [ -n "$CHANGES" ]; then
+                echo "$CHANGES"
+              else
+                echo "- 本版未包含用户可见的功能变化（仅文档与构建调整）"
+              fi
             else
               echo "- 首次构建"
             fi
             echo
-            echo "> 完整变更历史见 [CHANGELOG](https://github.com/Meeko529/Storyloom/blob/main/CHANGELOG.md)。"
+            echo "## 版本信息"
             echo
-            echo "---"
-            echo
-            echo "签名证书 SHA-256：\`EA:B4:3A:19:25:D9:B3:6D:6D:FB:2D:59:BD:40:A9:7C:24:FF:AB:D2:C6:07:12:00:50:62:68:56:73:07:68:E7\`"
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| 版本 | ${TAG} |"
+            echo "| 签名证书 SHA-256 | \`EA:B4:3A:19:25:D9:B3:6D:6D:FB:2D:59:BD:40:A9:7C:24:FF:AB:D2:C6:07:12:00:50:62:68:56:73:07:68:E7\` |"
           } > "$OUT/notes.md"
           gh release create "$TAG" \
             --title "Storyloom $TAG" \
