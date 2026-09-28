@@ -328,3 +328,20 @@ export function getDatabase(): Promise<SQLite.SQLiteDatabase> {
   }
   return databasePromise;
 }
+
+/**
+ * 关闭数据库并重置单例。替换数据库文件（恢复备份）前必须先调用，
+ * 否则残留的连接与 WAL 文件会污染恢复后的数据。
+ */
+export async function closeDatabase(): Promise<void> {
+  if (!databasePromise) return;
+  const pending = databasePromise;
+  databasePromise = null;
+  try {
+    const database = await pending;
+    await database.execAsync("PRAGMA wal_checkpoint(TRUNCATE);");
+    await database.closeAsync();
+  } catch {
+    // 关闭失败不阻塞恢复流程：后续按文件覆盖，重新打开时会再次走迁移。
+  }
+}
