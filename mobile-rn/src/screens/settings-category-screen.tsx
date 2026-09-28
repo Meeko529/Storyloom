@@ -93,6 +93,7 @@ export type SettingsCategory =
   | "editor"
   | "connections"
   | "models"
+  | "free-models"
   | "index"
   | "context"
   | "style"
@@ -106,6 +107,7 @@ const TITLES: Record<Exclude<SettingsCategory, "models">, string> = {
   general: "通用",
   editor: "编辑器",
   connections: "连接",
+  "free-models": "免费模型",
   index: "索引",
   context: "上下文",
   style: "作者文风",
