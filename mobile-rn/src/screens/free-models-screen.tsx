@@ -42,7 +42,7 @@ export function FreeModelsScreen({ onBack }: { onBack: () => void }) {
       await setSetting("activeModelId", model.id);
       setApiKey("");
       setSelectedId("");
-      Alert.alert("已启用", `当前模型已设为 ${item.platform} · ${item.modelLabel}，现在即可开始写作。`);
+      Alert.alert("已启用", `当前模型：${item.platform} · ${item.modelLabel}`);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : String(saveError));
     } finally {
@@ -54,10 +54,6 @@ export function FreeModelsScreen({ onBack }: { onBack: () => void }) {
     <Screen scroll>
       <Header title="免费模型" onBack={onBack} />
       <View style={styles.section}>
-        <Text style={styles.pageHint}>
-          每张卡片对应一个当前可免费使用的模型，接口地址与模型 ID 均已配置完成。选中卡片，到对应平台领取 API
-          Key 并粘贴保存，即可开始写作。
-        </Text>
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
         {FREE_MODELS.map((item) => {
           const expanded = selectedId === item.id;
@@ -91,7 +87,7 @@ export function FreeModelsScreen({ onBack }: { onBack: () => void }) {
                     disabled={!apiKey.trim()}
                     loading={saving}
                   />
-                  <Text style={styles.cardHint}>保存后自动设为当前模型；后续可在「模型与供应商」中更换。</Text>
+                  <Text style={styles.cardHint}>保存后自动设为当前模型。</Text>
                 </View>
               ) : null}
             </View>
@@ -104,7 +100,6 @@ export function FreeModelsScreen({ onBack }: { onBack: () => void }) {
 
 const styles = StyleSheet.create({
   section: { padding: spacing.lg, gap: spacing.md },
-  pageHint: { color: colors.textMuted, fontSize: 12, lineHeight: 18 },
   errorText: { color: colors.danger ?? "#A32D2D", fontSize: 12 },
   card: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, overflow: "hidden" },
   cardExpanded: { borderColor: colors.primary },
