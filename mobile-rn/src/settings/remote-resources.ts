@@ -1,3 +1,5 @@
+// 本文件基于 OpenFicM（Apache-2.0）修改
+// 改动说明见仓库根目录 docs/上游来源与改动清单.md
 import * as Crypto from "expo-crypto";
 import { Directory, File, Paths } from "expo-file-system";
 import { z } from "zod";
@@ -11,6 +13,7 @@ import {
   getInstalledOhStoryPackage,
   installOhStoryRelease,
 } from "@/settings/oh-story-updater";
+import { STORYLOOM_AGENTS, STORYLOOM_SKILLS } from "@/settings/storyloom-presets";
 
 const OPENFICM_CATALOG_KEY = "content.openficm.catalog.v1";
 const LORN_PACKAGE_KEY = "content.lornStyle.package.v1";
@@ -325,7 +328,19 @@ export async function getLornDistillationInstructions(): Promise<string> {
  */
 function readBuiltinCatalog(): OpenFicMCatalog | null {
   try {
-    return catalogSchema.parse(builtinAgentCatalogJson) as OpenFicMCatalog;
+    const catalog = catalogSchema.parse(builtinAgentCatalogJson) as OpenFicMCatalog;
+    // 合并 Storyloom 扩展预设（按创作类型分的智能体 + 去 AI 味技能）。
+    // 之所以在这里合并而不是直接改内置 JSON：内置包与上游固定提交的 SHA-256 对齐，
+    // 改动它会破坏内容来源校验。按 id 去重，避免与上游同名项冲突。
+    const mergedSkills = [
+      ...catalog.skills,
+      ...STORYLOOM_SKILLS.filter((extra) => !catalog.skills.some((item) => item.id === extra.id)),
+    ];
+    const mergedAgents = [
+      ...catalog.agents,
+      ...STORYLOOM_AGENTS.filter((extra) => !catalog.agents.some((item) => item.id === extra.id)),
+    ];
+    return { ...catalog, skills: mergedSkills, agents: mergedAgents };
   } catch {
     return null;
   }
