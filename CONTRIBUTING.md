@@ -93,6 +93,7 @@ cd mobile-rn/android
 | JSX 片段 `<>...</>` 成对闭合 | 避免构建中断 |
 | 样式引用（`styles.xxx`）均有定义 | 避免运行时样式缺失 |
 | 修改原生资源时同步更新 `android/app/src/main/res/` | 流水线不执行 `expo prebuild`，仅改 `assets/` 不会生效 |
+| 改动 `package.json` 依赖时同提交 `package-lock.json` | 流水线用 `npm ci`，锁文件不同步会直接构建失败 |
 
 ---
 
