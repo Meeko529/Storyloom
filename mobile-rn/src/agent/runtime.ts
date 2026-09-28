@@ -1,3 +1,5 @@
+// 本文件基于 OpenFicM（Apache-2.0）修改
+// 改动说明见仓库根目录 docs/上游来源与改动清单.md
 import { callModel } from "@/llm/client";
 import type { AgentMessage, AgentToolCall, AgentToolDefinition } from "@/llm/types";
 import { createId } from "@/lib/id";
