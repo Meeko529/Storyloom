@@ -3,19 +3,19 @@ apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
-def releaseStoreFile = System.getenv("OPENFICM_RELEASE_STORE_FILE")
-def releaseStorePassword = System.getenv("OPENFICM_RELEASE_STORE_PASSWORD")
-def releaseKeyAlias = System.getenv("OPENFICM_RELEASE_KEY_ALIAS")
-def releaseKeyPassword = System.getenv("OPENFICM_RELEASE_KEY_PASSWORD")
+def releaseStoreFile = System.getenv("STORYLOOM_RELEASE_STORE_FILE")
+def releaseStorePassword = System.getenv("STORYLOOM_RELEASE_STORE_PASSWORD")
+def releaseKeyAlias = System.getenv("STORYLOOM_RELEASE_KEY_ALIAS")
+def releaseKeyPassword = System.getenv("STORYLOOM_RELEASE_KEY_PASSWORD")
 def releaseSigningValues = [releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword]
 def hasReleaseSigning = releaseSigningValues.every { it }
 def requestedReleaseBuild = gradle.startParameter.taskNames.any { it.toLowerCase().contains("release") }
 
 if (releaseSigningValues.any { it } && !hasReleaseSigning) {
-    throw new GradleException("OpenFicM release signing requires all OPENFICM_RELEASE_* environment variables")
+    throw new GradleException("Storyloom release signing requires all STORYLOOM_RELEASE_* environment variables")
 }
 if (requestedReleaseBuild && !hasReleaseSigning) {
-    throw new GradleException("OpenFicM release builds require a private signing key; use assembleDebug for local testing")
+    throw new GradleException("Storyloom release builds require a private signing key; use assembleDebug for local testing")
 }
 
 /**
@@ -118,6 +118,7 @@ android {
                 storePassword releaseStorePassword
                 keyAlias releaseKeyAlias
                 keyPassword releaseKeyPassword
+                storeType "PKCS12"
             }
         }
     }
@@ -133,7 +134,10 @@ android {
         }
         standalone {
             initWith release
-            signingConfig signingConfigs.debug
+            // 有正式签名就用正式签名（CI 走这条路径）；没有则退回 debug 签名，仅供本地临时测试。
+            // 说明：此前这里写死 signingConfigs.debug，导致云端每次构建都临时生成一个全新的调试证书，
+            // 各版本签名互不相同（无法覆盖安装），且调试证书会被部分手机的安全检测拦截。
+            signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
             debuggable false
             minifyEnabled false
             shrinkResources false

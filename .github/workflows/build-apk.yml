@@ -65,7 +65,23 @@ jobs:
       - name: 类型体检
         run: npm run type-check
 
+      - name: 解码签名密钥
+        env:
+          KEYSTORE_BASE64: ${{ secrets.STORYLOOM_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::未配置 STORYLOOM_KEYSTORE_BASE64，本次使用调试签名（仅适合临时测试：无法覆盖安装，且部分手机的安全检测会拦截）"
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/storyloom.keystore"
+          echo "签名密钥已就绪，$(( $(stat -c%s "$RUNNER_TEMP/storyloom.keystore") )) 字节"
+
       - name: 构建可安装 APK
+        env:
+          STORYLOOM_RELEASE_STORE_FILE: ${{ runner.temp }}/storyloom.keystore
+          STORYLOOM_RELEASE_STORE_PASSWORD: ${{ secrets.STORYLOOM_STORE_PASSWORD }}
+          STORYLOOM_RELEASE_KEY_ALIAS: ${{ secrets.STORYLOOM_KEY_ALIAS }}
+          STORYLOOM_RELEASE_KEY_PASSWORD: ${{ secrets.STORYLOOM_KEY_PASSWORD }}
         run: |
           cd android
           chmod +x gradlew
@@ -97,9 +113,15 @@ jobs:
           {
             echo "自动构建产物，代码提交 ${GITHUB_SHA}。"
             echo
-            echo "手机安装：直接点下面的 Storyloom-Android.apk 下载即可，不需要解压。"
+            echo "安装：点下面的 Storyloom-Android.apk 下载后直接安装，无需解压。"
             echo
-            echo "包名 com.meeko529.storyloom，可与官方版共存。首次启动需要联网拉取运行资源（约 225MB）。"
+            echo "- 包名：com.meeko529.storyloom（可与官方 OpenFicM 共存）"
+            echo "- 首次启动：零下载，直接进入应用（基础 Agent/Skill 已内置）"
+            echo "- 配置模型：设置 → 模型与供应商 → 选常用服务商 → 粘贴自己的 API Key"
+            echo "- 升级说明：自本版本起使用固定签名证书，此后新版本可直接覆盖安装；若手机上装的是更早的调试签名版本，需先卸载一次"
+            echo
+            echo "签名证书 SHA-256 指纹："
+            echo "\`EA:B4:3A:19:25:D9:B3:6D:6D:FB:2D:59:BD:40:A9:7C:24:FF:AB:D2:C6:07:12:00:50:62:68:56:73:07:68:E7\`"
           } > "$OUT/notes.md"
           gh release create "$TAG" \
             --title "Storyloom $TAG" \
