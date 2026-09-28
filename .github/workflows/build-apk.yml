@@ -71,9 +71,10 @@ jobs:
 
       - name: 注入版本号
         run: |
-          # 让应用内显示的版本号与 Release 标签（v0.1.<run>）保持一致。
-          # 原 build.gradle 里 versionName 是写死的 0.1.0，与发布版本脱节。
-          VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))
+          # versionName 面向用户（与 Release 标签一致）；
+          # versionCode 暂固定为 1 —— 与 v0.1.7（可正常安装的版本）完全一致，
+          # 用于验证「versionCode 由 1 变为 1013」是否就是安装被拦的原因。
+          VERSION_CODE=1
           VERSION_NAME="0.1.${GITHUB_RUN_NUMBER}"
           # 注意：本 job 的默认工作目录已是 mobile-rn（见 defaults.run.working-directory），
           # 因此这里用相对 mobile-rn 的路径，不能写成 mobile-rn/android/...
