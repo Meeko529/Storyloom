@@ -69,6 +69,17 @@ jobs:
       - name: 类型体检
         run: npm run type-check
 
+      - name: 注入版本号
+        run: |
+          # 让应用内显示的版本号与 Release 标签（v0.1.<run>）保持一致。
+          # 原 build.gradle 里 versionName 是写死的 0.1.0，与发布版本脱节。
+          VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))
+          VERSION_NAME="0.1.${GITHUB_RUN_NUMBER}"
+          sed -i "s/^\( *\)versionCode [0-9]*/\1versionCode ${VERSION_CODE}/" mobile-rn/android/app/build.gradle
+          sed -i "s/^\( *\)versionName \".*\"/\1versionName \"${VERSION_NAME}\"/" mobile-rn/android/app/build.gradle
+          echo "版本号 → ${VERSION_NAME} (versionCode ${VERSION_CODE})"
+          grep -n "versionCode\|versionName" mobile-rn/android/app/build.gradle
+
       - name: 解码签名密钥
         env:
           KEYSTORE_BASE64: ${{ secrets.STORYLOOM_KEYSTORE_BASE64 }}

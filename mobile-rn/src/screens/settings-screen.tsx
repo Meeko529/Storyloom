@@ -3,7 +3,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, BackHandler, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { Button, ErrorNotice, Field, Header, Screen, SheetBackdrop } from "@/components/ui";
 import {
@@ -343,6 +343,19 @@ export function SettingsScreen() {
     setActiveCategory(null);
     rootNavigation.navigate("StyleLibrary");
   }, [activeCategory, rootNavigation]);
+
+  // 离开设置页时收起分类：这样从其它标签页切回设置，看到的是总面板，而不是上次停留的子页。
+  useFocusEffect(useCallback(() => () => setActiveCategory(null), []));
+
+  // Android 返回键：在子页时先回到总面板，而不是直接退出应用或跳到别处。
+  useEffect(() => {
+    if (!activeCategory) return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      setActiveCategory(null);
+      return true; // 已处理，阻止默认行为
+    });
+    return () => subscription.remove();
+  }, [activeCategory]);
 
   if (activeCategory && activeCategory !== "models") {
     return <SettingsCategoryScreen category={activeCategory} onBack={() => setActiveCategory(null)} />;

@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -104,7 +105,9 @@ export function WritingScreen() {
   const savingRef = useRef(false);
   const persistDraftRef = useRef<(force: boolean) => Promise<boolean>>(async () => true);
 
-  useEffect(() => {
+  // 每次回到写作页都重读一次编辑器设置：
+  // 原先只在挂载时读（useEffect + 空依赖），导致在设置里改了字号／字体后切回来不生效。
+  useFocusEffect(useCallback(() => {
     void Promise.all([
       getSetting("general.autoSaveDelay"),
       readEditorPrefs(),
@@ -116,7 +119,7 @@ export function WritingScreen() {
     }).catch((settingsError) => {
       setError(settingsError instanceof Error ? settingsError.message : String(settingsError));
     });
-  }, []);
+  }, []));
 
   const activeChapter = useMemo(
     () => chapters.find((chapter) => chapter.id === currentChapterId) ?? chapters[0] ?? null,
