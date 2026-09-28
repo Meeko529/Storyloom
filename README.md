@@ -1,69 +1,185 @@
 # Storyloom
 
-> 装在手机里的小说创作 Agent。不用电脑、作品只在你手机上，**官方厂商和各类中转站都能接**。
+装在手机里的小说创作 Agent：**不用电脑**、作品只保存在本机、**官方厂商与各类中转站都能接**。
+
+---
 
 ## 这是什么
 
-Storyloom 是基于开源项目二次开发的 Android 应用：
+Storyloom 是基于 [**OpenFicM**](https://github.com/tioners/OpenFicM)（作者 tioners，Apache-2.0）二次开发的 Android 应用。OpenFicM 把 [OpenFic](https://github.com/syrizelink/OpenFic) 的桌面创作工具用 React Native 重写进了手机——**Agent 运行时跑在手机里，作品数据全部保存在本机**。
 
-- 上游母体：[**OpenFic**](https://github.com/syrizelink/OpenFic)（作者 syrizelink，Apache-2.0）——桌面端 + 自托管的小说创作工具，整套 Agent 体系由它定义；
-- 直接来源：[**OpenFicM**](https://github.com/tioners/OpenFicM)（作者 tioners，Apache-2.0）——OpenFic 的 Android 重构版（React Native + Expo），把 Agent 运行时搬进了手机。
+Storyloom **站在 OpenFicM 的肩膀上，不是从零重写**：界面、本地数据库、手机端 Agent 运行时、本地语义检索都沿用上游；我们在**模型接入、首次启动体验、编辑器与设置、构建与发布**几层做了改造，并在持续维护。
 
-**Storyloom 站在 OpenFicM 的肩膀上**，不是从零重写。上游的界面、本地数据库、手机端 Agent 运行时与本地检索都保留，我们在"模型接入"和"品牌"两层做了改造。
+> 本项目与上游项目无隶属关系，亦不代表其官方立场。改动清单见 [docs/上游来源与改动清单.md](docs/上游来源与改动清单.md)。
+
+---
+
+## 功能
+
+**写作**
+- 本机书架与作品管理，卷 / 章结构，预览优先编辑（防误触）
+- 自动保存与后台保存，输入法避让
+- 章节 / 卷 / 整本导出为 Markdown（走系统分享，不申请存储权限）
+
+**助手与 Agent**
+- 会话按作品隔离；可编辑历史发言并重跑
+- 工具权限三档（允许 / 每次询问 / 禁止），支持逐项设定与批量设定
+- 实时执行过程可见，支持子智能体委派
+- 单次对话共享 24 次模型请求预算（防打满中转站限流）
+
+**模型接入**（本项目的重点）
+- 三种接口协议：OpenAI 兼容 / Google Gemini / Anthropic
+- **常用服务商一键填充**：智谱、DeepSeek、通义千问、硅基流动、Kimi，点一下自动填好地址
+- **供应商高级设置**：自定义请求头、自定义鉴权头名与前缀、关闭 tools、替换 `max_tokens` 参数——用于接通各类中转站与自建网关
+- 三种正文字体（黑体 / 宋体 / 楷体），字号 11 ~ 28 可调
+
+**资料与检索**
+- 角色库、世界书、三级笔记（整书 / 卷 / 章）
+- 全文搜索 + 本地语义检索（中文嵌入 + 重排，跑在手机 CPU，不联网）
+- 双文风系统：参考文风（从导入文本蒸馏，可跨作品）+ 作者文风（从改稿差异学习）
+
+**设置**
+- 11 个设置分类：通用 / 编辑器 / 连接 / 模型与供应商 / 索引 / 上下文 / 作者文风 / 工具权限 / 规则 / 技能 / 智能体 / 高级
+- 规则、技能、智能体均可增删改；索引参数支持恢复默认
+- 可选内容按需下载（进阶内容包、本地检索模型），**不装也能正常写作**
+
+---
 
 ## 与上游 OpenFicM 的差异
 
-### 1. 供应商高级设置（主要改动）
+### 1. 首次启动：从「必须下载 235 MB」改为「零下载」
 
-OpenFicM 只支持三种接口风格（`openai-compatible` / `google-genai` / `anthropic`），且请求头与鉴权方式写死。国内的中转站、自建网关（One-API / New-API / 各类反代）经常因为这些细节接不上。
+上游要求 5 项运行资源全部就绪才允许进入应用，其中包含 **219 MB 的重排模型**（占总量 93%），而这些文件托管在国内不易访问的地址上——**下载失败时页面没有出口，用户会被永久挡在启动页**。
 
-改动内容：在「设置 → 模型与供应商」下新增**高级设置**，共五个开关：
+改动：
+
+- 基础 Agent / Skill 内容包（478 KB，16 个技能 + 8 个智能体）**内置进安装包**，SHA-256 与上游固定提交一致
+- 资源拆分为**必需 / 可选**：仅内置内容包为必需；Lorn 文风、oh-story 内容包、嵌入模型、重排模型全部改为可选
+- 启动页增加「跳过并进入应用」，任何情况下都不会锁死
+- 本地模型改为**后台静默预热**，预热失败不阻塞进入
+- 模型下载增加国内镜像（hf-mirror）备用源，主源失败自动切换
+
+### 2. 供应商高级设置
+
+上游三种协议可用，但请求头与鉴权方式写死，国内中转站、自建网关（One-API / New-API / 各类反代）常因此接不上。新增五个开关：
 
 | 开关 | 用途 |
 | --- | --- |
-| 额外请求头 | 每行一条 `名字: 值`，应付 OpenRouter 的 `HTTP-Referer`、`X-Title` 之类要求 |
-| 鉴权请求头名字 | 默认 `Authorization`，有些服务用 `api-key` |
+| 额外请求头 | 每行一条 `名字: 值`，应对 `HTTP-Referer`、`X-Title` 之类要求 |
+| 鉴权请求头名字 | 默认 `Authorization`，部分服务用 `api-key` |
 | 鉴权前缀 | 默认 `Bearer `，留空即发送原始 Key |
 | 不发送 tools | 极少数中转站不支持 function calling |
 | 用 `max_completion_tokens` 代替 `max_tokens` | 个别供应商只认前者 |
 
-实现要点：配置**没有写进 `provider` 表**（那需要数据库迁移），而是存放在现成的键值设置表 `provider.advanced.<providerId>` 下，**零迁移风险**。解析器对坏数据一律回落到默认值，解析失败不会让整个请求挂掉。
+实现要点：配置**未写入 `provider` 表**（那需要数据库迁移），而是存放在现成的键值设置表 `provider.advanced.<providerId>` 下，**零迁移风险**；解析器对异常数据一律回落默认值，不会导致请求失败。
 
-涉及文件：
+### 3. 常用服务商一键填充
 
-- `mobile-rn/src/llm/provider-advanced.ts`（新增）
-- `mobile-rn/src/llm/client.ts`
-- `mobile-rn/src/llm/model-catalog.ts`
-- `mobile-rn/src/screens/settings-screen.tsx`
+供应商表单顶部新增预设按钮（智谱 / DeepSeek / 通义千问 / 硅基流动 / Kimi / 中转站·自定义），点击即自动填入类型、显示名称与接口地址，用户只需粘贴自己的 API Key；各输入框补充了说明文字与可填范围。
 
-### 2. 品牌与包名
+### 4. 编辑器设置独立成页
 
-- 应用显示名：`OpenFicM` → `Storyloom`
-- applicationId / namespace：`com.openfic.mobile` → `com.meeko529.storyloom`
-  - **与官方版可以共存**，升级时不需要卸载官方应用，本机作品不会丢
-- 应用内更新检查的目标仓库：`tioners/OpenFicM` → `Meeko529/storyloom`
-  - 否则应用会去查上游 Release，把用户引导回官方版本
+上游把编辑器相关设置挤在「通用」里。现在独立为「编辑器」分类：字号（11 ~ 28，本次放宽下限）、正文字体三选一（黑体 / 宋体 / 楷体）、带实时预览。
+
+### 5. 设置页缺陷修复
+
+| 修复项 | 说明 |
+| --- | --- |
+| 「作者文风」入口 | 原为无效空壳页，改为直接打开文风书库 |
+| 删除确认 | 规则 / 技能 / 智能体删除增加二次确认（原先点一下即删，无法恢复） |
+| 索引数字框 | 修复「清空后立刻被默认值覆盖、无法重新输入」的问题 |
+| 重建索引按钮 | 修复状态串台（保存设置时该按钮会误显示为「索引中」并禁用） |
+| 保存失败回滚 | 保存失败时输入框回退为数据库中的真实值 |
+| 工具权限 | 由「点击循环切换」改为三按钮直选 + 批量设定 |
+| 编辑能力 | 规则 / 技能 / 智能体支持编辑（原先只能删除后重新录入） |
+| 恢复默认 | 通用 / 连接 / 上下文 / 索引四类支持一键恢复默认值 |
+| 保存反馈 | 成功提示与参数变更提示（如改索引参数后提示需重建） |
+
+### 6. 图标与品牌
+
+- 应用图标重绘为**羽毛笔**（墨绿底 + 米白图形），含自适应前景/背景/单色与启动画面，共 30 个资源文件
+- 显示名：`OpenFicM` → `Storyloom`
+- 包名：`com.openfic.mobile` → `com.meeko529.storyloom`（**可与官方版共存**，升级不需要卸载官方应用）
+- 应用内更新检查指向本仓库（原先指向上游，会把用户引导回官方版）
+
+### 7. 固定签名与自动发布
+
+上游的 `standalone` 构建变体写死使用调试证书，而云端构建机上没有签名文件、Gradle 每次都会临时生成一个**全新的调试证书**——结果是每个版本签名都不同（**无法覆盖安装**），且调试证书会被部分手机的安全检测拦截。
+
+改动：改为使用**固定签名证书**（配置在仓库 Secrets 中），此后各版本签名一致，可以直接覆盖安装。构建产出的 APK 会自动发布到本仓库的 Releases。
+
+---
+
+## 安装
+
+> 逐步说明、各厂商拦截的详细处理方法、故障排查顺序，见 **[docs/安装与常见问题.md](docs/安装与常见问题.md)**。
+
+### 1. 下载
+
+前往 **[Releases](../../releases/latest)** 页面，下载 `Storyloom-Android.apk` 直接安装（**无需解压**）。
+
+- 要求：Android 9.0 及以上，arm64-v8a
+- 签名证书 SHA-256 指纹见 Release 说明，可自行核对
+
+### 2. 如果被手机拦下
+
+国产 ROM 对非应用商店来源的安装包普遍有安全提示，**这是系统行为，不是应用本身的问题**。常见情况：
+
+| 提示 | 处理方式 |
+| --- | --- |
+| 「未知来源应用」/「安全风险」 | 点**继续安装**（部分机型需先点「更多」或等待倒计时结束） |
+| 「应用未备案」一类的提示 | 属于备案要求，个人项目无法消除；点继续安装即可 |
+| 「纯净模式」拦截 | 设置 → 安全 → 关闭纯净模式后重试 |
+| 安装按钮灰色 / 无响应 | 检查是否开启了「安装陌生应用」相关开关；或换用系统自带的文件管理器打开 APK |
+| 提示「签名不一致」 | 手机上装有更早的调试签名版本，**需先卸载一次**（自固定签名版本起不再出现） |
+
+### 3. 首次配置模型
+
+应用**不内置任何模型**，需要自备 API Key（多数厂商有免费额度）：
+
+```
+设置 → 模型与供应商
+  ├─ 选择常用服务商（如「智谱」）→ 自动填入地址
+  ├─ 粘贴你自己的 API Key → 保存供应商
+  └─ 添加模型：模型名称随意，模型 ID 填服务商文档中的标识（如 glm-4.7-flash）
+```
+
+> **提示**：助手的读写能力依赖模型的 **function calling** 支持。部分免费小模型不支持工具调用，此时助手只能对话、无法读写章节。
+
+**首次启动不需要下载任何资源**，装上即可使用；语义检索、文风蒸馏等功能所需的本地模型可在「设置 → 高级 → 可选内容」中按需下载。
+
+---
 
 ## 目录结构
 
 ```
 .
-├── .github/workflows/build-apk.yml   # 云端构建，产出可安装的 APK
-├── LICENSE                           # Apache-2.0（继承自上游）
-├── NOTICE                            # 上游归属声明
-└── mobile-rn/                        # Android 应用本体
-    ├── android/                      # 原生工程（含签名与构建配置）
-    ├── assets/                       # 图标、启动图、模型许可证说明
-    └── src/                          # 应用源码
+├── .github/
+│   ├── ISSUE_TEMPLATE/               # 问题与建议模板
+│   └── workflows/build-apk.yml       # 云端构建：产出并发布 APK
+├── docs/
+│   ├── 安装与常见问题.md              # 安装步骤、各厂商拦截处理、故障排查
+│   ├── 上游来源与改动清单.md          # 来源声明与逐项改动
+│   └── screenshots/                  # 界面截图
+├── mobile-rn/                        # Android 应用本体
+│   ├── android/                      # 原生工程（含签名与构建配置）
+│   ├── assets/                       # 图标、启动图、内置内容包
+│   └── src/                          # 应用源码（TypeScript）
+├── CHANGELOG.md                      # 版本变更记录
+├── CONTRIBUTING.md                   # 贡献指南
+├── LICENSE                           # Apache-2.0
+└── NOTICE                            # 上游归属声明
 ```
+
+上游仓库中的 `backend` / `frontend` / `desktop` 三个目录为**桌面端源码，移动端运行不需要它们**，因此本仓库未包含。
+
+---
 
 ## 构建
 
-### 云端构建（推荐，本机不需要装 Android SDK）
+### 云端构建（推荐，本机无需 Android SDK）
 
-推送代码后，在 GitHub 仓库的 **Actions** 页手动触发 `Build APK`，或在有 `mobile-rn/**` 变更时自动触发。构建完成后在该次运行的 **Artifacts** 里下载 `Storyloom-apk`。
-
-云端跑的是 `assembleStandalone`：产出**可独立安装**的 APK，使用调试证书签名。适合自用与内部测试；**如需对外发布，请自行配置正式签名**（见下）。
+推送代码后自动触发；也可在仓库 **Actions** 页手动触发。构建完成后 APK 会自动发布到 **Releases**，同时保留在当次运行的 Artifacts 中。
 
 ### 本地构建
 
@@ -72,24 +188,49 @@ OpenFicM 只支持三种接口风格（`openai-compatible` / `google-genai` / `a
 ```bash
 cd mobile-rn
 npm ci
-npm run type-check          # 类型体检
+npm run type-check                       # 类型检查
 cd android && ./gradlew assembleStandalone
 ```
 
-### 正式签名
+### 签名
 
-正式签名需要四个环境变量：`OPENFICM_RELEASE_STORE_FILE`、`OPENFICM_RELEASE_STORE_PASSWORD`、`OPENFICM_RELEASE_KEY_ALIAS`、`OPENFICM_RELEASE_KEY_PASSWORD`。缺任一项时 `android/app/build.gradle` 会拒绝 `assembleRelease`——这是防止误用调试证书发布的有意保护（该逻辑继承自上游）。
+签名通过四个环境变量提供：
+
+```
+STORYLOOM_RELEASE_STORE_FILE        # keystore 路径（PKCS12）
+STORYLOOM_RELEASE_STORE_PASSWORD
+STORYLOOM_RELEASE_KEY_ALIAS
+STORYLOOM_RELEASE_KEY_PASSWORD
+```
+
+四项齐全时使用正式签名；缺失时回退为调试签名（仅供本地临时测试）。仓库的构建流水线从 GitHub Secrets 中读取这些值，因此**请妥善保管签名密钥**——丢失后将无法为同一包名发布可覆盖安装的新版本。
+
+---
+
+## 常见问题
+
+**Q：作品数据保存在哪里？会传到云端吗？**
+保存在应用私有目录的本地 SQLite 中；API Key 存放在系统安全存储。**只有调用你配置的模型接口时才会联网**，没有其他网络出口。
+
+**Q：手机里已经没有旧版，安装仍失败？**
+先确认下载是否完整（对比 Release 上的文件大小），再检查上面的「如果被手机拦下」一节。若仍无法安装，请在 Issues 中附上手机型号、系统版本与完整提示文字。
+
+**Q：卸载应用会丢作品吗？**
+会。卸载会清除应用私有目录中的全部数据，请先通过「导出」把作品保存到手机存储或其他设备。
+
+**Q：支持 iOS / iPad 吗？**
+代码基于 React Native，具备跨平台基础，但当前仅构建 Android 版本。
+
+---
 
 ## 许可证与归属
 
-本项目代码按 [Apache License 2.0](LICENSE) 发布，继承自上游。
+本项目代码以 [Apache License 2.0](LICENSE) 发布。
 
-- 来自 **syrizelink/OpenFic** 的产品设计、桌面端 Agent 体系；
-- 来自 **tioners/OpenFicM** 的 Android 实现、界面与文档；
-- 写作 Skill 与子智能体内容改编自 **worldwonderer/oh-story-claudecode**（MIT）；
-- 文风蒸馏方法与资料来源参考 **lornshrimp/Lorn.NovelWriteSkills**（上游仓库根目录未声明许可证，本项目不打包其内容，由用户在应用内按需获取）；
-- 本地检索模型为 **BAAI/bge-small-zh-v1.5** 与 **BAAI/bge-reranker-base** 的 GGUF 量化版，运行时由用户主动下载。
+- 来自 [tioners/OpenFicM](https://github.com/tioners/OpenFicM)（Apache-2.0）的 Android 实现、界面与文档；
+- 产品形态与 Agent 体系设计源自 [syrizelink/OpenFic](https://github.com/syrizelink/OpenFic)（Apache-2.0）；
+- 写作 Skill 与子智能体内容改编自 [worldwonderer/oh-story-claudecode](https://github.com/worldwonderer/oh-story-claudecode)（MIT）；
+- 文风蒸馏方法与资料来源参考 [lornshrimp/Lorn.NovelWriteSkills](https://github.com/lornshrimp/Lorn.NovelWriteSkills)（该仓库根目录未声明许可证，**本项目不打包其内容**，由用户在应用内按需获取）；
+- 本地检索模型为 BAAI 的 `bge-small-zh-v1.5` 与 `bge-reranker-base`（GGUF 量化版），由用户主动下载。
 
-原始归属声明见 [NOTICE](NOTICE) 与上游的 `THIRD_PARTY_NOTICES.md`。
-
-**本项目与上述项目均无隶属关系，亦不代表其官方立场。**
+完整归属声明见 [NOTICE](NOTICE)。
