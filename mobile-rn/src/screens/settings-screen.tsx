@@ -91,7 +91,7 @@ const settingsGroups: Array<{
     title: "连接与模型",
     items: [
       { id: "connections", label: "连接", icon: "link-outline" },
-      { id: "free-models", label: "免费模型", hint: "选一个即可开始写作，无需手动配置", icon: "gift-outline" },
+      { id: "free-models", label: "免费模型", hint: "已内置接口地址与模型 ID，领取 API Key 后即可使用", icon: "gift-outline" },
       { id: "models", label: "模型与供应商", icon: "hardware-chip-outline" },
     ],
   },
