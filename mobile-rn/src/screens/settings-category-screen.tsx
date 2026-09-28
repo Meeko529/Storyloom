@@ -1,3 +1,5 @@
+// 本文件基于 OpenFicM（Apache-2.0）修改
+// 改动说明见仓库根目录 docs/上游来源与改动清单.md
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import { useCallback, useEffect, useState } from "react";
@@ -74,6 +76,9 @@ import {
   CURRENT_APP_VERSION,
   type AppUpdateInfo,
 } from "@/settings/app-update";
+import { downloadUpdateApk, installApkFile } from "@/settings/app-installer";
+import { exportDiagnosticsReport } from "@/settings/diagnostics";
+import { exportBackup, pickBackupFile, restoreBackup } from "@/settings/backup";
 import { colors, radius, spacing } from "@/theme";
 import type { Model } from "@/types";
 
@@ -226,6 +231,13 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
   const [appUpdate, setAppUpdate] = useState<AppUpdateInfo | null>(null);
   const [appUpdateBusy, setAppUpdateBusy] = useState(false);
   const [appUpdateError, setAppUpdateError] = useState<string | null>(null);
+  // 应用内更新：下载进度状态
+  const [apkBusy, setApkBusy] = useState(false);
+  const [apkProgress, setApkProgress] = useState("");
+  // 诊断报告导出状态
+  const [diagnosticsBusy, setDiagnosticsBusy] = useState(false);
+  // 备份 / 恢复状态
+  const [backupBusy, setBackupBusy] = useState(false);
 
   const checkForAppUpdate = async () => {
     setAppUpdateBusy(true);
@@ -237,6 +249,105 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
     } finally {
       setAppUpdateBusy(false);
     }
+  };
+
+  /**
+   * 应用内更新：下载新版本 APK 后调起系统安装器。
+   * 首次会要求授权「安装未知应用」——这是安卓的硬性要求，授权一次即可。
+   */
+  const downloadAndInstallUpdate = async () => {
+    const apkUrl = appUpdate?.apkUrl;
+    if (!apkUrl) {
+      setAppUpdateError("这个版本没有附带安装包，请改用浏览器下载");
+      return;
+    }
+    setApkBusy(true);
+    setApkProgress("准备下载…");
+    setAppUpdateError(null);
+    try {
+      const file = await downloadUpdateApk(apkUrl, ({ bytesWritten, totalBytes, source }) => {
+        const mb = (bytesWritten / 1048576).toFixed(1);
+        setApkProgress(totalBytes > 0
+          ? `${source} · ${Math.round((bytesWritten / totalBytes) * 100)}%（${mb} MB）`
+          : `${source} · 已下载 ${mb} MB`);
+      });
+      setApkProgress("下载完成，正在打开系统安装界面…");
+      await installApkFile(file);
+      setApkProgress("请在系统安装界面完成安装");
+    } catch (installError) {
+      setAppUpdateError(installError instanceof Error ? installError.message : String(installError));
+      setApkProgress("");
+    } finally {
+      setApkBusy(false);
+    }
+  };
+
+  /** 导出诊断报告并发起系统分享，便于反馈问题时附带运行环境信息。 */
+  const exportDiagnostics = async () => {
+    setDiagnosticsBusy(true);
+    setAppUpdateError(null);
+    try {
+      await exportDiagnosticsReport();
+    } catch (diagnosticsError) {
+      setAppUpdateError(diagnosticsError instanceof Error ? diagnosticsError.message : String(diagnosticsError));
+    } finally {
+      setDiagnosticsBusy(false);
+    }
+  };
+
+  /** 打包全部数据并调起系统分享，由用户选择保存位置。 */
+  const runBackup = async () => {
+    setBackupBusy(true);
+    try {
+      const summary = await exportBackup();
+      Alert.alert(
+        "备份完成",
+        `共 ${summary.fileCount} 个文件，已调出系统分享。请选择保存位置（网盘、文件管理器，或发送到电脑）。`,
+      );
+    } catch (backupError) {
+      Alert.alert("备份失败", backupError instanceof Error ? backupError.message : String(backupError));
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  /** 选择备份文件，确认后覆盖本地数据。 */
+  const runRestore = async () => {
+    let pickedFile: Awaited<ReturnType<typeof pickBackupFile>>;
+    try {
+      pickedFile = await pickBackupFile();
+    } catch (pickError) {
+      Alert.alert("选择文件失败", pickError instanceof Error ? pickError.message : String(pickError));
+      return;
+    }
+    if (!pickedFile) return;
+    Alert.alert(
+      "恢复备份",
+      "将用备份覆盖当前的全部作品、章节、笔记、智能体、技能与设置。此操作不可撤销，确定继续吗？",
+      [
+        { text: "取消", style: "cancel" },
+        {
+          text: "恢复",
+          style: "destructive",
+          onPress: () => {
+            void (async () => {
+              setBackupBusy(true);
+              try {
+                const summary = await restoreBackup(pickedFile as NonNullable<typeof pickedFile>);
+                Alert.alert(
+                  "恢复完成",
+                  `已恢复 ${summary.fileCount} 个文件（备份时间 ${new Date(summary.exportedAt).toLocaleString()}）。请完全关闭并重新打开应用后生效。`,
+                );
+              } catch (restoreError) {
+                Alert.alert("恢复失败", restoreError instanceof Error ? restoreError.message : String(restoreError));
+              } finally {
+                setBackupBusy(false);
+              }
+            })();
+          },
+        },
+      ],
+    );
   };
 
   const load = useCallback(async () => {
@@ -1031,11 +1142,47 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
             loading={appUpdateBusy}
           />
           {appUpdate?.hasUpdate ? (
-            <Button
-              label={`前往下载 ${appUpdate.latestVersion}`}
-              onPress={() => void Linking.openURL(appUpdate.releaseUrl)}
-            />
+            <>
+              <Button
+                label={apkBusy ? "下载中…" : `下载并安装 ${appUpdate.latestVersion}`}
+                onPress={() => void downloadAndInstallUpdate()}
+                disabled={apkBusy}
+                loading={apkBusy}
+              />
+              {apkProgress ? <Text style={styles.progressText}>{apkProgress}</Text> : null}
+              <Text style={styles.sectionHint}>下载失败时会自动尝试国内加速镜像；安装时系统会要求授权「安装未知应用」。</Text>
+              <Button
+                label="改用浏览器下载"
+                variant="secondary"
+                onPress={() => void Linking.openURL(appUpdate.releaseUrl)}
+              />
+            </>
           ) : null}
+          <Button
+            label="导出诊断报告"
+            variant="secondary"
+            onPress={() => void exportDiagnostics()}
+            disabled={diagnosticsBusy}
+            loading={diagnosticsBusy}
+          />
+          <Text style={styles.sectionHint}>遇到问题时可导出这份报告发给开发者，其中不含 API Key 与稿件内容。</Text>
+          <View style={styles.subsectionDivider} />
+          <Text style={styles.subsectionTitle}>备份与恢复</Text>
+          <Button
+            label={backupBusy ? "处理中" : "导出备份"}
+            onPress={() => void runBackup()}
+            disabled={backupBusy}
+            loading={backupBusy}
+          />
+          <Button
+            label="从备份恢复"
+            variant="secondary"
+            onPress={() => void runRestore()}
+            disabled={backupBusy}
+          />
+          <Text style={styles.sectionHint}>
+            备份包含全部作品、章节、笔记、智能体、技能与设置；不包含 API Key（恢复后需重新填写）与可重新下载的内容包资源。恢复会覆盖当前数据。
+          </Text>
           {appUpdateError ? <Text style={styles.progressText}>{appUpdateError}</Text> : null}
           {appUpdate?.hasUpdate && appUpdate.notes ? (
             <Text style={styles.updateNotes} numberOfLines={12}>{appUpdate.notes}</Text>
