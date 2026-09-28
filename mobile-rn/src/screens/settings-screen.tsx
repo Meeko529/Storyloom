@@ -1,3 +1,5 @@
+// 本文件基于 OpenFicM（Apache-2.0）修改
+// 改动说明见仓库根目录 docs/上游来源与改动清单.md
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -48,32 +50,73 @@ const PROVIDER_PRESETS: Array<{
   name: string;
   url: string;
   modelHint: string;
+  /** 有值表示该平台提供免费额度，界面据此显示「免费」标记 */
+  freeTier?: string;
 }> = [
-  { id: "zhipu", label: "智谱", name: "智谱 GLM", url: "https://open.bigmodel.cn/api/paas/v4", modelHint: "glm-4.7-flash" },
+  // —— 有免费额度：没有预算时先用这几家 ——
+  { id: "zhipu", label: "智谱", name: "智谱 GLM", url: "https://open.bigmodel.cn/api/paas/v4", modelHint: "glm-4.7-flash", freeTier: "glm-4.7-flash 目前免费" },
+  { id: "siliconflow", label: "硅基流动", name: "硅基流动", url: "https://api.siliconflow.cn/v1", modelHint: "Qwen/Qwen2.5-7B-Instruct", freeTier: "部分小模型免费" },
+  { id: "openrouter", label: "OpenRouter", name: "OpenRouter", url: "https://openrouter.ai/api/v1", modelHint: "deepseek/deepseek-chat-v3.1:free", freeTier: "带 :free 后缀的模型免费" },
+  { id: "dashscope", label: "通义千问", name: "阿里云百炼", url: "https://dashscope.aliyuncs.com/compatible-mode/v1", modelHint: "qwen-turbo", freeTier: "新用户赠送额度" },
+  // —— 按量付费 ——
   { id: "deepseek", label: "DeepSeek", name: "DeepSeek", url: "https://api.deepseek.com/v1", modelHint: "deepseek-chat" },
-  { id: "dashscope", label: "通义千问", name: "阿里云百炼", url: "https://dashscope.aliyuncs.com/compatible-mode/v1", modelHint: "qwen-turbo" },
-  { id: "siliconflow", label: "硅基流动", name: "硅基流动", url: "https://api.siliconflow.cn/v1", modelHint: "Qwen/Qwen2.5-7B-Instruct" },
   { id: "moonshot", label: "Kimi", name: "月之暗面 Kimi", url: "https://api.moonshot.cn/v1", modelHint: "moonshot-v1-8k" },
   { id: "custom", label: "中转站 / 自定义", name: "", url: "", modelHint: "" },
 ];
 
-const settingsCategories: Array<{
-  id: SettingsCategory;
-  label: string;
-  icon: keyof typeof Ionicons.glyphMap;
+/**
+ * 设置分组：12 个入口按职能分成 5 组，避免平铺一长串。
+ * 每项的 hint 是一行小字说明，用户不用进二级页就知道这项是干嘛的。
+ */
+const settingsGroups: Array<{
+  title: string;
+  hint?: string;
+  items: Array<{
+    id: SettingsCategory;
+    label: string;
+    /** 仅在名称不足以自明时提供一行说明 */
+    hint?: string;
+    icon: keyof typeof Ionicons.glyphMap;
+  }>;
 }> = [
-  { id: "general", label: "通用", icon: "options-outline" },
-  { id: "editor", label: "编辑器", icon: "text-outline" },
-  { id: "connections", label: "连接", icon: "link-outline" },
-  { id: "models", label: "模型与供应商", icon: "hardware-chip-outline" },
-  { id: "index", label: "索引", icon: "layers-outline" },
-  { id: "context", label: "上下文", icon: "document-text-outline" },
-  { id: "style", label: "作者文风", icon: "color-wand-outline" },
-  { id: "agent-tools", label: "工具权限", icon: "shield-checkmark-outline" },
-  { id: "rules", label: "规则", icon: "list-outline" },
-  { id: "skills", label: "技能", icon: "flash-outline" },
-  { id: "agents", label: "智能体", icon: "git-network-outline" },
-  { id: "advanced", label: "高级", icon: "construct-outline" },
+  {
+    title: "基础",
+    items: [
+      { id: "general", label: "通用", icon: "options-outline" },
+      { id: "editor", label: "编辑器", icon: "text-outline" },
+    ],
+  },
+  {
+    title: "连接与模型",
+    items: [
+      { id: "connections", label: "连接", icon: "link-outline" },
+      { id: "models", label: "模型与供应商", icon: "hardware-chip-outline" },
+    ],
+  },
+  {
+    title: "创作系统",
+    hint: "智能体＝谁来写，技能＝怎么写，规则＝必须守的红线",
+    items: [
+      { id: "agents", label: "智能体", hint: "写作流程与输出结构", icon: "git-network-outline" },
+      { id: "skills", label: "技能", hint: "写作手法与规范", icon: "flash-outline" },
+      { id: "rules", label: "规则", hint: "全程生效，无需每次挑选", icon: "list-outline" },
+      { id: "agent-tools", label: "工具权限", hint: "智能体可用的工具开关", icon: "shield-checkmark-outline" },
+      { id: "style", label: "作者文风", icon: "color-wand-outline" },
+    ],
+  },
+  {
+    title: "知识",
+    items: [
+      { id: "index", label: "索引", hint: "全文检索，供 AI 召回前文", icon: "layers-outline" },
+      { id: "context", label: "上下文", hint: "每次生成携带的设定与前文范围", icon: "document-text-outline" },
+    ],
+  },
+  {
+    title: "系统",
+    items: [
+      { id: "advanced", label: "高级", hint: "内容包、应用更新、诊断报告", icon: "construct-outline" },
+    ],
+  },
 ];
 
 /**
@@ -366,20 +409,31 @@ export function SettingsScreen() {
       <Screen scroll>
         <Header title="设置" />
         <View style={styles.categoryList}>
-          {settingsCategories.map((category) => (
-            <Pressable
-              key={category.id}
-              onPress={() => {
-                if (category.id === "style") rootNavigation.navigate("StyleLibrary");
-                else setActiveCategory(category.id);
-              }}
-              style={({ pressed }) => [styles.categoryRow, pressed && styles.categoryRowPressed]}
-            >
-              <View style={styles.categoryIcon}><Ionicons name={category.icon} size={21} color={colors.primary} /></View>
-              <Text style={styles.categoryLabel}>{category.label}</Text>
-              <Ionicons name="chevron-forward" size={19} color={colors.textMuted} />
-            </Pressable>
-          ))}
+        {settingsGroups.map((group) => (
+          <View key={group.title}>
+            <View style={styles.groupHeader}>
+              <Text style={styles.groupTitle}>{group.title}</Text>
+              {group.hint ? <Text style={styles.groupHint}>{group.hint}</Text> : null}
+            </View>
+            {group.items.map((category) => (
+              <Pressable
+                key={category.id}
+                onPress={() => {
+                  if (category.id === "style") rootNavigation.navigate("StyleLibrary");
+                  else setActiveCategory(category.id);
+                }}
+                style={({ pressed }) => [styles.categoryRow, pressed && styles.categoryRowPressed]}
+              >
+                <View style={styles.categoryIcon}><Ionicons name={category.icon} size={21} color={colors.primary} /></View>
+                <View style={styles.categoryTextWrap}>
+                  <Text style={styles.categoryLabel}>{category.label}</Text>
+                  {category.hint ? <Text style={styles.categoryHint}>{category.hint}</Text> : null}
+                </View>
+                <Ionicons name="chevron-forward" size={19} color={colors.textMuted} />
+              </Pressable>
+            ))}
+          </View>
+        ))}
         </View>
       </Screen>
     );
@@ -391,7 +445,7 @@ export function SettingsScreen() {
       {error ? <View style={styles.errorWrap}><ErrorNotice message={error} onRetry={() => void load()} /></View> : null}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>供应商</Text>
-        <Text style={styles.fieldHint}>选择常用服务商可自动填入接口地址。</Text>
+        <Text style={styles.fieldHint}>选择常用服务商可自动填入接口地址。带「免费」标记的平台注册后即可免费用，不必先充值。</Text>
         <View style={styles.presetRow}>
           {PROVIDER_PRESETS.map((preset) => (
             <Pressable
@@ -399,10 +453,19 @@ export function SettingsScreen() {
               onPress={() => applyPreset(preset)}
               style={[styles.presetChip, presetId === preset.id && styles.presetChipActive]}
             >
-              <Text style={[styles.presetChipText, presetId === preset.id && styles.presetChipTextActive]}>{preset.label}</Text>
+              <Text style={[styles.presetChipText, presetId === preset.id && styles.presetChipTextActive]}>
+                {preset.freeTier ? `${preset.label} · 免费` : preset.label}
+              </Text>
             </Pressable>
           ))}
         </View>
+        {PROVIDER_PRESETS.find((preset) => preset.id === presetId)?.freeTier ? (
+          <Text style={styles.fieldHint}>
+            {PROVIDER_PRESETS.find((preset) => preset.id === presetId)?.label}：
+            {PROVIDER_PRESETS.find((preset) => preset.id === presetId)?.freeTier}
+            —— 到该平台官网注册、生成 API Key 后粘贴到下面即可。
+          </Text>
+        ) : null}
         <Text style={styles.sectionTitle}>或者手动填</Text>
         <View style={styles.segmented}>
           {(["openai-compatible", "google-genai", "anthropic"] as ProviderType[]).map((type) => (
@@ -590,10 +653,15 @@ export function SettingsScreen() {
 
 const styles = StyleSheet.create({
   categoryList: { paddingVertical: spacing.sm },
+  groupHeader: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xs },
+  groupTitle: { color: colors.textMuted, fontSize: 13, fontWeight: "700" },
+  groupHint: { color: colors.textMuted, fontSize: 12, lineHeight: 17, marginTop: 2 },
   categoryRow: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   categoryRowPressed: { backgroundColor: colors.surfaceMuted },
   categoryIcon: { width: 36, height: 36, alignItems: "center", justifyContent: "center", borderRadius: radius.sm, backgroundColor: "#E6F3EF" },
-  categoryLabel: { flex: 1, color: colors.text, fontSize: 16, fontWeight: "600" },
+  categoryTextWrap: { flex: 1 },
+  categoryLabel: { color: colors.text, fontSize: 16, fontWeight: "600" },
+  categoryHint: { color: colors.textMuted, fontSize: 12, lineHeight: 17, marginTop: 2 },
   section: { padding: spacing.lg, gap: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   errorWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   sectionTitle: { color: colors.text, fontSize: 18, fontWeight: "700" },
