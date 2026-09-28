@@ -134,7 +134,6 @@ jobs:
             echo "## 本次变更"
             echo
             if [ -n "$PREV_TAG" ]; then
-              # 只保留用户看得懂的改动：过滤纯文档 / 构建类提交，去掉英文前缀
               CHANGES=$(git -C "$GITHUB_WORKSPACE" log --no-merges --pretty="- %s" "$PREV_TAG"..HEAD \
                 | grep -vE '^- (docs|ci|chore|test|style|refactor)(\(|:)' \
                 | grep -vE '^- (feat|fix)\((ci|docs|chore)\)' \
@@ -148,14 +147,6 @@ jobs:
             else
               echo "- 首次发布"
             fi
-            echo
-            echo "---"
-            echo
-            echo "下载下方 **Storyloom-Android.apk** 直接安装；首次使用需在「设置 → 模型与供应商」填入自己的 API Key，遇到问题见 [安装与常见问题](https://github.com/Meeko529/Storyloom/blob/main/docs/安装与常见问题.md)。"
-            echo
-            echo "Android 9.0 及以上 · 包名 \`com.meeko529.storyloom\`（可与官方版共存）· 签名已固定，可直接覆盖安装"
-            echo
-            echo "签名证书 SHA-256：\`EA:B4:3A:19:25:D9:B3:6D:6D:FB:2D:59:BD:40:A9:7C:24:FF:AB:D2:C6:07:12:00:50:62:68:56:73:07:68:E7\`"
           } > "$OUT/notes.md"
           gh release create "$TAG" \
             --title "Storyloom $TAG" \
