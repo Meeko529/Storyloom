@@ -119,6 +119,11 @@ android {
                 keyAlias releaseKeyAlias
                 keyPassword releaseKeyPassword
                 storeType "PKCS12"
+                // 显式开启 v1 + v2：
+                // minSdk ≥ 24 时 AGP 默认只做 v2，产物内没有 META-INF 下的证书文件；
+                // 部分厂商（如 vivo）的安装器仍按 v1 校验，会报「安装包缺乏开发者证书」。
+                enableV1Signing true
+                enableV2Signing true
             }
         }
     }
