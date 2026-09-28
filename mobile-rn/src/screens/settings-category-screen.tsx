@@ -79,6 +79,12 @@ import {
 import { downloadUpdateApk, installApkFile } from "@/settings/app-installer";
 import { exportDiagnosticsReport } from "@/settings/diagnostics";
 import { exportBackup, pickBackupFile, restoreBackup } from "@/settings/backup";
+import {
+  applyContentPack,
+  exportContentPack,
+  pickContentPack,
+  previewContentPack,
+} from "@/settings/content-pack";
 import { colors, radius, spacing } from "@/theme";
 import type { Model } from "@/types";
 
@@ -238,6 +244,8 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
   const [diagnosticsBusy, setDiagnosticsBusy] = useState(false);
   // 备份 / 恢复状态
   const [backupBusy, setBackupBusy] = useState(false);
+  // 内容包导入 / 导出状态
+  const [contentPackBusy, setContentPackBusy] = useState(false);
 
   const checkForAppUpdate = async () => {
     setAppUpdateBusy(true);
@@ -309,6 +317,85 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
     } finally {
       setBackupBusy(false);
     }
+  };
+
+  /** 给「添加智能体」表单填一份可直接改用的示例，降低上手门槛。 */
+  const fillAgentExample = () => {
+    setAgentName("短篇小说助手");
+    setAgentDescription("适合单篇完结的短篇，节奏紧凑、结尾留白。");
+    setAgentPrompt([
+      "你是短篇小说写作助手。收到写作请求后按下面的顺序工作：",
+      "1. 先确认题材、篇幅（3000 字以内）与结局走向；信息不足时用一次提问补齐。",
+      "2. 输出结构：开场钩子 → 冲突升级 → 转折 → 结尾留白。",
+      "3. 语言要求：不用套话与排比，不做总结性抒情，结尾不解释主题。",
+      "4. 写作过程中如需改动正文，先给出改动说明并等待确认。",
+    ].join("\n"));
+  };
+
+  /** 导出自建内容包。 */
+  const exportContentPackFile = async () => {
+    setContentPackBusy(true);
+    try {
+      const summary = await exportContentPack("storyloom-content-pack");
+      if (summary.count === 0) {
+        Alert.alert("没有可导出的内容", "内容包只导出你自己创建的规则、技能与智能体；内置的不能导出。");
+        return;
+      }
+      Alert.alert("导出完成", `共 ${summary.count} 项，已调出系统分享，请选择保存位置。`);
+    } catch (error) {
+      Alert.alert("导出失败", error instanceof Error ? error.message : String(error));
+    } finally {
+      setContentPackBusy(false);
+    }
+  };
+
+  /** 选择并导入内容包，导入前告知覆盖数量。 */
+  const importContentPackFile = async () => {
+    let picked: Awaited<ReturnType<typeof pickContentPack>>;
+    try {
+      picked = await pickContentPack();
+    } catch (error) {
+      Alert.alert("选择文件失败", error instanceof Error ? error.message : String(error));
+      return;
+    }
+    if (!picked) return;
+    let preview: Awaited<ReturnType<typeof previewContentPack>>;
+    try {
+      preview = await previewContentPack(picked as NonNullable<typeof picked>);
+    } catch (error) {
+      Alert.alert("无法导入", error instanceof Error ? error.message : String(error));
+      return;
+    }
+    const total = preview.pack.rules.length + preview.pack.skills.length + preview.pack.agents.length;
+    if (total === 0) {
+      Alert.alert("内容包为空", "这个文件里没有可导入的条目。");
+      return;
+    }
+    Alert.alert(
+      "导入内容包",
+      `共 ${total} 项（规则 ${preview.pack.rules.length} · 技能 ${preview.pack.skills.length} · 智能体 ${preview.pack.agents.length}）` +
+        `${preview.conflicts > 0 ? `，其中 ${preview.conflicts} 项会覆盖本地同名条目` : ""}。确定导入吗？`,
+      [
+        { text: "取消", style: "cancel" },
+        {
+          text: "导入",
+          onPress: () => {
+            void (async () => {
+              setContentPackBusy(true);
+              try {
+                await applyContentPack(preview.pack);
+                await load();
+                Alert.alert("导入完成", `已导入 ${total} 项。`);
+              } catch (error) {
+                Alert.alert("导入失败", error instanceof Error ? error.message : String(error));
+              } finally {
+                setContentPackBusy(false);
+              }
+            })();
+          },
+        },
+      ],
+    );
   };
 
   /** 选择备份文件，确认后覆盖本地数据。 */
@@ -983,6 +1070,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       ) : null}
       {category === "rules" ? (
         <View style={styles.section}>
+          <Text style={styles.sectionHint}>规则是全书的硬性约束，助手每次生成都会遵守，无需在对话中重复交代。</Text>
           {rules.map((rule) => (
             <View key={rule.id} style={styles.manageRow}>
               <View style={styles.manageText}>
@@ -1021,6 +1109,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       ) : null}
       {category === "skills" ? (
         <View style={styles.section}>
+          <Text style={styles.sectionHint}>技能是可按需启用的写作方法，助手会在合适的环节调用它，例如改写口吻或处理对话。</Text>
           {skills.map((skill) => (
             <View key={skill.id} style={styles.manageRow}>
               <View style={styles.manageText}>
@@ -1067,6 +1156,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       ) : null}
       {category === "agents" ? (
         <View style={styles.section}>
+          <Text style={styles.sectionHint}>智能体决定写作的分工与流程：由谁执笔、按什么步骤产出。当前启用的主智能体负责接收你的请求。</Text>
           {agents.map((agent) => (
             <View key={agent.id} style={[styles.manageRow, activeAgentId === agent.id && styles.activeRow]}>
               <View style={styles.manageText}>
@@ -1100,6 +1190,12 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
             </View>
           ))}
           <Text style={styles.subsectionTitle}>{editingAgentId ? "编辑智能体" : "添加智能体"}</Text>
+          <Text style={styles.sectionHint}>
+            名称用于区分用途；系统提示词写明它的分工、执行步骤与输出要求。若暂无头绪，可先载入示例再按需要修改。
+          </Text>
+          {!editingAgentId ? (
+            <Button label="载入示例" variant="secondary" onPress={fillAgentExample} />
+          ) : null}
           <Field label="智能体名称" value={agentName} onChangeText={setAgentName} />
           <Field label="智能体说明" value={agentDescription} onChangeText={setAgentDescription} />
           <Field label="系统提示词" value={agentPrompt} onChangeText={setAgentPrompt} multiline style={styles.multiline} />
@@ -1122,6 +1218,23 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
           ) : (
             <Button label="添加智能体" onPress={() => void addAgent()} disabled={!agentName.trim() || !agentPrompt.trim()} />
           )}
+          <View style={styles.subsectionDivider} />
+          <Text style={styles.subsectionTitle}>内容包</Text>
+          <Text style={styles.sectionHint}>
+            把你自己创建的规则、技能与智能体打包成一个 JSON，分享给别的设备或别人；也可以导入他人分享的内容包。内置与远程内容不参与导出。
+          </Text>
+          <Button
+            label={contentPackBusy ? "处理中" : "导出内容包"}
+            onPress={() => void exportContentPackFile()}
+            disabled={contentPackBusy}
+            loading={contentPackBusy}
+          />
+          <Button
+            label="导入内容包"
+            variant="secondary"
+            onPress={() => void importContentPackFile()}
+            disabled={contentPackBusy}
+          />
         </View>
       ) : null}
       {category === "advanced" ? (

@@ -41,6 +41,7 @@ import type {
 import { listNotes, noteScope } from "@/data/note-repositories";
 
 import { agentTools, executeAgentTool } from "./tools";
+import { buildWritePreview, isWriteTool, rememberUndo, type WritePreview } from "./write-review";
 
 const MAX_AGENT_ITERATIONS = 12;
 const MAX_DELEGATION_DEPTH = 1;
@@ -62,7 +63,7 @@ const WORLD_CONSISTENCY_TOOL_NAMES = new Set([
   "edit_world_entry",
 ]);
 
-type ToolApproval = (name: string, args: Record<string, unknown>) => Promise<boolean>;
+type ToolApproval = (name: string, args: Record<string, unknown>, preview: WritePreview | null) => Promise<boolean>;
 type AskUser = (request: AgentClarificationRequest) => Promise<AgentClarificationResponse>;
 type TraceListener = (trace: AgentRunTrace) => void;
 
@@ -505,17 +506,23 @@ async function ensureWritingStyleSelection(input: {
   });
 }
 
+/**
+ * 授权一次工具调用。写入类工具会先生成「改前 / 改后」预览交给界面确认，
+ * 并把预览返回给调用方——预览里的"改前"内容同时作为撤销快照的来源。
+ */
 async function authorizeToolCall(
   call: AgentToolCall,
   permissions: Record<string, ToolPermissionMode>,
   approveTool?: ToolApproval,
-): Promise<void> {
+): Promise<WritePreview | null> {
   const permission = permissions[call.name] ?? "ask";
   if (permission === "deny") throw new Error("该工具已在设置中禁用");
+  const preview = isWriteTool(call.name) ? await buildWritePreview(call.name, call.arguments) : null;
   if (permission === "ask") {
-    const approved = approveTool ? await approveTool(call.name, call.arguments) : false;
+    const approved = approveTool ? await approveTool(call.name, call.arguments, preview) : false;
     if (!approved) throw new Error("用户未批准本次工具调用");
   }
+  return preview;
 }
 
 async function selectionForAgent(agent: AgentDefinition, fallback: ModelSelection): Promise<ModelSelection> {
@@ -631,7 +638,7 @@ async function runAgentLoop(input: LoopInput): Promise<LoopResult> {
       });
       try {
         if (!allowedToolNames.has(call.name)) throw new Error(`${input.agent.name} 无权使用工具 ${call.name}`);
-        await authorizeToolCall(call, input.catalog.permissions, input.approveTool);
+        const writePreview = await authorizeToolCall(call, input.catalog.permissions, input.approveTool);
         input.recorder.update(eventId, { status: "running", detail: "正在执行" });
         let result: Record<string, unknown>;
         let eventTitle = toolDisplayName(call.name);
@@ -742,6 +749,8 @@ async function runAgentLoop(input: LoopInput): Promise<LoopResult> {
             }
           }
         }
+        // 写入成功后才记撤销快照：失败的工具没有产生改动，不该出现在撤销栈里。
+        rememberUndo(call.name, call.arguments, writePreview);
         input.recorder.update(eventId, {
           status: "completed",
           title: eventTitle,

@@ -18,6 +18,7 @@ import {
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 import { AgentRunError, runAgent } from "@/agent/runtime";
+import { undoLastWrite, undoLabel, type WritePreview } from "@/agent/write-review";
 import { AgentQuestionSheet, AgentTraceView } from "@/components/agent-run-view";
 import { MessageActionBar } from "@/components/message-action-bar";
 import { Button, EmptyState, ErrorNotice, Header, Screen, SheetBackdrop } from "@/components/ui";
@@ -59,13 +60,32 @@ import type {
   StyleProfile,
 } from "@/types";
 
-function requestToolApproval(name: string, args: Record<string, unknown>): Promise<boolean> {
-  const details = JSON.stringify(args, null, 2).slice(0, 1_200);
+/**
+ * 工具授权。写入类工具先展示「改前 / 改后」，按一整组接受或驳回，
+ * 而不是只看一段参数 JSON——借鉴 DeepWrite 的操作批次与 denova 的整组粒度。
+ */
+function requestToolApproval(name: string, args: Record<string, unknown>, preview: WritePreview | null): Promise<boolean> {
+  if (!preview) {
+    const details = JSON.stringify(args, null, 2).slice(0, 1_200);
+    return new Promise((resolve) => {
+      Alert.alert("确认工具调用", `${name}\n\n${details}`, [
+        { text: "拒绝", style: "cancel", onPress: () => resolve(false) },
+        { text: "允许一次", onPress: () => resolve(true) },
+      ], { cancelable: false });
+    });
+  }
+  const before = preview.before.trim() || "（当前为空）";
+  const after = preview.after.trim() || "（将清空）";
   return new Promise((resolve) => {
-    Alert.alert("确认工具调用", `${name}\n\n${details}`, [
-      { text: "拒绝", style: "cancel", onPress: () => resolve(false) },
-      { text: "允许一次", onPress: () => resolve(true) },
-    ], { cancelable: false });
+    Alert.alert(
+      `确认改动：${preview.target}`,
+      `改前\n${before}\n\n改后\n${after}`,
+      [
+        { text: "驳回", style: "cancel", onPress: () => resolve(false) },
+        { text: "接受", onPress: () => resolve(true) },
+      ],
+      { cancelable: false },
+    );
   });
 }
 
@@ -194,6 +214,8 @@ export function AssistantScreen() {
   const [stylePickerVisible, setStylePickerVisible] = useState(false);
   const [updatingStyle, setUpdatingStyle] = useState(false);
   const [liveTrace, setLiveTrace] = useState<AgentRunTrace | null>(null);
+  // 最近一次被接受的 AI 写入（撤销入口），null 表示当前没有可撤销的改动
+  const [undoTarget, setUndoTarget] = useState<string | null>(null);
   const [pendingQuestion, setPendingQuestion] = useState<AgentClarificationRequest | null>(null);
   const [retryRequest, setRetryRequest] = useState<RetryRequest | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -465,6 +487,24 @@ export function AssistantScreen() {
     setInput("");
   };
 
+  /** 撤销最近一次被接受的 AI 写入，把对象还原为改动前的内容。 */
+  const handleUndoWrite = () => {
+    void (async () => {
+      try {
+        const label = await undoLastWrite();
+        if (label) {
+          setUndoTarget(null);
+          refreshData();
+          Alert.alert("已撤销", `「${label}」已还原为改动前的内容。`);
+        } else {
+          setUndoTarget(null);
+        }
+      } catch (error) {
+        Alert.alert("撤销失败", error instanceof Error ? error.message : String(error));
+      }
+    })();
+  };
+
   const askUser = useCallback((request: AgentClarificationRequest) => new Promise<AgentClarificationResponse>((resolve) => {
     questionResolverRef.current?.({ answers: [], cancelled: true });
     questionResolverRef.current = resolve;
@@ -571,6 +611,7 @@ export function AssistantScreen() {
       });
       setRetryRequest(null);
       setLiveTrace(null);
+      setUndoTarget(undoLabel());
       refreshData();
       requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
     } catch (sendError) {
@@ -732,6 +773,14 @@ export function AssistantScreen() {
           )}
         />
         {error ? <View style={styles.errorWrap}><ErrorNotice message={error} onRetry={retryRequest ? () => void send(retryRequest) : () => void load()} /></View> : null}
+        {undoTarget && !sending ? (
+          <View style={styles.undoBanner}>
+            <Text numberOfLines={1} style={styles.undoText}>AI 已改动「{undoTarget}」</Text>
+            <Pressable accessibilityLabel="撤销 AI 上次改动" onPress={handleUndoWrite} style={styles.undoButton}>
+              <Text style={styles.undoButtonText}>撤销</Text>
+            </Pressable>
+          </View>
+        ) : null}
         <View style={styles.composer}>
           {editingMessageId ? (
             <View style={styles.editingBanner}>
@@ -977,6 +1026,10 @@ const styles = StyleSheet.create({
   composer: { gap: spacing.xs, padding: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, backgroundColor: colors.surface },
   composerRow: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm },
   editingBanner: { minHeight: 36, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  undoBanner: { minHeight: 36, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.md, paddingVertical: spacing.xs, backgroundColor: "#E6F3EF", borderRadius: 8 },
+  undoText: { flex: 1, color: colors.text, fontSize: 13 },
+  undoButton: { minWidth: 56, minHeight: 30, alignItems: "center", justifyContent: "center", borderRadius: 6, backgroundColor: colors.primary },
+  undoButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "600" },
   editingCopy: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   editingText: { color: colors.primary, fontSize: 13, fontWeight: "600" },
   composerInput: { flex: 1, maxHeight: 130, minHeight: 46, paddingHorizontal: spacing.md, paddingVertical: 11, borderRadius: radius.md, backgroundColor: colors.surfaceMuted, color: colors.text, fontSize: 16 },

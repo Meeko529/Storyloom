@@ -5,7 +5,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, BackHandler, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, BackHandler, FlatList, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { Button, ErrorNotice, Field, Header, Screen, SheetBackdrop } from "@/components/ui";
 import {
@@ -31,6 +31,7 @@ import type { RootStackParamList } from "@/navigation/types";
 import { SettingsCategoryScreen, type SettingsCategory } from "@/screens/settings-category-screen";
 import { useAppStore } from "@/store/app-store";
 import { colors, radius, spacing } from "@/theme";
+import { FREE_MODELS } from "@/settings/free-models";
 import type { Model, Provider, ProviderType } from "@/types";
 
 const providerDefaults: Record<ProviderType, { name: string; url: string }> = {
@@ -95,7 +96,6 @@ const settingsGroups: Array<{
   },
   {
     title: "创作系统",
-    hint: "智能体＝谁来写，技能＝怎么写，规则＝必须守的红线",
     items: [
       { id: "agents", label: "智能体", hint: "写作流程与输出结构", icon: "git-network-outline" },
       { id: "skills", label: "技能", hint: "写作手法与规范", icon: "flash-outline" },
@@ -182,6 +182,8 @@ export function SettingsScreen() {
   const [activeModelId, setActiveModelId] = useState<string | null>(null);
   const [providerType, setProviderType] = useState<ProviderType>("openai-compatible");
   const [presetId, setPresetId] = useState("custom");
+  // 免费模型专区：选中的条目
+  const [freeModelId, setFreeModelId] = useState("");
   const [providerName, setProviderName] = useState(providerDefaults["openai-compatible"].name);
   const [baseUrl, setBaseUrl] = useState(providerDefaults["openai-compatible"].url);
   const [apiKey, setApiKey] = useState("");
@@ -255,6 +257,50 @@ export function SettingsScreen() {
   };
 
   const activePreset = PROVIDER_PRESETS.find((item) => item.id === presetId) ?? null;
+  const activeFreeModel = FREE_MODELS.find((item) => item.id === freeModelId) ?? null;
+
+  /** 选用免费模型：地址、类型、模型 ID 一次填好，用户只需领 Key 后粘贴。 */
+  const applyFreeModel = (item: (typeof FREE_MODELS)[number]) => {
+    setFreeModelId(item.id);
+    setPresetId("custom");
+    setProviderType(item.type);
+    setProviderName(item.providerName);
+    setBaseUrl(item.baseUrl);
+    setModelName(item.modelLabel);
+    setModelId(item.modelId);
+    setNewAdvanced({ ...DEFAULT_PROVIDER_ADVANCED });
+    setShowNewAdvanced(false);
+  };
+
+  /** 保存供应商并直接建立该免费模型、设为当前模型——省掉"先保存再添加"两步。 */
+  const saveAndUseFreeModel = async () => {
+    if (!activeFreeModel || !apiKey.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const provider = await saveProvider({
+        name: activeFreeModel.providerName,
+        type: activeFreeModel.type,
+        baseUrl: activeFreeModel.baseUrl,
+        apiKey,
+      });
+      const model = await saveModel({
+        providerId: provider.id,
+        name: activeFreeModel.modelLabel,
+        modelId: activeFreeModel.modelId,
+        temperature: Number(temperature) || 0.8,
+        maxTokens: Number(maxTokens) || DEFAULT_MAX_OUTPUT_TOKENS,
+      });
+      await setSetting("activeModelId", model.id);
+      setApiKey("");
+      setSelectedProviderId(provider.id);
+      refreshData();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : String(saveError));
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const addProvider = async () => {
     if (!providerName.trim() || !baseUrl.trim() || !apiKey.trim()) return;
@@ -444,6 +490,38 @@ export function SettingsScreen() {
       <Header title="模型与供应商" onBack={() => setActiveCategory(null)} />
       {error ? <View style={styles.errorWrap}><ErrorNotice message={error} onRetry={() => void load()} /></View> : null}
       <View style={styles.section}>
+        <Text style={styles.sectionTitle}>免费模型</Text>
+        <Text style={styles.fieldHint}>选一个即可，接口地址与模型 ID 会自动填好；只需到对应平台注册领取 API Key 并粘贴。</Text>
+        <View style={styles.presetRow}>
+          {FREE_MODELS.map((item) => (
+            <Pressable
+              key={item.id}
+              onPress={() => applyFreeModel(item)}
+              style={[styles.presetChip, freeModelId === item.id && styles.presetChipActive]}
+            >
+              <Text style={[styles.presetChipText, freeModelId === item.id && styles.presetChipTextActive]}>
+                {item.platform} · {item.modelLabel}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        {activeFreeModel ? (
+          <>
+            <Text style={styles.fieldHint}>{activeFreeModel.note}</Text>
+            <Button
+              label={`前往 ${activeFreeModel.platform} 领取 Key`}
+              variant="secondary"
+              onPress={() => void Linking.openURL(activeFreeModel.signupUrl)}
+            />
+            <Field label="API Key" value={apiKey} onChangeText={setApiKey} autoCapitalize="none" secureTextEntry />
+            <Button
+              label="保存并启用该模型"
+              onPress={() => void saveAndUseFreeModel()}
+              disabled={!apiKey.trim()}
+              loading={saving}
+            />
+          </>
+        ) : null}
         <Text style={styles.sectionTitle}>供应商</Text>
         <Text style={styles.fieldHint}>选择常用服务商可自动填入接口地址。带「免费」标记的平台注册后即可免费用，不必先充值。</Text>
         <View style={styles.presetRow}>
