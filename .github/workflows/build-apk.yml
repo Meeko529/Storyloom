@@ -29,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # 需要完整历史与标签，才能在 Release 说明里生成「本次变更」列表
+          # 需要完整历史与标签，才能在 Release 说明里生成「新增 / 修复」列表
           fetch-depth: 0
           fetch-tags: true
 
@@ -80,8 +80,12 @@ jobs:
           # 因此这里用相对 mobile-rn 的路径，不能写成 mobile-rn/android/...
           sed -i "s/^\( *\)versionCode [0-9]*/\1versionCode ${VERSION_CODE}/" android/app/build.gradle
           sed -i "s/^\( *\)versionName \".*\"/\1versionName \"${VERSION_NAME}\"/" android/app/build.gradle
+          # 关键：应用界面显示的版本号读的是 app.json（CURRENT_APP_VERSION），
+          # 只改 build.gradle 会出现「系统里是 0.1.14、界面里还是 0.1.0」，两个文件必须同步。
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${VERSION_NAME}\"/" app.json
           echo "版本号 → ${VERSION_NAME} (versionCode ${VERSION_CODE})"
           grep -n "versionCode\|versionName" android/app/build.gradle
+          grep -n "\"version\"" app.json
 
       - name: 解码签名密钥
         env:
@@ -131,23 +135,30 @@ jobs:
           # 本 job 的工作目录是 mobile-rn，git 命令需显式指向仓库根，
           # 否则 git log 会自动只统计 mobile-rn 子目录的提交，漏掉根目录的改动。
           PREV_TAG=$(git -C "$GITHUB_WORKSPACE" describe --tags --abbrev=0 --match 'v0.1.*' HEAD^ 2>/dev/null || echo "")
+          # Release 说明只包含用户可见的变化，且分为「新增」「修复」两节，不混排。
+          if [ -n "$PREV_TAG" ]; then
+            FEATS=$(git -C "$GITHUB_WORKSPACE" log --no-merges --pretty="- %s" "$PREV_TAG"..HEAD \
+              | grep -E '^- feat(\(|:)' \
+              | grep -vE '^- feat\((ci|docs|chore)\)' \
+              | sed -E 's/^- feat(\([^)]*\))?: /- /' \
+              | head -30)
+            FIXES=$(git -C "$GITHUB_WORKSPACE" log --no-merges --pretty="- %s" "$PREV_TAG"..HEAD \
+              | grep -E '^- fix(\(|:)' \
+              | grep -vE '^- fix\((ci|docs|chore)\)' \
+              | sed -E 's/^- fix(\([^)]*\))?: /- /' \
+              | head -30)
+          else
+            FEATS="- 首次发布"
+            FIXES=""
+          fi
           {
-            echo "## 本次变更"
+            echo "## 新增"
             echo
-            if [ -n "$PREV_TAG" ]; then
-              CHANGES=$(git -C "$GITHUB_WORKSPACE" log --no-merges --pretty="- %s" "$PREV_TAG"..HEAD \
-                | grep -vE '^- (docs|ci|chore|test|style|refactor)(\(|:)' \
-                | grep -vE '^- (feat|fix)\((ci|docs|chore)\)' \
-                | sed -E 's/^- feat(\([^)]*\))?: /- [新增] /; s/^- fix(\([^)]*\))?: /- [修复] /' \
-                | head -40)
-              if [ -n "$CHANGES" ]; then
-                echo "$CHANGES"
-              else
-                echo "- 本版未包含用户可见的功能变化"
-              fi
-            else
-              echo "- 首次发布"
-            fi
+            if [ -n "$FEATS" ]; then echo "$FEATS"; else echo "- 无"; fi
+            echo
+            echo "## 修复"
+            echo
+            if [ -n "$FIXES" ]; then echo "$FIXES"; else echo "- 无"; fi
           } > "$OUT/notes.md"
           gh release create "$TAG" \
             --title "Storyloom $TAG" \
