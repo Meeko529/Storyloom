@@ -75,10 +75,12 @@ jobs:
           # 原 build.gradle 里 versionName 是写死的 0.1.0，与发布版本脱节。
           VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))
           VERSION_NAME="0.1.${GITHUB_RUN_NUMBER}"
-          sed -i "s/^\( *\)versionCode [0-9]*/\1versionCode ${VERSION_CODE}/" mobile-rn/android/app/build.gradle
-          sed -i "s/^\( *\)versionName \".*\"/\1versionName \"${VERSION_NAME}\"/" mobile-rn/android/app/build.gradle
+          # 注意：本 job 的默认工作目录已是 mobile-rn（见 defaults.run.working-directory），
+          # 因此这里用相对 mobile-rn 的路径，不能写成 mobile-rn/android/...
+          sed -i "s/^\( *\)versionCode [0-9]*/\1versionCode ${VERSION_CODE}/" android/app/build.gradle
+          sed -i "s/^\( *\)versionName \".*\"/\1versionName \"${VERSION_NAME}\"/" android/app/build.gradle
           echo "版本号 → ${VERSION_NAME} (versionCode ${VERSION_CODE})"
-          grep -n "versionCode\|versionName" mobile-rn/android/app/build.gradle
+          grep -n "versionCode\|versionName" android/app/build.gradle
 
       - name: 解码签名密钥
         env:
@@ -125,46 +127,35 @@ jobs:
           mkdir -p "$OUT"
           cp android/app/build/outputs/apk/standalone/*.apk "$OUT/Storyloom-Android.apk"
           ls -lh "$OUT/Storyloom-Android.apk"
-          PREV_TAG=$(git describe --tags --abbrev=0 --match 'v0.1.*' HEAD^ 2>/dev/null || echo "")
+          # 本 job 的工作目录是 mobile-rn，git 命令需显式指向仓库根，
+          # 否则 git log 会自动只统计 mobile-rn 子目录的提交，漏掉根目录的改动。
+          PREV_TAG=$(git -C "$GITHUB_WORKSPACE" describe --tags --abbrev=0 --match 'v0.1.*' HEAD^ 2>/dev/null || echo "")
           {
-            echo "## 安装"
-            echo
-            echo "| | |"
-            echo "| --- | --- |"
-            echo "| 支持系统 | Android 9.0 及以上（arm64-v8a） |"
-            echo "| 包名 | \`com.meeko529.storyloom\`，可与官方 OpenFicM 共存 |"
-            echo "| 首次启动 | 无需下载任何资源，直接进入应用 |"
-            echo "| 升级 | 签名已固定，可直接覆盖安装 |"
-            echo
-            echo "## 首次使用"
-            echo
-            echo "应用不内置模型。进入 **设置 → 模型与供应商**，选择一个服务商（如智谱）并填入自己的 API Key，再添加一个模型即可开始写作。"
-            echo
-            echo "安装被手机安全机制拦下、或模型配置遇到问题，见 [安装与常见问题](https://github.com/Meeko529/Storyloom/blob/main/docs/安装与常见问题.md)。"
-            echo
             echo "## 本次变更"
             echo
             if [ -n "$PREV_TAG" ]; then
-              # 只保留用户看得懂的改动（新增／修复）：过滤纯文档与构建类提交，并去掉英文前缀
-              CHANGES=$(git log --no-merges --pretty="- %s" "$PREV_TAG"..HEAD \
+              # 只保留用户看得懂的改动：过滤纯文档 / 构建类提交，去掉英文前缀
+              CHANGES=$(git -C "$GITHUB_WORKSPACE" log --no-merges --pretty="- %s" "$PREV_TAG"..HEAD \
                 | grep -vE '^- (docs|ci|chore|test|style|refactor)(\(|:)' \
+                | grep -vE '^- (feat|fix)\((ci|docs|chore)\)' \
                 | sed -E 's/^- feat(\([^)]*\))?: /- [新增] /; s/^- fix(\([^)]*\))?: /- [修复] /' \
                 | head -40)
               if [ -n "$CHANGES" ]; then
                 echo "$CHANGES"
               else
-                echo "- 本版未包含用户可见的功能变化（仅文档与构建调整）"
+                echo "- 本版未包含用户可见的功能变化"
               fi
             else
-              echo "- 首次构建"
+              echo "- 首次发布"
             fi
             echo
-            echo "## 版本信息"
+            echo "---"
             echo
-            echo "| | |"
-            echo "| --- | --- |"
-            echo "| 版本 | ${TAG} |"
-            echo "| 签名证书 SHA-256 | \`EA:B4:3A:19:25:D9:B3:6D:6D:FB:2D:59:BD:40:A9:7C:24:FF:AB:D2:C6:07:12:00:50:62:68:56:73:07:68:E7\` |"
+            echo "下载下方 **Storyloom-Android.apk** 直接安装；首次使用需在「设置 → 模型与供应商」填入自己的 API Key，遇到问题见 [安装与常见问题](https://github.com/Meeko529/Storyloom/blob/main/docs/安装与常见问题.md)。"
+            echo
+            echo "Android 9.0 及以上 · 包名 \`com.meeko529.storyloom\`（可与官方版共存）· 签名已固定，可直接覆盖安装"
+            echo
+            echo "签名证书 SHA-256：\`EA:B4:3A:19:25:D9:B3:6D:6D:FB:2D:59:BD:40:A9:7C:24:FF:AB:D2:C6:07:12:00:50:62:68:56:73:07:68:E7\`"
           } > "$OUT/notes.md"
           gh release create "$TAG" \
             --title "Storyloom $TAG" \
