@@ -135,6 +135,13 @@ jobs:
           # 本 job 的工作目录是 mobile-rn，git 命令需显式指向仓库根，
           # 否则 git log 会自动只统计 mobile-rn 子目录的提交，漏掉根目录的改动。
           PREV_TAG=$(git -C "$GITHUB_WORKSPACE" describe --tags --abbrev=0 --match 'v0.1.*' HEAD^ 2>/dev/null || echo "")
+          # 若仓库中预置了该版本的说明文件，则直接采用它（用于需要精修措辞的版本）；
+          # 否则按提交记录自动生成「新增 / 修复」两节。
+          HANDWRITTEN="$GITHUB_WORKSPACE/.github/release-notes/$TAG.md"
+          if [ -f "$HANDWRITTEN" ]; then
+            echo "使用预置说明：.github/release-notes/$TAG.md"
+            cp "$HANDWRITTEN" "$OUT/notes.md"
+          else
           # Release 说明只包含用户可见的变化，且分为「新增」「修复」两节，不混排。
           if [ -n "$PREV_TAG" ]; then
             FEATS=$(git -C "$GITHUB_WORKSPACE" log --no-merges --pretty="- %s" "$PREV_TAG"..HEAD \
@@ -160,6 +167,7 @@ jobs:
             echo
             if [ -n "$FIXES" ]; then echo "$FIXES"; else echo "- 无"; fi
           } > "$OUT/notes.md"
+          fi
           gh release create "$TAG" \
             --title "Storyloom $TAG" \
             --target "$GITHUB_SHA" \
