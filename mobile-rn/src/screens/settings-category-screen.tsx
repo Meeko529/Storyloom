@@ -321,6 +321,31 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
     }
   };
 
+  /** 给「添加技能」表单填一份可直接改用的示例。 */
+  const fillSkillExample = () => {
+    setSkillName("对话打磨");
+    setSkillDescription("在需要改写对白时使用：让每句台词带出人物性格，并推动情节。");
+    setSkillInstructions([
+      "处理对话段落时，按以下要求改写：",
+      "1. 区分人物口吻：用词习惯、句子长短、是否用完整句，都要与该角色的身份和当下情绪一致。",
+      "2. 每段对话至少承担一项功能：透露信息、暴露态度、改变关系或推进冲突；纯粹寒暄的句子删掉。",
+      "3. 少用「他说道」「她回答」这类提示语，改用动作、停顿或环境细节交代说话人。",
+      "4. 情绪不直说：把「他生气了」改成能体现生气的动作、语气或选择。",
+      "5. 保留原意与信息点，不新增情节，不改变人物关系。",
+    ].join("\n"));
+  };
+
+  /** 给「添加规则」表单填一份可直接改用的示例。 */
+  const fillRuleExample = () => {
+    setRuleName("人称与视角一致");
+    setRuleContent([
+      "全书正文使用第三人称限知视角，随主角视角推进。",
+      "1. 不出现主角不可能知道的信息，包括其他人物的内心活动。",
+      "2. 主角的内心活动不写成直接引语，用动作、判断或感受呈现。",
+      "3. 每章视角人物保持唯一，需切换时另起一章并在开头交代。",
+    ].join("\n"));
+  };
+
   /** 给「添加智能体」表单填一份可直接改用的示例，降低上手门槛。 */
   const fillAgentExample = () => {
     setAgentName("短篇小说助手");
@@ -1097,6 +1122,10 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
             </View>
           ))}
           <Text style={styles.subsectionTitle}>{editingRuleId ? "编辑规则" : "添加规则"}</Text>
+          <Text style={styles.sectionHint}>名称用于区分用途；内容写明必须遵守的硬性要求。可先载入示例，再按需要修改。</Text>
+          {!editingRuleId ? (
+            <Button label="载入示例" variant="secondary" onPress={fillRuleExample} />
+          ) : null}
           <Field label="规则名称" value={ruleName} onChangeText={setRuleName} />
           <Field label="规则内容" value={ruleContent} onChangeText={setRuleContent} multiline style={styles.multiline} />
           {editingRuleId ? (
@@ -1143,6 +1172,10 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
             </View>
           ))}
           <Text style={styles.subsectionTitle}>{editingSkillId ? "编辑技能" : "添加技能"}</Text>
+          <Text style={styles.sectionHint}>名称用于区分用途；指令写明何时使用、按什么步骤处理。可先载入示例，再按需要修改。</Text>
+          {!editingSkillId ? (
+            <Button label="载入示例" variant="secondary" onPress={fillSkillExample} />
+          ) : null}
           <Field label="技能名称" value={skillName} onChangeText={setSkillName} />
           <Field label="技能说明" value={skillDescription} onChangeText={setSkillDescription} />
           <Field label="技能指令" value={skillInstructions} onChangeText={setSkillInstructions} multiline style={styles.multiline} />
