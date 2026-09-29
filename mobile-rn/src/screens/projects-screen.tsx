@@ -11,7 +11,7 @@ import { ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, StyleSheet
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 import { Button, EmptyState, ErrorNotice, Field, Header, Screen } from "@/components/ui";
-import { createProject, deleteProject, getProjectStats, getProjectStatsMap, listProjects, updateProjectCover, updateProjectInfo, type ProjectStats } from "@/data/repositories";
+import { createProject, deleteProject, getProjectStats, getProjectStatsMap, getSetting, listProjects, setSetting, updateProjectCover, updateProjectInfo, type ProjectStats } from "@/data/repositories";
 import type { RootStackParamList, RootTabParamList } from "@/navigation/types";
 import { useAppStore } from "@/store/app-store";
 import { colors, radius, shadow, spacing } from "@/theme";
@@ -22,6 +22,8 @@ export function ProjectsScreen() {
   const rootNavigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [projects, setProjects] = useState<Project[]>([]);
   const [stats, setStats] = useState<Record<string, ProjectStats>>({});
+  // 书架视图：网格（封面墙）/ 列表（信息行），选择存进设置，重启保留
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -44,6 +46,9 @@ export function ProjectsScreen() {
     try {
       setProjects(await listProjects());
       setStats(await getProjectStatsMap());
+      void getSetting("general.shelfView")
+        .then((value) => setViewMode(value === "list" ? "list" : "grid"))
+        .catch(() => {});
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : String(loadError));
     } finally {
@@ -54,6 +59,13 @@ export function ProjectsScreen() {
   useFocusEffect(useCallback(() => {
     void loadProjects();
   }, [loadProjects]));
+
+  /** 网格 / 列表切换：选择写进设置，重启保留。 */
+  const toggleViewMode = () => {
+    const next = viewMode === "grid" ? "list" : "grid";
+    setViewMode(next);
+    void setSetting("general.shelfView", next);
+  };
 
   const openProject = (project: Project) => {
     setCurrentProject(project.id);
@@ -209,16 +221,28 @@ function coverColor(title: string): string {
       <Header
         title="Storyloom"
         action={
-          <Pressable accessibilityLabel="新建作品" onPress={() => setShowCreate(true)} style={styles.iconButton}>
-            <Ionicons name="add" size={26} color={colors.primary} />
-          </Pressable>
+          <View style={styles.headerActions}>
+            <Pressable
+              accessibilityLabel={viewMode === "grid" ? "切换为列表视图" : "切换为网格视图"}
+              onPress={toggleViewMode}
+              style={styles.iconButton}
+            >
+              <Ionicons name={viewMode === "grid" ? "list-outline" : "grid-outline"} size={22} color={colors.primary} />
+            </Pressable>
+            <Pressable accessibilityLabel="新建作品" onPress={() => setShowCreate(true)} style={styles.iconButton}>
+              <Ionicons name="add" size={26} color={colors.primary} />
+            </Pressable>
+          </View>
         }
       />
       <FlatList
         data={projects}
+        key={viewMode}
+        numColumns={viewMode === "grid" ? 3 : 1}
+        columnWrapperStyle={viewMode === "grid" ? { gap: 10, paddingHorizontal: 14 } : undefined}
         keyExtractor={(item) => item.id}
         contentContainerStyle={projects.length ? styles.list : styles.emptyList}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        ItemSeparatorComponent={viewMode === "grid" ? () => null : () => <View style={styles.separator} />}
         ListHeaderComponent={
           <View>
             <View style={styles.quickActions}>
@@ -258,8 +282,10 @@ function coverColor(title: string): string {
           </View>
         }
         ListEmptyComponent={loading ? <ActivityIndicator color={colors.primary} /> : <EmptyState title="还没有作品" action={<Button label="新建作品" onPress={() => setShowCreate(true)} />} />}
-        renderItem={({ item }) => (
-          <Pressable onPress={() => openProject(item)} onLongPress={() => openProjectMenu(item)} style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
+        renderItem={({ item }) => {
+          const statsLine = (() => { const st = stats[item.id]; return st ? `${st.volumes} 卷 · ${st.chapters} 章 · ${(st.characters / 10000).toFixed(1)} 万字` : "…"; })();
+          const progress = Math.min(100, Math.round(((stats[item.id]?.characters ?? 0) / 100000) * 100));
+          const coverNode = (
             <View style={[styles.cover, { backgroundColor: coverColor(item.title) }]}>
               {item.coverPath ? (
                 <Image source={{ uri: item.coverPath }} style={styles.coverImage} resizeMethod="resize" />
@@ -267,21 +293,44 @@ function coverColor(title: string): string {
                 <Text style={styles.coverText}>{item.title.slice(0, 1)}</Text>
               )}
             </View>
-            <View style={styles.rowText}>
-              <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
-              <Text style={styles.description} numberOfLines={1}>{item.description || "暂无简介"}</Text>
-              <View style={styles.statsRow}>
-                <View style={styles.meter}>
-                  <View style={[styles.meterFill, { width: `${Math.min(100, Math.round(((stats[item.id]?.characters ?? 0) / 100000) * 100))}%` }]} />
-                </View>
-                <Text style={styles.statsText}>{(() => { const st = stats[item.id]; return st ? `${st.volumes} 卷 · ${st.chapters} 章 · ${(st.characters / 10000).toFixed(1)} 万字` : "…"; })()}</Text>
-              </View>
-            </View>
+          );
+          const menu = (
             <Pressable accessibilityLabel={`《${item.title}》的操作`} onPress={(event) => { event.stopPropagation(); openProjectMenu(item); }} hitSlop={8} style={styles.rowAction}>
               <Ionicons name="ellipsis-horizontal" size={20} color={colors.textMuted} />
             </Pressable>
-          </Pressable>
-        )}
+          );
+          if (viewMode === "grid") {
+            return (
+              <Pressable onPress={() => openProject(item)} onLongPress={() => openProjectMenu(item)} style={({ pressed }) => [styles.gridItem, pressed && styles.rowPressed]}>
+                <View style={[styles.gridCover, { backgroundColor: coverColor(item.title) }]}>
+                  {item.coverPath ? (
+                    <Image source={{ uri: item.coverPath }} style={styles.gridCoverImage} resizeMethod="resize" />
+                  ) : (
+                    <Text style={styles.gridCoverText}>{item.title.slice(0, 1)}</Text>
+                  )}
+                </View>
+                <Text style={styles.gridName} numberOfLines={1}>{item.title}</Text>
+                <Text style={styles.gridStats}>{statsLine}</Text>
+              </Pressable>
+            );
+          }
+          return (
+            <Pressable onPress={() => openProject(item)} onLongPress={() => openProjectMenu(item)} style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
+              {coverNode}
+              <View style={styles.rowText}>
+                <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
+                <Text style={styles.description} numberOfLines={1}>{item.description || "暂无简介"}</Text>
+                <View style={styles.statsRow}>
+                  <View style={styles.meter}>
+                    <View style={[styles.meterFill, { width: `${progress}%` }]} />
+                  </View>
+                  <Text style={styles.statsText}>{statsLine}</Text>
+                </View>
+              </View>
+              {menu}
+            </Pressable>
+          );
+        }}
       />
 
       <Modal visible={infoProject !== null} transparent animationType="slide" onRequestClose={() => setInfoProject(null)}>
@@ -385,6 +434,13 @@ const styles = StyleSheet.create({
   meter: { width: 56, height: 4, borderRadius: 99, backgroundColor: colors.surfaceMuted, overflow: "hidden" },
   meterFill: { height: 4, borderRadius: 99, backgroundColor: colors.primary },
   statsText: { flex: 1, color: colors.textMuted, fontSize: 10.5 },
+  headerActions: { flexDirection: "row", alignItems: "center" },
+  gridItem: { flex: 1, alignItems: "center", gap: 5, padding: 7, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, ...shadow.card },
+  gridCover: { width: "100%", aspectRatio: 3 / 4, borderRadius: 10, alignItems: "flex-end", justifyContent: "center", overflow: "hidden" },
+  gridCoverImage: { width: "100%", height: "100%" },
+  gridCoverText: { color: "rgba(255,255,255,0.85)", fontSize: 52, fontWeight: "800", lineHeight: 58, marginBottom: 2 },
+  gridName: { alignSelf: "stretch", fontSize: 13, fontWeight: "600", textAlign: "center" },
+  gridStats: { alignSelf: "stretch", fontSize: 10, color: colors.textMuted, textAlign: "center" },
   menuBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay },
   menuSheet: { paddingVertical: spacing.sm, paddingBottom: spacing.xl, borderTopLeftRadius: radius.md, borderTopRightRadius: radius.md, backgroundColor: colors.background },
   menuTitle: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xs, color: colors.textMuted, fontSize: 13 },
