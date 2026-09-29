@@ -100,6 +100,10 @@ export interface Model {
   modelId: string;
   temperature: number;
   maxTokens: number;
+  /** 是否支持工具调用（function calling）：不支持时助手只能对话，无法读写作品 */
+  supportsTools: boolean;
+  /** 是否支持图片输入：决定能否给助手发图片 */
+  supportsVision: boolean;
 }
 
 export interface ChatSession {

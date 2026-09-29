@@ -191,7 +191,7 @@ function SettingRow({ label, value, onPress, destructive = false }: {
   );
 }
 
-function ToggleRow({ label, value, onChange }: { label: string; value: boolean; onChange: (value: boolean) => void }) {
+export function ToggleRow({ label, value, onChange }: { label: string; value: boolean; onChange: (value: boolean) => void }) {
   return (
     <View style={styles.settingRow}>
       <Text style={styles.settingLabel}>{label}</Text>

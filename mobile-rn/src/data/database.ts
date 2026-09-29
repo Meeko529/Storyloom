@@ -159,7 +159,9 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
       name TEXT NOT NULL,
       model_id TEXT NOT NULL,
       temperature REAL NOT NULL DEFAULT 0.8,
-      max_tokens INTEGER NOT NULL DEFAULT 4096
+      max_tokens INTEGER NOT NULL DEFAULT 4096,
+      supports_tools INTEGER NOT NULL DEFAULT 1,
+      supports_vision INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -314,6 +316,22 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
       AND NOT EXISTS (SELECT 1 FROM models WHERE models.id = app_settings.value);
   `);
   await migrateChatSessions(database);
+  await migrateModelCapabilities(database);
+}
+
+/**
+ * 模型能力标注：判断某个模型能否调用工具、能否读取图片。
+ * 老库补列时给保守默认——工具调用默认支持（历史行为就是按支持处理），视觉默认不支持。
+ */
+async function migrateModelCapabilities(database: SQLite.SQLiteDatabase): Promise<void> {
+  const columns = await database.getAllAsync<{ name: string }>("PRAGMA table_info(models)");
+  const names = new Set(columns.map((column) => column.name));
+  if (!names.has("supports_tools")) {
+    await database.execAsync("ALTER TABLE models ADD COLUMN supports_tools INTEGER NOT NULL DEFAULT 1;");
+  }
+  if (!names.has("supports_vision")) {
+    await database.execAsync("ALTER TABLE models ADD COLUMN supports_vision INTEGER NOT NULL DEFAULT 0;");
+  }
 }
 
 export function getDatabase(): Promise<SQLite.SQLiteDatabase> {

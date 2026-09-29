@@ -28,7 +28,8 @@ import {
   type ProviderAdvanced,
 } from "@/llm/provider-advanced";
 import type { RootStackParamList } from "@/navigation/types";
-import { SettingsCategoryScreen, type SettingsCategory } from "@/screens/settings-category-screen";
+import { SettingsCategoryScreen, ToggleRow, type SettingsCategory } from "@/screens/settings-category-screen";
+import { guessModelCapabilities } from "@/settings/model-capabilities";
 import { useAppStore } from "@/store/app-store";
 import { colors, radius, spacing } from "@/theme";
 import type { Model, Provider, ProviderType } from "@/types";
@@ -183,6 +184,10 @@ export function SettingsScreen() {
   const [apiKey, setApiKey] = useState("");
   const [selectedProviderId, setSelectedProviderId] = useState("");
   const [modelName, setModelName] = useState("");
+  const [supportsTools, setSupportsTools] = useState(true);
+  const [supportsVision, setSupportsVision] = useState(false);
+  // 用户手动改过开关后，就不再按模型名自动覆盖，避免输入模型 ID 时把用户的判断冲掉
+  const [capabilityTouched, setCapabilityTouched] = useState(false);
   const [modelId, setModelId] = useState("");
   const [temperature, setTemperature] = useState("0.8");
   const [maxTokens, setMaxTokens] = useState(String(DEFAULT_MAX_OUTPUT_TOKENS));
@@ -252,6 +257,25 @@ export function SettingsScreen() {
 
   const activePreset = PROVIDER_PRESETS.find((item) => item.id === presetId) ?? null;
 
+  /** 按模型名推测能力；用户手动改过开关后不再自动覆盖。 */
+  const capabilityGuess = useMemo(() => guessModelCapabilities(modelId), [modelId]);
+
+  const applyCapabilityGuess = (value: string) => {
+    const guess = guessModelCapabilities(value);
+    setSupportsTools(guess.supportsTools);
+    setSupportsVision(guess.supportsVision);
+    setCapabilityTouched(false);
+  };
+
+  const handleModelIdChange = (value: string) => {
+    setModelId(value);
+    if (!capabilityTouched) {
+      const guess = guessModelCapabilities(value);
+      setSupportsTools(guess.supportsTools);
+      setSupportsVision(guess.supportsVision);
+    }
+  };
+
   const addProvider = async () => {
     if (!providerName.trim() || !baseUrl.trim() || !apiKey.trim()) return;
     setSaving(true);
@@ -292,6 +316,8 @@ export function SettingsScreen() {
         modelId,
         temperature: parsedTemperature,
         maxTokens: parsedMaxTokens,
+        supportsTools,
+        supportsVision,
       });
       if (!activeModelId) {
         await setSetting("activeModelId", model.id);
@@ -546,7 +572,7 @@ export function SettingsScreen() {
           ))}
         </View>
         <Field label="模型名称（显示用）" value={modelName} onChangeText={setModelName} placeholder="Gemini 2.5 Pro" />
-        <Field label="模型 ID（服务商提供的标识）" value={modelId} onChangeText={setModelId} autoCapitalize="none" placeholder={activePreset?.modelHint || "gemini-2.5-pro"} />
+        <Field label="模型 ID（服务商提供的标识）" value={modelId} onChangeText={handleModelIdChange} autoCapitalize="none" placeholder={activePreset?.modelHint || "gemini-2.5-pro"} />
         <Text style={styles.fieldHint}>
           需与服务商提供的模型标识完全一致{activePreset?.modelHint ? `，例如 ${activePreset.label} 可填 ${activePreset.modelHint}` : ""}；也可通过上方「获取模型」自动载入。
         </Text>
@@ -554,6 +580,12 @@ export function SettingsScreen() {
         <Text style={styles.fieldHint}>取值范围 0 ~ 2，数值越大生成结果越发散；小说创作建议 0.7 ~ 0.9。</Text>
         <Field label="最大输出 Token 数" value={maxTokens} onChangeText={setMaxTokens} keyboardType="number-pad" />
         <Text style={styles.fieldHint}>单次回复长度，不是上下文窗口；1M 上下文模型保持 {DEFAULT_MAX_OUTPUT_TOKENS} 或按需填写，最高 {MAX_CONFIGURED_OUTPUT_TOKENS}。</Text>
+        <Text style={styles.sectionTitle}>模型能力</Text>
+        <ToggleRow label="支持工具调用" value={supportsTools} onChange={(value) => { setSupportsTools(value); setCapabilityTouched(true); }} />
+        <Text style={styles.fieldHint}>关闭后助手只能对话，无法读取或写入作品内容。</Text>
+        <ToggleRow label="支持图片输入" value={supportsVision} onChange={(value) => { setSupportsVision(value); setCapabilityTouched(true); }} />
+        <Text style={styles.fieldHint}>决定能否给助手发送图片；纯文本模型请关闭。</Text>
+        <Text style={styles.fieldHint}>当前判断依据：{capabilityGuess.reason}</Text>        <Button label="按模型名重新推测" variant="secondary" onPress={() => applyCapabilityGuess(modelId)} />
         <Button label="添加模型" onPress={() => void addModel()} disabled={!selectedProviderId || !modelName.trim() || !modelId.trim()} loading={savingModel} />
       </View>
 

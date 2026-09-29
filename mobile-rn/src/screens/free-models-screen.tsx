@@ -8,6 +8,7 @@ import { Button, Field, Header, Screen } from "@/components/ui";
 import { saveModel, saveProvider, setSetting } from "@/data/repositories";
 import { DEFAULT_MAX_OUTPUT_TOKENS } from "@/llm/limits";
 import { FREE_MODELS, type FreeModel } from "@/settings/free-models";
+import { guessModelCapabilities } from "@/settings/model-capabilities";
 import { colors, spacing } from "@/theme";
 
 /**
@@ -38,6 +39,9 @@ export function FreeModelsScreen({ onBack }: { onBack: () => void }) {
         modelId: item.modelId,
         temperature: 0.8,
         maxTokens: DEFAULT_MAX_OUTPUT_TOKENS,
+        // 免费档多为纯文本小模型：工具调用能力按模型名推测，视觉一律不开启（用户可事后在模型设置里改）
+        supportsTools: guessModelCapabilities(item.modelId).supportsTools,
+        supportsVision: guessModelCapabilities(item.modelId).supportsVision,
       });
       await setSetting("activeModelId", model.id);
       setApiKey("");

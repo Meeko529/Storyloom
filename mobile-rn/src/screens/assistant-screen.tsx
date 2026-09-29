@@ -929,6 +929,14 @@ export function AssistantScreen() {
             </Pressable>
           </View>
         ) : null}
+        {selection && selection.model.supportsTools === false ? (
+          <View style={styles.capabilityNotice}>
+            <Ionicons name="alert-circle-outline" size={16} color={colors.danger} />
+            <Text style={styles.capabilityNoticeText}>
+              当前模型已标注为不支持工具调用，助手只能对话、无法读写作品内容。若该模型实际支持，可在「设置 → 模型与供应商」中改回。
+            </Text>
+          </View>
+        ) : null}
         <View style={styles.composer}>
           {attachments.length ? (
             <View style={styles.attachmentRow}>
@@ -1307,4 +1315,6 @@ const styles = StyleSheet.create({
   sheetRowValue: { color: colors.text, fontSize: 13, fontWeight: "600" },
   contextNote: { marginTop: spacing.sm, marginHorizontal: spacing.lg, color: colors.textMuted, fontSize: 12, lineHeight: 18 },
   contextNoteWarning: { color: colors.danger },
+  capabilityNotice: { flexDirection: "row", alignItems: "flex-start", gap: 6, marginHorizontal: spacing.md, marginBottom: spacing.xs, padding: spacing.sm, borderRadius: 8, backgroundColor: "#FCEBEB" },
+  capabilityNoticeText: { flex: 1, color: colors.danger, fontSize: 12, lineHeight: 18 },
 });

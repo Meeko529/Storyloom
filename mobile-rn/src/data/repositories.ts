@@ -26,7 +26,16 @@ type ProjectRow = { id: string; title: string; description: string; created_at: 
 type VolumeRow = { id: string; project_id: string; title: string; order_index: number };
 type ChapterRow = { id: string; project_id: string; volume_id: string; title: string; content: string; order_index: number; updated_at: string };
 type ProviderRow = { id: string; name: string; type: ProviderType; base_url: string; api_key_ref: string; created_at: string };
-type ModelRow = { id: string; provider_id: string; name: string; model_id: string; temperature: number; max_tokens: number };
+type ModelRow = {
+  id: string;
+  provider_id: string;
+  name: string;
+  model_id: string;
+  temperature: number;
+  max_tokens: number;
+  supports_tools?: number | null;
+  supports_vision?: number | null;
+};
 type SessionRow = { id: string; project_id: string; title: string; model_id: string | null; created_at: string; updated_at: string };
 type MessageRow = {
   id: string;
@@ -85,6 +94,9 @@ const mapProvider = (row: ProviderRow): Provider => ({
 const mapModel = (row: ModelRow): Model => ({
   id: row.id, providerId: row.provider_id, name: row.name, modelId: row.model_id,
   temperature: row.temperature, maxTokens: row.max_tokens,
+  // 缺列（老库尚未迁移完成）时按「支持工具、不支持视觉」处理，与迁移默认值一致
+  supportsTools: row.supports_tools === null || row.supports_tools === undefined ? true : row.supports_tools !== 0,
+  supportsVision: row.supports_vision === null || row.supports_vision === undefined ? false : row.supports_vision !== 0,
 });
 const mapSession = (row: SessionRow): ChatSession => ({
   id: row.id, projectId: row.project_id, title: row.title, modelId: row.model_id,
@@ -513,13 +525,24 @@ export async function saveModel(input: Omit<Model, "id"> & { id?: string }): Pro
   if (!provider) throw new Error("供应商不存在");
   await db.withExclusiveTransactionAsync(async (txn) => {
     await txn.runAsync(`
-      INSERT INTO models(id, provider_id, name, model_id, temperature, max_tokens)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO models(id, provider_id, name, model_id, temperature, max_tokens, supports_tools, supports_vision)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET provider_id = excluded.provider_id, name = excluded.name,
-        model_id = excluded.model_id, temperature = excluded.temperature, max_tokens = excluded.max_tokens
-    `, id, input.providerId, name, modelId, input.temperature, input.maxTokens);
+        model_id = excluded.model_id, temperature = excluded.temperature, max_tokens = excluded.max_tokens,
+        supports_tools = excluded.supports_tools, supports_vision = excluded.supports_vision
+    `, id, input.providerId, name, modelId, input.temperature, input.maxTokens,
+    input.supportsTools ? 1 : 0, input.supportsVision ? 1 : 0);
   });
-  return { id, providerId: input.providerId, name, modelId, temperature: input.temperature, maxTokens: input.maxTokens };
+  return {
+    id,
+    providerId: input.providerId,
+    name,
+    modelId,
+    temperature: input.temperature,
+    maxTokens: input.maxTokens,
+    supportsTools: input.supportsTools,
+    supportsVision: input.supportsVision,
+  };
 }
 
 export async function listChatSessions(projectId: string): Promise<ChatSession[]> {
