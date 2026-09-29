@@ -107,9 +107,15 @@ export function ProjectsScreen() {
   /** 打开作品操作面板（封面与删除统一收在这里，避免误触直接删）。 */
   const openProjectMenu = (project: Project) => setMenuProject(project);
 
-  /** 从相册选图作为作品封面，复制到应用私有目录后写入作品记录。 */
+  /**
+   * 从相册选图作为作品封面。
+   *
+   * 每次用**唯一文件名**：旧实现固定写成 `<作品id>.<扩展名>`，第二次换封面时文件内容确实换了、
+   * 但路径（URI）没变，图片组件按 URI 缓存 → 界面上「没反应」。路径一变，缓存自然失效。
+   */
   const pickProjectCover = async (project: Project) => {
     setMenuProject(null);
+    let picked: ImagePicker.ImagePickerAsset | null = null;
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"],
@@ -118,18 +124,41 @@ export function ProjectsScreen() {
         quality: 0.9,
       });
       if (result.canceled || !result.assets[0]) return;
-      const asset = result.assets[0];
-      const directory = new Directory(Paths.document, "project-covers");
-      directory.create({ intermediates: true, idempotent: true });
-      const extension = (asset.fileName?.split(".").pop() ?? "jpg").toLowerCase();
-      const target = new File(directory, `${project.id}.${extension}`);
-      if (target.exists) target.delete();
-      new File(asset.uri).copy(target);
-      await updateProjectCover(project.id, target.uri);
-      setProjects((current) => current.map((item) => (item.id === project.id ? { ...item, coverPath: target.uri } : item)));
+      picked = result.assets[0];
     } catch (pickError) {
-      Alert.alert("无法读取图片", pickError instanceof Error ? pickError.message : String(pickError));
+      Alert.alert("无法打开相册", pickError instanceof Error ? pickError.message : String(pickError));
+      return;
     }
+
+    const directory = new Directory(Paths.document, "project-covers");
+    let target: File;
+    try {
+      directory.create({ intermediates: true, idempotent: true });
+      const extension = (picked.fileName?.split(".").pop() ?? "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+      target = new File(directory, `${project.id}-${Date.now()}.${extension}`);
+      new File(picked.uri).copy(target);
+    } catch (copyError) {
+      Alert.alert("封面保存失败", `图片已选中，但写入本地目录失败：${copyError instanceof Error ? copyError.message : String(copyError)}`);
+      return;
+    }
+
+    try {
+      await updateProjectCover(project.id, target.uri);
+    } catch (dbError) {
+      Alert.alert("封面保存失败", `图片已复制，但写入作品记录失败：${dbError instanceof Error ? dbError.message : String(dbError)}`);
+      return;
+    }
+
+    // 记录写成功后再清理旧封面；清理失败不影响本次结果。
+    if (project.coverPath) {
+      try {
+        const previous = new File(project.coverPath);
+        if (previous.exists) previous.delete();
+      } catch {
+        // 旧文件可能正被系统占用，下次覆盖时再清理
+      }
+    }
+    setProjects((current) => current.map((item) => (item.id === project.id ? { ...item, coverPath: target.uri } : item)));
   };
 
   /** 移除封面：清空记录并删掉本地图片文件。 */
