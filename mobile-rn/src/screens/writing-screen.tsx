@@ -19,7 +19,7 @@ import {
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 import { Button, EmptyState, ErrorNotice, Field, Header, Screen, SheetBackdrop } from "@/components/ui";
-import { exportNovel, type ExportScope } from "@/lib/export";
+import { exportNovel, type ExportScope, type NovelExportFormat } from "@/lib/export";
 import { countNotesUnder, deleteNotesUnder } from "@/data/note-repositories";
 import {
   createChapter,
@@ -97,6 +97,7 @@ export function WritingScreen() {
   const [nameSaving, setNameSaving] = useState(false);
   const [exportPickerVisible, setExportPickerVisible] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportFormat, setExportFormat] = useState<NovelExportFormat>("markdown");
   const [editing, setEditing] = useState(false);
   const [styleProfiles, setStyleProfiles] = useState<StyleProfile[]>([]);
   const [activeStyleProfile, setActiveStyleProfileState] = useState<StyleProfile | null>(null);
@@ -536,7 +537,7 @@ export function WritingScreen() {
         listVolumes(project.id),
         listChapters(project.id),
       ]);
-      await exportNovel({ project, volumes: freshVolumes, chapters: freshChapters, scope, chapterId, volumeId });
+      await exportNovel({ project, volumes: freshVolumes, chapters: freshChapters, scope, chapterId, volumeId, format: exportFormat });
       setExportPickerVisible(false);
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : String(exportError));
@@ -793,6 +794,25 @@ export function WritingScreen() {
                 <Ionicons name="close" size={24} color={colors.textMuted} />
               </Pressable>
             </View>
+            <View style={styles.exportFormatRow}>
+              <Pressable
+                accessibilityLabel="导出为 Markdown"
+                onPress={() => setExportFormat("markdown")}
+                style={[styles.exportFormatChip, exportFormat === "markdown" && styles.exportFormatChipActive]}
+              >
+                <Text style={[styles.exportFormatText, exportFormat === "markdown" && styles.exportFormatTextActive]}>Markdown</Text>
+              </Pressable>
+              <Pressable
+                accessibilityLabel="导出为纯文本"
+                onPress={() => setExportFormat("txt")}
+                style={[styles.exportFormatChip, exportFormat === "txt" && styles.exportFormatChipActive]}
+              >
+                <Text style={[styles.exportFormatText, exportFormat === "txt" && styles.exportFormatTextActive]}>纯文本（TXT）</Text>
+              </Pressable>
+            </View>
+            <Text style={styles.exportFormatHint}>
+              {exportFormat === "txt" ? "不带任何标记符号，适合直接投稿或粘贴到别处。" : "带标题层级，适合再排版或导入其他写作工具。"}
+            </Text>
             <Pressable disabled={exporting || !activeChapter} onPress={() => { void handleExport("chapter"); }} style={[styles.exportOption, (!activeChapter || exporting) && styles.exportOptionDisabled]}>
               <Ionicons name="document-text-outline" size={23} color={activeChapter ? colors.primary : colors.textMuted} />
               <View style={styles.exportOptionText}>
@@ -996,6 +1016,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   exportHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingLeft: spacing.sm },
+  exportFormatRow: { flexDirection: "row", gap: spacing.xs, paddingHorizontal: spacing.sm, paddingBottom: spacing.xs },
+  exportFormatChip: { flex: 1, minHeight: 38, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, backgroundColor: colors.surface },
+  exportFormatChipActive: { borderColor: colors.primary, backgroundColor: "#E6F3EF" },
+  exportFormatText: { color: colors.textMuted, fontSize: 13, fontWeight: "600" },
+  exportFormatTextActive: { color: colors.primary },
+  exportFormatHint: { paddingHorizontal: spacing.sm, paddingBottom: spacing.xs, color: colors.textMuted, fontSize: 12, lineHeight: 17 },
   exportOption: { minHeight: 66, flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   exportOptionDisabled: { opacity: 0.48 },
   exportOptionText: { flex: 1, minWidth: 0, gap: 2 },

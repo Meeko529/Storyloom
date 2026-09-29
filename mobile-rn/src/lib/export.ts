@@ -7,6 +7,8 @@ import type { Chapter, Character, Project, Volume, WorldInfo, WorldInfoEntry } f
 
 export type ExportScope = "chapter" | "volume" | "book";
 export type LibraryExportFormat = "json" | "markdown";
+/** 正文导出格式：Markdown 便于再排版，纯文本便于直接投稿或粘贴到别处。 */
+export type NovelExportFormat = "markdown" | "txt";
 
 export interface ExportNovelInput {
   project: Project;
@@ -15,6 +17,7 @@ export interface ExportNovelInput {
   scope: ExportScope;
   chapterId?: string;
   volumeId?: string;
+  format?: NovelExportFormat;
 }
 
 function safeFileName(value: string): string {
@@ -25,19 +28,28 @@ function renderChapter(chapter: Chapter): string {
   return `### ${chapter.title}\n\n${chapter.content.trim() || "（本章暂无正文）"}\n`;
 }
 
+/** 纯文本渲染：不写任何标记符号，章节标题独立成行，正文原样保留。 */
+function renderChapterText(chapter: Chapter): string {
+  return `${chapter.title}\n\n${chapter.content.trim() || "（本章暂无正文）"}\n`;
+}
+
 export async function exportNovel(input: ExportNovelInput): Promise<void> {
+  const format: NovelExportFormat = input.format === "txt" ? "txt" : "markdown";
+  const isPlainText = format === "txt";
   const orderedVolumes = [...input.volumes].sort((left, right) => left.orderIndex - right.orderIndex);
   const orderedChapters = [...input.chapters].sort((left, right) => left.orderIndex - right.orderIndex);
+  const renderBody = isPlainText ? renderChapterText : renderChapter;
   let title = input.project.title;
-  let markdown = `# ${input.project.title}\n\n`;
+  // 纯文本不写 # 记号：书名与卷名各占一行，其余保持正文原样，方便直接投稿或粘贴。
+  let content = isPlainText ? `${input.project.title}\n\n` : `# ${input.project.title}\n\n`;
 
-  if (input.project.description.trim()) markdown += `${input.project.description.trim()}\n\n`;
+  if (input.project.description.trim()) content += `${input.project.description.trim()}\n\n`;
 
   if (input.scope === "chapter") {
     const chapter = orderedChapters.find((item) => item.id === input.chapterId);
     if (!chapter) throw new Error("当前章节不存在，无法导出");
     title = chapter.title;
-    markdown += renderChapter(chapter);
+    content += renderBody(chapter);
   } else {
     const volumes = input.scope === "volume"
       ? orderedVolumes.filter((volume) => volume.id === input.volumeId)
@@ -45,22 +57,23 @@ export async function exportNovel(input: ExportNovelInput): Promise<void> {
     if (!volumes.length) throw new Error(input.scope === "volume" ? "当前卷不存在，无法导出" : "作品没有可导出的卷");
     if (input.scope === "volume") title = volumes[0].title;
     for (const volume of volumes) {
-      markdown += `## ${volume.title}\n\n`;
+      content += isPlainText ? `${volume.title}\n\n` : `## ${volume.title}\n\n`;
       const volumeChapters = orderedChapters.filter((chapter) => chapter.volumeId === volume.id);
-      markdown += volumeChapters.length
-        ? volumeChapters.map(renderChapter).join("\n")
+      content += volumeChapters.length
+        ? volumeChapters.map(renderBody).join("\n")
         : "（本卷暂无章节）\n\n";
     }
   }
 
   const scopeLabel = input.scope === "chapter" ? "章节" : input.scope === "volume" ? "卷" : "全书";
   const timestamp = new Date().toISOString().replace(/[.:]/g, "-");
-  const file = new File(Paths.cache, `${safeFileName(input.project.title)}-${safeFileName(title)}-${scopeLabel}-${timestamp}.md`);
+  const extension = isPlainText ? "txt" : "md";
+  const file = new File(Paths.cache, `${safeFileName(input.project.title)}-${safeFileName(title)}-${scopeLabel}-${timestamp}.${extension}`);
   if (file.exists) file.delete();
-  file.write(markdown);
+  file.write(content);
   if (!(await Sharing.isAvailableAsync())) throw new Error("当前设备不支持系统分享，请稍后重试");
   await Sharing.shareAsync(file.uri, {
-    mimeType: "text/markdown",
+    mimeType: isPlainText ? "text/plain" : "text/markdown",
     dialogTitle: `导出${scopeLabel}`,
   });
 }

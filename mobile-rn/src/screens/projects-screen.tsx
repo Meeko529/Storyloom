@@ -11,7 +11,7 @@ import { ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, StyleSheet
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 import { Button, EmptyState, ErrorNotice, Field, Header, Screen } from "@/components/ui";
-import { createProject, deleteProject, listProjects, updateProjectCover } from "@/data/repositories";
+import { createProject, deleteProject, getProjectStats, listProjects, updateProjectCover, updateProjectInfo, type ProjectStats } from "@/data/repositories";
 import type { RootStackParamList, RootTabParamList } from "@/navigation/types";
 import { useAppStore } from "@/store/app-store";
 import { colors, radius, spacing } from "@/theme";
@@ -26,6 +26,12 @@ export function ProjectsScreen() {
   const [showCreate, setShowCreate] = useState(false);
   /** 操作面板对应的作品；null 表示面板未打开 */
   const [menuProject, setMenuProject] = useState<Project | null>(null);
+  /** 「编辑信息」面板 */
+  const [infoProject, setInfoProject] = useState<Project | null>(null);
+  const [infoTitle, setInfoTitle] = useState("");
+  const [infoDescription, setInfoDescription] = useState("");
+  const [infoStats, setInfoStats] = useState<ProjectStats | null>(null);
+  const [infoSaving, setInfoSaving] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
@@ -67,6 +73,34 @@ export function ProjectsScreen() {
       setError(submitError instanceof Error ? submitError.message : String(submitError));
     } finally {
       setSaving(false);
+    }
+  };
+
+  /** 打开「编辑信息」面板，顺带载入作品规模统计。 */
+  const openProjectInfo = (project: Project) => {
+    setMenuProject(null);
+    setInfoProject(project);
+    setInfoTitle(project.title);
+    setInfoDescription(project.description);
+    setInfoStats(null);
+    void getProjectStats(project.id).then(setInfoStats).catch(() => setInfoStats(null));
+  };
+
+  const saveProjectInfo = async () => {
+    if (!infoProject || !infoTitle.trim()) return;
+    setInfoSaving(true);
+    try {
+      await updateProjectInfo(infoProject.id, infoTitle, infoDescription);
+      setProjects((current) => current.map((item) => (
+        item.id === infoProject.id
+          ? { ...item, title: infoTitle.trim(), description: infoDescription.trim() }
+          : item
+      )));
+      setInfoProject(null);
+    } catch (infoError) {
+      Alert.alert("保存失败", infoError instanceof Error ? infoError.message : String(infoError));
+    } finally {
+      setInfoSaving(false);
     }
   };
 
@@ -205,10 +239,37 @@ export function ProjectsScreen() {
         )}
       />
 
+      <Modal visible={infoProject !== null} transparent animationType="slide" onRequestClose={() => setInfoProject(null)}>
+        <KeyboardAvoidingView style={styles.menuBackdrop} behavior="height" automaticOffset>
+          <View style={styles.infoSheet}>
+            <Text style={styles.menuTitle}>编辑信息</Text>
+            <Field label="作品名" value={infoTitle} onChangeText={setInfoTitle} autoFocus />
+            <Field label="简介" value={infoDescription} onChangeText={setInfoDescription} multiline style={styles.infoDescription} />
+            <Text style={styles.infoStats}>
+              {infoStats
+                ? `${infoStats.volumes} 卷 · ${infoStats.chapters} 章 · ${infoStats.characters.toLocaleString()} 字`
+                : "正在统计作品规模…"}
+            </Text>
+            <View style={styles.infoActions}>
+              <Button label="取消" variant="secondary" onPress={() => setInfoProject(null)} />
+              <Button label={infoSaving ? "保存中" : "保存"} onPress={() => void saveProjectInfo()} disabled={!infoTitle.trim()} loading={infoSaving} />
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       <Modal visible={menuProject !== null} transparent animationType="slide" onRequestClose={() => setMenuProject(null)}>
         <Pressable onPress={() => setMenuProject(null)} style={styles.menuBackdrop}>
           <View style={styles.menuSheet}>
             <Text numberOfLines={1} style={styles.menuTitle}>{menuProject?.title ?? ""}</Text>
+            <Pressable
+              accessibilityLabel="编辑信息"
+              onPress={() => { if (menuProject) openProjectInfo(menuProject); }}
+              style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+            >
+              <Ionicons name="create-outline" size={20} color={colors.primary} />
+              <Text style={styles.menuRowText}>编辑信息</Text>
+            </Pressable>
             <Pressable
               accessibilityLabel="上传封面"
               onPress={() => { if (menuProject) void pickProjectCover(menuProject); }}
@@ -282,6 +343,10 @@ const styles = StyleSheet.create({
   menuRowPressed: { backgroundColor: colors.surfaceMuted },
   menuRowText: { color: colors.text, fontSize: 15, fontWeight: "600" },
   menuRowDanger: { color: colors.danger },
+  infoSheet: { padding: spacing.lg, gap: spacing.sm, borderTopLeftRadius: radius.md, borderTopRightRadius: radius.md, backgroundColor: colors.background },
+  infoDescription: { minHeight: 96 },
+  infoStats: { color: colors.textMuted, fontSize: 13 },
+  infoActions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm },
   rowText: { flex: 1, gap: spacing.xs },
   rowAction: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   title: { color: colors.text, fontSize: 17, fontWeight: "700" },

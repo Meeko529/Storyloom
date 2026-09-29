@@ -221,6 +221,39 @@ export async function createProject(title: string, description = ""): Promise<Pr
   return { id, title: normalizedTitle, description: normalizedDescription, coverPath: null, createdAt: now, updatedAt: now };
 }
 
+/** 更新作品名称与简介；名称不允许为空。 */
+export async function updateProjectInfo(id: string, title: string, description: string): Promise<void> {
+  const db = await getDatabase();
+  const normalizedTitle = requiredText(title, "作品名");
+  await db.runAsync(
+    "UPDATE projects SET title = ?, description = ?, updated_at = ? WHERE id = ?",
+    normalizedTitle, description.trim(), new Date().toISOString(), id,
+  );
+}
+
+export interface ProjectStats {
+  volumes: number;
+  chapters: number;
+  characters: number;
+}
+
+/** 作品规模统计：卷数、章数、正文字数（按字符计，与写作页的字数口径一致）。 */
+export async function getProjectStats(projectId: string): Promise<ProjectStats> {
+  const db = await getDatabase();
+  const [volumeRow, chapterRow] = await Promise.all([
+    db.getFirstAsync<{ value: number }>("SELECT COUNT(*) AS value FROM volumes WHERE project_id = ?", projectId),
+    db.getFirstAsync<{ value: number; characters: number | null }>(
+      "SELECT COUNT(*) AS value, SUM(LENGTH(content)) AS characters FROM chapters WHERE project_id = ?",
+      projectId,
+    ),
+  ]);
+  return {
+    volumes: volumeRow?.value ?? 0,
+    chapters: chapterRow?.value ?? 0,
+    characters: chapterRow?.characters ?? 0,
+  };
+}
+
 /** 设置或清除作品封面；只存本地路径，图片文件由调用方负责写入与删除。 */
 export async function updateProjectCover(id: string, coverPath: string | null): Promise<void> {
   const db = await getDatabase();
