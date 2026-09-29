@@ -975,7 +975,7 @@ export function AssistantScreen() {
           <View pointerEvents="none" style={styles.mascot}>
             <Image
               source={require("../../assets/images/mascot-cat.png")}
-              style={styles.mascotImage}
+              style={[styles.mascotImage, { tintColor: colors.primary }]}
             />
           </View>
           {attachments.length ? (
