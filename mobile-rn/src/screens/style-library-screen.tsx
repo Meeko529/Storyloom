@@ -46,7 +46,9 @@ function formatBytes(value: number): string {
 }
 
 function formatName(source: StyleSource): string {
-  return source.format === "epub" ? "EPUB" : source.format === "markdown" ? "Markdown" : "TXT";
+  if (source.format === "epub") return "EPUB";
+  if (source.format === "docx") return "Word";
+  return source.format === "markdown" ? "Markdown" : "TXT";
 }
 
 export function StyleLibraryScreen() {
@@ -370,7 +372,7 @@ export function StyleLibraryScreen() {
         ListEmptyComponent={(
           <EmptyState
             title="还没有参考小说"
-            action={<Button label="导入 TXT / Markdown / EPUB" onPress={() => void importBook()} disabled={busy} loading={busy} />}
+            action={<Button label="导入 TXT / Markdown / EPUB / Word" onPress={() => void importBook()} disabled={busy} loading={busy} />}
           />
         )}
         renderItem={({ item }) => (

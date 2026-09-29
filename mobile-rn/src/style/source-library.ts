@@ -12,6 +12,7 @@ import {
   getStyleSource,
 } from "@/data/style-repositories";
 import { createId } from "@/lib/id";
+import { readDocxText } from "@/lib/docx";
 import { sha256File } from "@/lib/sha256";
 import {
   ANALYSIS_PASSAGE_COUNT,
@@ -86,7 +87,8 @@ function formatForExtension(extension: string): StyleSourceFormat {
   if (extension === "txt") return "txt";
   if (extension === "md" || extension === "markdown") return "markdown";
   if (extension === "epub") return "epub";
-  throw new Error("仅支持 TXT、Markdown 和 EPUB 文件");
+  if (extension === "docx") return "docx";
+  throw new Error("仅支持 TXT、Markdown、EPUB 和 Word（.docx）文件");
 }
 
 function decodeText(bytes: Uint8Array): string {
@@ -263,7 +265,9 @@ export async function importStyleSource(): Promise<StyleSource | null> {
   const bytes = await inputFile.bytes();
   const extracted = format === "epub"
     ? extractEpub(bytes)
-    : { title: null, text: normalizeText(decodeText(bytes)) };
+    : format === "docx"
+      ? { title: null, text: normalizeText(readDocxText(bytes)) }
+      : { title: null, text: normalizeText(decodeText(bytes)) };
   if (!extracted.text) throw new Error("文件中没有可读取的正文");
   if (extracted.text.length > MAX_EXTRACTED_CHARACTERS) throw new Error("正文超过 800 万字符限制");
   const id = createId();

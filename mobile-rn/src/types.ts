@@ -42,7 +42,7 @@ export interface Note {
   updatedAt: string;
 }
 
-export type StyleSourceFormat = "txt" | "markdown" | "epub";
+export type StyleSourceFormat = "txt" | "markdown" | "epub" | "docx";
 
 export interface StyleSource {
   id: string;
