@@ -103,9 +103,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.meeko529.storyloom'
+    namespace 'com.meekoriela.storyloom'
    defaultConfig {
-       applicationId 'com.meeko529.storyloom'
+       applicationId 'com.meekoriela.storyloom'
         minSdkVersion 28
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

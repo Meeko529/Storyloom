@@ -1,4 +1,4 @@
-package com.meeko529.storyloom
+package com.meekoriela.storyloom
 
 import android.os.Build
 import android.os.Bundle

@@ -10,7 +10,7 @@
       "supportsTablet": true
     },
     "android": {
-      "package": "com.meeko529.storyloom",
+      "package": "com.meekoriela.storyloom",
       "versionCode": 1,
       "softwareKeyboardLayoutMode": "resize",
       "blockedPermissions": [

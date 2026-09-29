@@ -1,4 +1,4 @@
-package com.meeko529.storyloom
+package com.meekoriela.storyloom
 
 import android.app.Application
 import android.content.res.Configuration
