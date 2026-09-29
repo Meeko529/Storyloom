@@ -254,6 +254,40 @@ export async function getProjectStats(projectId: string): Promise<ProjectStats> 
   };
 }
 
+/** 一次性取全部作品的规模统计（书架列表用，避免逐作品查询）。 */
+export async function getProjectStatsMap(): Promise<Record<string, ProjectStats>> {
+  const db = await getDatabase();
+  const volumeRows = await db.getAllAsync<{ project_id: string; value: number }>(
+    "SELECT project_id, COUNT(*) AS value FROM volumes GROUP BY project_id",
+  );
+  const chapterRows = await db.getAllAsync<{ project_id: string; value: number; characters: number | null }>(
+    "SELECT project_id, COUNT(*) AS value, SUM(LENGTH(content)) AS characters FROM chapters GROUP BY project_id",
+  );
+  const map: Record<string, ProjectStats> = {};
+  for (const row of volumeRows) {
+    map[row.project_id] = { volumes: row.value, chapters: 0, characters: 0 };
+  }
+  for (const row of chapterRows) {
+    const entry = map[row.project_id] ?? { volumes: 0, chapters: 0, characters: 0 };
+    entry.chapters = row.value;
+    entry.characters = row.characters ?? 0;
+    map[row.project_id] = entry;
+  }
+  return map;
+}
+
+/** 一次取一个作品各会话的消息条数（对话目录用），key 为会话 id。 */
+export async function getChatMessageCounts(projectId: string): Promise<Record<string, number>> {
+  const db = await getDatabase();
+  const rows = await db.getAllAsync<{ session_id: string; value: number }>(
+    "SELECT session_id, COUNT(*) AS value FROM chat_messages WHERE project_id = ? GROUP BY session_id",
+    projectId,
+  );
+  const map: Record<string, number> = {};
+  for (const row of rows) map[row.session_id] = row.value;
+  return map;
+}
+
 /** 设置或清除作品封面；只存本地路径，图片文件由调用方负责写入与删除。 */
 export async function updateProjectCover(id: string, coverPath: string | null): Promise<void> {
   const db = await getDatabase();

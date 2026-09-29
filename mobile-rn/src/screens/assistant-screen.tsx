@@ -5,6 +5,7 @@ import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Image,
   ActivityIndicator,
   Alert,
   FlatList,
@@ -36,11 +37,12 @@ import {
 import { editorFontFamily, readChatPrefs } from "@/settings/editor-prefs";
 import { AgentQuestionSheet, AgentTraceView } from "@/components/agent-run-view";
 import { MessageActionBar } from "@/components/message-action-bar";
-import { Button, EmptyState, ErrorNotice, Header, Screen, SheetBackdrop } from "@/components/ui";
+import { Button, EmptyState, ErrorNotice, Field, Header, Screen, SheetBackdrop } from "@/components/ui";
 import {
   addMessage,
   createChatSession,
   deleteChatSession,
+  getChatMessageCounts,
   deleteMessagesFrom,
   getProject,
   getProviderApiKey,
@@ -242,6 +244,9 @@ export function AssistantScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sessionPickerVisible, setSessionPickerVisible] = useState(false);
+  const [messageCounts, setMessageCounts] = useState<Record<string, number>>({});
+  const [renaming, setRenaming] = useState<ChatSession | null>(null);
+  const [renameTitle, setRenameTitle] = useState("");
   const [modelPickerVisible, setModelPickerVisible] = useState(false);
   const [stylePickerVisible, setStylePickerVisible] = useState(false);
   const [updatingStyle, setUpdatingStyle] = useState(false);
@@ -446,6 +451,34 @@ export function AssistantScreen() {
       requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false }));
     } catch (switchError) {
       setError(switchError instanceof Error ? switchError.message : String(switchError));
+    }
+  };
+
+  // 消息条数：面板打开或会话增删时刷新（目录里要显示每条对话聊了多少）。
+  useEffect(() => {
+    if (!projectId || !sessionPickerVisible) return;
+    void getChatMessageCounts(projectId).then(setMessageCounts).catch(() => setMessageCounts({}));
+  }, [projectId, sessionPickerVisible, sessions.length]);
+
+  /** 新建对话前先确认：误触会立刻切走，且每次点都会新建。 */
+  const confirmNewSession = () => {
+    if (!projectId || sending) return;
+    Alert.alert("新建对话？", "当前对话不会被删除，之后可在管理对话里找回。", [
+      { text: "取消", style: "cancel" },
+      { text: "新建", onPress: () => void newSession() },
+    ]);
+  };
+
+  /** 重命名对话：改完即时更新列表与当前会话标题。 */
+  const saveRename = async () => {
+    if (!renaming || !renameTitle.trim()) return;
+    try {
+      const updated = await updateChatSession({ id: renaming.id, title: renameTitle.trim() });
+      setSessions((current) => current.map((session) => (session.id === updated.id ? updated : session)));
+      if (activeSession?.id === updated.id) setActiveSession(updated);
+      setRenaming(null);
+    } catch (renameError) {
+      setError(renameError instanceof Error ? renameError.message : String(renameError));
     }
   };
 
@@ -793,7 +826,7 @@ export function AssistantScreen() {
                 {formatUsagePercent(contextUsage.ratio)}
               </Text>
             </Pressable>
-            <Pressable accessibilityLabel="新建对话" disabled={sending} onPress={() => void newSession()} style={styles.iconButton}>
+            <Pressable accessibilityLabel="新建对话" disabled={sending} onPress={confirmNewSession} style={styles.iconButton}>
               <Ionicons name="create-outline" size={22} color={colors.primary} />
             </Pressable>
             <Pressable accessibilityLabel="管理对话" disabled={sending} onPress={() => setSessionPickerVisible(true)} style={styles.iconButton}>
@@ -937,7 +970,14 @@ export function AssistantScreen() {
             </Text>
           </View>
         ) : null}
+        {/* 吉祥物挂件：坐在输入框上沿，纯装饰不响应点击。可在设置里换/关（外观主题批）。 */}
         <View style={styles.composer}>
+          <View pointerEvents="none" style={styles.mascot}>
+            <Image
+              source={require("../../assets/images/mascot-cat.png")}
+              style={styles.mascotImage}
+            />
+          </View>
           {attachments.length ? (
             <View style={styles.attachmentRow}>
               {attachments.map((item) => (
@@ -1043,6 +1083,24 @@ export function AssistantScreen() {
         </SheetBackdrop>
       </Modal>
 
+      <Modal visible={renaming !== null} transparent animationType="fade" onRequestClose={() => setRenaming(null)}>
+        <SheetBackdrop onPress={() => setRenaming(null)}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>重命名对话</Text>
+              <Pressable accessibilityLabel="关闭重命名" onPress={() => setRenaming(null)} style={styles.iconButton}>
+                <Ionicons name="close" size={24} color={colors.textMuted} />
+              </Pressable>
+            </View>
+            <Field label="对话标题" value={renameTitle} onChangeText={setRenameTitle} autoFocus />
+            <View style={styles.renameActions}>
+              <Button label="取消" variant="secondary" onPress={() => setRenaming(null)} />
+              <Button label="保存" onPress={() => void saveRename()} disabled={!renameTitle.trim()} />
+            </View>
+          </View>
+        </SheetBackdrop>
+      </Modal>
+
       <Modal visible={sessionPickerVisible} transparent animationType="slide" onRequestClose={() => setSessionPickerVisible(false)}>
         <SheetBackdrop onPress={() => setSessionPickerVisible(false)}>
           <View style={styles.sheet}>
@@ -1051,13 +1109,14 @@ export function AssistantScreen() {
                 <Text style={styles.sheetTitle} numberOfLines={1}>{project?.title ?? "当前作品"}</Text>
                 <Text style={styles.sheetSubtitle}>{sessions.length} 个对话</Text>
               </View>
-              <Pressable accessibilityLabel="新建对话" onPress={() => void newSession()} style={styles.iconButton}>
-                <Ionicons name="add" size={25} color={colors.primary} />
-              </Pressable>
               <Pressable accessibilityLabel="关闭对话列表" onPress={() => setSessionPickerVisible(false)} style={styles.iconButton}>
                 <Ionicons name="close" size={24} color={colors.textMuted} />
               </Pressable>
             </View>
+            <Pressable accessibilityLabel="新建对话" onPress={confirmNewSession} style={styles.newSessionButton}>
+              <Ionicons name="add" size={20} color="#FFFFFF" />
+              <Text style={styles.newSessionButtonText}>新建对话</Text>
+            </Pressable>
             <FlatList
               data={sessions}
               keyExtractor={(item) => item.id}
@@ -1071,8 +1130,11 @@ export function AssistantScreen() {
                     <Ionicons name={selected ? "radio-button-on" : "radio-button-off"} size={20} color={selected ? colors.primary : colors.textMuted} />
                     <View style={styles.sheetRowText}>
                       <Text style={styles.sheetRowTitle} numberOfLines={1}>{item.title}</Text>
-                      <Text style={styles.sheetRowMeta} numberOfLines={1}>{sessionModel?.name ?? "未选择模型"} · {formatSessionTime(item.updatedAt)}</Text>
+                      <Text style={styles.sheetRowMeta} numberOfLines={1}>{sessionModel?.name ?? "未选择模型"} · {messageCounts[item.id] ?? 0} 条消息 · {formatSessionTime(item.updatedAt)}</Text>
                     </View>
+                    <Pressable accessibilityLabel={`重命名对话 ${item.title}`} onPress={(event) => { event.stopPropagation(); setRenaming(item); setRenameTitle(item.title); }} style={styles.iconButton}>
+                      <Ionicons name="pencil-outline" size={17} color={colors.textMuted} />
+                    </Pressable>
                     <Pressable accessibilityLabel={`删除对话 ${item.title}`} onPress={(event) => { event.stopPropagation(); confirmDeleteSession(item); }} style={styles.iconButton}>
                       <Ionicons name="trash-outline" size={19} color={colors.danger} />
                     </Pressable>
@@ -1250,6 +1312,8 @@ const styles = StyleSheet.create({
   errorDetailsLabel: { color: colors.textMuted, fontSize: 12, fontWeight: "600" },
   errorDetailsText: { color: colors.textMuted, fontSize: 12, lineHeight: 17 },
   composer: { gap: spacing.xs, padding: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, backgroundColor: colors.surface },
+  mascot: { position: "absolute", right: 14, top: -40, width: 40, height: 44 },
+  mascotImage: { width: "100%", height: "100%", resizeMode: "contain" },
   composerRow: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm },
   editingBanner: { minHeight: 36, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   undoBanner: { minHeight: 36, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.md, paddingVertical: spacing.xs, backgroundColor: "#E6F3EF", borderRadius: 8 },
@@ -1301,7 +1365,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  sheetRowActive: { backgroundColor: colors.surfaceMuted },
+  newSessionButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: 11, marginBottom: 10 },
+  newSessionButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "700" },
+  renameActions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm },
+    sheetRowActive: { backgroundColor: colors.surfaceMuted },
   sheetRowText: { flex: 1, minWidth: 0 },
   sheetRowTitle: { color: colors.text, fontSize: 15, fontWeight: "600" },
   sheetRowMeta: { marginTop: 3, color: colors.textMuted, fontSize: 12 },

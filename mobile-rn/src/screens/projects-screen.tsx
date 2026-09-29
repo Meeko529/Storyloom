@@ -11,16 +11,17 @@ import { ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, StyleSheet
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 import { Button, EmptyState, ErrorNotice, Field, Header, Screen } from "@/components/ui";
-import { createProject, deleteProject, getProjectStats, listProjects, updateProjectCover, updateProjectInfo, type ProjectStats } from "@/data/repositories";
+import { createProject, deleteProject, getProjectStats, getProjectStatsMap, listProjects, updateProjectCover, updateProjectInfo, type ProjectStats } from "@/data/repositories";
 import type { RootStackParamList, RootTabParamList } from "@/navigation/types";
 import { useAppStore } from "@/store/app-store";
-import { colors, radius, spacing } from "@/theme";
+import { colors, radius, shadow, spacing } from "@/theme";
 import type { Project } from "@/types";
 
 export function ProjectsScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList>>();
   const rootNavigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [projects, setProjects] = useState<Project[]>([]);
+  const [stats, setStats] = useState<Record<string, ProjectStats>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -42,6 +43,7 @@ export function ProjectsScreen() {
     setError(null);
     try {
       setProjects(await listProjects());
+      setStats(await getProjectStatsMap());
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : String(loadError));
     } finally {
@@ -106,6 +108,14 @@ export function ProjectsScreen() {
 
   /** 打开作品操作面板（封面与删除统一收在这里，避免误触直接删）。 */
   const openProjectMenu = (project: Project) => setMenuProject(project);
+
+/** 书架封面卡：无封面时按书名哈希取低饱和底色 + 首字水印（借鉴 QMAI / 51码字的书封卡片）。 */
+const COVER_COLORS = ["#2E6B5A", "#8A5A4A", "#4A5B8A", "#7A6A4A", "#5F4A6B"];
+function coverColor(title: string): string {
+  let hash = 0;
+  for (let index = 0; index < title.length; index += 1) hash = (hash * 31 + title.charCodeAt(index)) >>> 0;
+  return COVER_COLORS[hash % COVER_COLORS.length];
+}
 
   /**
    * 从相册选图作为作品封面。
@@ -250,7 +260,7 @@ export function ProjectsScreen() {
         ListEmptyComponent={loading ? <ActivityIndicator color={colors.primary} /> : <EmptyState title="还没有作品" action={<Button label="新建作品" onPress={() => setShowCreate(true)} />} />}
         renderItem={({ item }) => (
           <Pressable onPress={() => openProject(item)} onLongPress={() => openProjectMenu(item)} style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
-            <View style={styles.cover}>
+            <View style={[styles.cover, { backgroundColor: coverColor(item.title) }]}>
               {item.coverPath ? (
                 <Image source={{ uri: item.coverPath }} style={styles.coverImage} resizeMethod="resize" />
               ) : (
@@ -259,7 +269,13 @@ export function ProjectsScreen() {
             </View>
             <View style={styles.rowText}>
               <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
-              <Text style={styles.description} numberOfLines={2}>{item.description || "暂无简介"}</Text>
+              <Text style={styles.description} numberOfLines={1}>{item.description || "暂无简介"}</Text>
+              <View style={styles.statsRow}>
+                <View style={styles.meter}>
+                  <View style={[styles.meterFill, { width: `${Math.min(100, Math.round(((stats[item.id]?.characters ?? 0) / 100000) * 100))}%` }]} />
+                </View>
+                <Text style={styles.statsText}>{(() => { const st = stats[item.id]; return st ? `${st.volumes} 卷 · ${st.chapters} 章 · ${(st.characters / 10000).toFixed(1)} 万字` : "…"; })()}</Text>
+              </View>
             </View>
             <Pressable accessibilityLabel={`《${item.title}》的操作`} onPress={(event) => { event.stopPropagation(); openProjectMenu(item); }} hitSlop={8} style={styles.rowAction}>
               <Ionicons name="ellipsis-horizontal" size={20} color={colors.textMuted} />
@@ -360,11 +376,15 @@ const styles = StyleSheet.create({
   list: { paddingVertical: spacing.sm },
   emptyList: { flexGrow: 1 },
   separator: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginLeft: 88 },
-  row: { minHeight: 92, flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+  row: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md, marginBottom: spacing.sm, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, ...shadow.card },
   rowPressed: { backgroundColor: colors.surfaceMuted },
-  cover: { width: 56, height: 68, borderRadius: radius.sm, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", overflow: "hidden" },
-  coverImage: { width: 56, height: 68 },
-  coverText: { color: "#FFFFFF", fontSize: 24, fontWeight: "700" },
+  cover: { width: 62, height: 82, borderRadius: 10, alignItems: "flex-end", justifyContent: "center", overflow: "hidden" },
+  coverImage: { width: 62, height: 82 },
+  coverText: { color: "rgba(255,255,255,0.85)", fontSize: 42, fontWeight: "800", lineHeight: 48, marginBottom: 2 },
+  statsRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: 6 },
+  meter: { width: 56, height: 4, borderRadius: 99, backgroundColor: colors.surfaceMuted, overflow: "hidden" },
+  meterFill: { height: 4, borderRadius: 99, backgroundColor: colors.primary },
+  statsText: { flex: 1, color: colors.textMuted, fontSize: 10.5 },
   menuBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay },
   menuSheet: { paddingVertical: spacing.sm, paddingBottom: spacing.xl, borderTopLeftRadius: radius.md, borderTopRightRadius: radius.md, backgroundColor: colors.background },
   menuTitle: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xs, color: colors.textMuted, fontSize: 13 },

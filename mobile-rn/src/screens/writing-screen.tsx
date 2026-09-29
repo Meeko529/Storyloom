@@ -575,7 +575,8 @@ export function WritingScreen() {
           </View>
         )}
       />
-      <KeyboardAvoidingView style={styles.flex} behavior="height" automaticOffset>
+            {/* behavior=height 会按键盘高度设置容器高度；键盘收起后偶发拿到过期高度，导致编辑器整体变矮（footer 悬在页面中部）。padding 型只加内边距，收起即恢复。 */}
+      <KeyboardAvoidingView style={styles.flex} behavior="padding" automaticOffset>
         <Pressable accessibilityRole="button" onPress={() => setChapterPickerVisible(true)} style={styles.chapterPicker}>
           <View style={styles.chapterPickerTextGroup}>
             <Text numberOfLines={1} style={styles.chapterPickerVolume}>{activeVolume?.title ?? "作品目录"}</Text>
