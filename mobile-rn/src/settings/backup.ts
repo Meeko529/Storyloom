@@ -51,6 +51,12 @@ function styleLibraryDirectory(): Directory {
   return new Directory(Paths.document, STYLE_LIBRARY_DIRECTORY_NAME);
 }
 
+/** 本地图片目录：作品封面与角色头像。不进备份会在换机后变成空白。 */
+const IMAGE_DIRECTORY_PREFIXES: Array<{ directoryName: string; prefix: string }> = [
+  { directoryName: "project-covers", prefix: "project-covers/" },
+  { directoryName: "character-images", prefix: "character-images/" },
+];
+
 /** 收集一个目录下的全部文件（不递归子目录），zip 内路径前缀为 prefix。 */
 async function collectDirectoryFiles(directory: Directory, prefix: string, entries: Record<string, Uint8Array>): Promise<number> {
   if (!directory.exists) return 0;
@@ -83,6 +89,9 @@ export async function exportBackup(): Promise<BackupSummary> {
     }
   }
   fileCount += await collectDirectoryFiles(styleLibraryDirectory(), "style-library/", entries);
+  for (const { directoryName, prefix } of IMAGE_DIRECTORY_PREFIXES) {
+    fileCount += await collectDirectoryFiles(new Directory(Paths.document, directoryName), prefix, entries);
+  }
 
   const manifest: BackupManifest = {
     app: "storyloom",
@@ -173,8 +182,23 @@ export async function restoreBackup(source: File): Promise<RestoreSummary> {
     target.write(archive[name]);
   }
 
+  // 图片目录与文风库同样处理：只覆盖备份里有的文件。
+  let imageFileCount = 0;
+  for (const { directoryName, prefix } of IMAGE_DIRECTORY_PREFIXES) {
+    const names = Object.keys(archive).filter((name) => name.startsWith(prefix));
+    if (!names.length) continue;
+    const directoryInstance = new Directory(Paths.document, directoryName);
+    directoryInstance.create({ intermediates: true, idempotent: true });
+    for (const name of names) {
+      const target = new File(directoryInstance, name.slice(prefix.length));
+      if (target.exists) target.delete();
+      target.write(archive[name]);
+      imageFileCount += 1;
+    }
+  }
+
   return {
-    fileCount: sqliteEntryNames.length + libraryEntryNames.length,
+    fileCount: sqliteEntryNames.length + libraryEntryNames.length + imageFileCount,
     exportedAt: manifest.exportedAt,
     appVersion: manifest.appVersion,
   };

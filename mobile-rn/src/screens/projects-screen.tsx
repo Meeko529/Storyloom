@@ -1,15 +1,17 @@
 // 本文件基于 OpenFicM（Apache-2.0）修改
 // 改动说明见仓库根目录 docs/上游来源与改动清单.md
+import * as ImagePicker from "expo-image-picker";
+import { Directory, File, Paths } from "expo-file-system";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 import { Button, EmptyState, ErrorNotice, Field, Header, Screen } from "@/components/ui";
-import { createProject, deleteProject, listProjects } from "@/data/repositories";
+import { createProject, deleteProject, listProjects, updateProjectCover } from "@/data/repositories";
 import type { RootStackParamList, RootTabParamList } from "@/navigation/types";
 import { useAppStore } from "@/store/app-store";
 import { colors, radius, spacing } from "@/theme";
@@ -22,6 +24,8 @@ export function ProjectsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  /** 操作面板对应的作品；null 表示面板未打开 */
+  const [menuProject, setMenuProject] = useState<Project | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
@@ -63,6 +67,49 @@ export function ProjectsScreen() {
       setError(submitError instanceof Error ? submitError.message : String(submitError));
     } finally {
       setSaving(false);
+    }
+  };
+
+  /** 打开作品操作面板（封面与删除统一收在这里，避免误触直接删）。 */
+  const openProjectMenu = (project: Project) => setMenuProject(project);
+
+  /** 从相册选图作为作品封面，复制到应用私有目录后写入作品记录。 */
+  const pickProjectCover = async (project: Project) => {
+    setMenuProject(null);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [3, 4],
+        quality: 0.9,
+      });
+      if (result.canceled || !result.assets[0]) return;
+      const asset = result.assets[0];
+      const directory = new Directory(Paths.document, "project-covers");
+      directory.create({ intermediates: true, idempotent: true });
+      const extension = (asset.fileName?.split(".").pop() ?? "jpg").toLowerCase();
+      const target = new File(directory, `${project.id}.${extension}`);
+      if (target.exists) target.delete();
+      new File(asset.uri).copy(target);
+      await updateProjectCover(project.id, target.uri);
+      setProjects((current) => current.map((item) => (item.id === project.id ? { ...item, coverPath: target.uri } : item)));
+    } catch (pickError) {
+      Alert.alert("无法读取图片", pickError instanceof Error ? pickError.message : String(pickError));
+    }
+  };
+
+  /** 移除封面：清空记录并删掉本地图片文件。 */
+  const removeProjectCover = async (project: Project) => {
+    setMenuProject(null);
+    try {
+      if (project.coverPath) {
+        const file = new File(project.coverPath);
+        if (file.exists) file.delete();
+      }
+      await updateProjectCover(project.id, null);
+      setProjects((current) => current.map((item) => (item.id === project.id ? { ...item, coverPath: null } : item)));
+    } catch (removeError) {
+      Alert.alert("无法移除封面", removeError instanceof Error ? removeError.message : String(removeError));
     }
   };
 
@@ -139,18 +186,62 @@ export function ProjectsScreen() {
         }
         ListEmptyComponent={loading ? <ActivityIndicator color={colors.primary} /> : <EmptyState title="还没有作品" action={<Button label="新建作品" onPress={() => setShowCreate(true)} />} />}
         renderItem={({ item }) => (
-          <Pressable onPress={() => openProject(item)} onLongPress={() => confirmDelete(item)} style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
-            <View style={styles.cover}><Text style={styles.coverText}>{item.title.slice(0, 1)}</Text></View>
+          <Pressable onPress={() => openProject(item)} onLongPress={() => openProjectMenu(item)} style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
+            <View style={styles.cover}>
+              {item.coverPath ? (
+                <Image source={{ uri: item.coverPath }} style={styles.coverImage} />
+              ) : (
+                <Text style={styles.coverText}>{item.title.slice(0, 1)}</Text>
+              )}
+            </View>
             <View style={styles.rowText}>
               <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
               <Text style={styles.description} numberOfLines={2}>{item.description || "暂无简介"}</Text>
             </View>
-            <Pressable accessibilityLabel="删除作品" onPress={(event) => { event.stopPropagation(); confirmDelete(item); }} hitSlop={8} style={styles.rowAction}>
+            <Pressable accessibilityLabel={`《${item.title}》的操作`} onPress={(event) => { event.stopPropagation(); openProjectMenu(item); }} hitSlop={8} style={styles.rowAction}>
               <Ionicons name="ellipsis-horizontal" size={20} color={colors.textMuted} />
             </Pressable>
           </Pressable>
         )}
       />
+
+      <Modal visible={menuProject !== null} transparent animationType="slide" onRequestClose={() => setMenuProject(null)}>
+        <Pressable onPress={() => setMenuProject(null)} style={styles.menuBackdrop}>
+          <View style={styles.menuSheet}>
+            <Text numberOfLines={1} style={styles.menuTitle}>{menuProject?.title ?? ""}</Text>
+            <Pressable
+              accessibilityLabel="上传封面"
+              onPress={() => { if (menuProject) void pickProjectCover(menuProject); }}
+              style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+            >
+              <Ionicons name="image-outline" size={20} color={colors.primary} />
+              <Text style={styles.menuRowText}>{menuProject?.coverPath ? "更换封面" : "上传封面"}</Text>
+            </Pressable>
+            {menuProject?.coverPath ? (
+              <Pressable
+                accessibilityLabel="移除封面"
+                onPress={() => { if (menuProject) void removeProjectCover(menuProject); }}
+                style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+              >
+                <Ionicons name="close-circle-outline" size={20} color={colors.textMuted} />
+                <Text style={styles.menuRowText}>移除封面</Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              accessibilityLabel="删除作品"
+              onPress={() => {
+                const target = menuProject;
+                setMenuProject(null);
+                if (target) confirmDelete(target);
+              }}
+              style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+            >
+              <Ionicons name="trash-outline" size={20} color={colors.danger} />
+              <Text style={[styles.menuRowText, styles.menuRowDanger]}>删除作品</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
 
       <Modal visible={showCreate} transparent animationType="fade" onRequestClose={() => setShowCreate(false)}>
         <KeyboardAvoidingView style={styles.modalBackdrop} behavior="height" automaticOffset>
@@ -181,8 +272,16 @@ const styles = StyleSheet.create({
   separator: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginLeft: 88 },
   row: { minHeight: 92, flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
   rowPressed: { backgroundColor: colors.surfaceMuted },
-  cover: { width: 56, height: 68, borderRadius: radius.sm, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+  cover: { width: 56, height: 68, borderRadius: radius.sm, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  coverImage: { width: 56, height: 68 },
   coverText: { color: "#FFFFFF", fontSize: 24, fontWeight: "700" },
+  menuBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay },
+  menuSheet: { paddingVertical: spacing.sm, paddingBottom: spacing.xl, borderTopLeftRadius: radius.md, borderTopRightRadius: radius.md, backgroundColor: colors.background },
+  menuTitle: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xs, color: colors.textMuted, fontSize: 13 },
+  menuRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 52, paddingHorizontal: spacing.lg },
+  menuRowPressed: { backgroundColor: colors.surfaceMuted },
+  menuRowText: { color: colors.text, fontSize: 15, fontWeight: "600" },
+  menuRowDanger: { color: colors.danger },
   rowText: { flex: 1, gap: spacing.xs },
   rowAction: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   title: { color: colors.text, fontSize: 17, fontWeight: "700" },

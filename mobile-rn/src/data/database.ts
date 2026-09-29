@@ -76,6 +76,7 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
       id TEXT PRIMARY KEY NOT NULL,
       title TEXT NOT NULL,
       description TEXT NOT NULL DEFAULT '',
+      cover_path TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -317,6 +318,15 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
   `);
   await migrateChatSessions(database);
   await migrateModelCapabilities(database);
+  await migrateProjectCover(database);
+}
+
+/** 作品封面：老库补一列，封面图片本身存在应用私有目录，不落库。 */
+async function migrateProjectCover(database: SQLite.SQLiteDatabase): Promise<void> {
+  const columns = await database.getAllAsync<{ name: string }>("PRAGMA table_info(projects)");
+  if (!columns.some((column) => column.name === "cover_path")) {
+    await database.execAsync("ALTER TABLE projects ADD COLUMN cover_path TEXT;");
+  }
 }
 
 /**

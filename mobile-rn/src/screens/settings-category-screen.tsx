@@ -1400,7 +1400,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
             disabled={backupBusy}
           />
           <Text style={styles.sectionHint}>
-            备份包含全部作品、章节、笔记、智能体、技能与设置；不包含 API Key（恢复后需重新填写）与可重新下载的内容包资源。恢复会覆盖当前数据。
+            备份包含全部作品、章节、笔记、智能体、技能、设置，以及作品封面与角色头像；不包含 API Key（恢复后需重新填写）与可重新下载的内容包资源。恢复会覆盖当前数据。
           </Text>
           {appUpdateError ? <Text style={styles.progressText}>{appUpdateError}</Text> : null}
           <View style={styles.subsectionDivider} />

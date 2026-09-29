@@ -4,6 +4,8 @@ export interface Project {
   id: string;
   title: string;
   description: string;
+  /** 封面图片的本地路径；未设置封面时为 null */
+  coverPath: string | null;
   createdAt: string;
   updatedAt: string;
 }

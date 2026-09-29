@@ -22,7 +22,14 @@ import { getDatabase } from "./database";
 const MAX_EDITOR_CONTENT_CHARACTERS = 100_000;
 const MAX_EDITOR_CONTENT_LINES = 2_000;
 
-type ProjectRow = { id: string; title: string; description: string; created_at: string; updated_at: string };
+type ProjectRow = {
+  id: string;
+  title: string;
+  description: string;
+  cover_path?: string | null;
+  created_at: string;
+  updated_at: string;
+};
 type VolumeRow = { id: string; project_id: string; title: string; order_index: number };
 type ChapterRow = { id: string; project_id: string; volume_id: string; title: string; content: string; order_index: number; updated_at: string };
 type ProviderRow = { id: string; name: string; type: ProviderType; base_url: string; api_key_ref: string; created_at: string };
@@ -78,7 +85,9 @@ type WorldInfoEntryRow = {
 };
 
 const mapProject = (row: ProjectRow): Project => ({
-  id: row.id, title: row.title, description: row.description, createdAt: row.created_at, updatedAt: row.updated_at,
+  id: row.id, title: row.title, description: row.description,
+  coverPath: row.cover_path ?? null,
+  createdAt: row.created_at, updatedAt: row.updated_at,
 });
 const mapVolume = (row: VolumeRow): Volume => ({
   id: row.id, projectId: row.project_id, title: row.title, orderIndex: row.order_index,
@@ -209,11 +218,16 @@ export async function createProject(title: string, description = ""): Promise<Pr
       chapterId, id, "第一章",
     );
   });
-  return { id, title: normalizedTitle, description: normalizedDescription, createdAt: now, updatedAt: now };
+  return { id, title: normalizedTitle, description: normalizedDescription, coverPath: null, createdAt: now, updatedAt: now };
 }
 
-export async function deleteProject(id: string): Promise<void> {
+/** 设置或清除作品封面；只存本地路径，图片文件由调用方负责写入与删除。 */
+export async function updateProjectCover(id: string, coverPath: string | null): Promise<void> {
   const db = await getDatabase();
+  await db.runAsync("UPDATE projects SET cover_path = ?, updated_at = ? WHERE id = ?", coverPath, new Date().toISOString(), id);
+}
+
+export async function deleteProject(id: string): Promise<void> {  const db = await getDatabase();
   await db.withExclusiveTransactionAsync(async (txn) => {
     await txn.runAsync("DELETE FROM chapter_fts WHERE project_id = ?", id);
     await txn.runAsync("DELETE FROM projects WHERE id = ?", id);
