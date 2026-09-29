@@ -48,11 +48,12 @@ export function Header({ title, action, onBack }: { title: string; action?: Reac
   );
 }
 
-export function Field({ label, ...props }: TextInputProps & { label: string }) {
+export function Field({ label, style, ...props }: TextInputProps & { label: string }) {
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
-      <TextInput placeholderTextColor={colors.textMuted} style={styles.input} {...props} />
+      {/* 用数组合并样式：调用方传 style 时只做覆盖（例如多行高度），不会丢掉输入框自己的边框与内边距 */}
+      <TextInput placeholderTextColor={colors.textMuted} {...props} style={[styles.input, style]} />
     </View>
   );
 }

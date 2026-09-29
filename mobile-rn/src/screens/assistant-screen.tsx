@@ -26,6 +26,13 @@ import {
   saveAttachmentAsNote,
   type TextAttachment,
 } from "@/agent/attachments";
+import {
+  computeContextUsage,
+  CONTEXT_WINDOW_KEY,
+  DEFAULT_CONTEXT_WINDOW_TOKENS,
+  formatUsagePercent,
+  normalizeContextWindow,
+} from "@/agent/context-usage";
 import { editorFontFamily, readChatPrefs } from "@/settings/editor-prefs";
 import { AgentQuestionSheet, AgentTraceView } from "@/components/agent-run-view";
 import { MessageActionBar } from "@/components/message-action-bar";
@@ -384,6 +391,10 @@ export function AssistantScreen() {
     fontSize: 16,
     lineHeight: 24,
   });
+  // 上下文用量：窗口上限与保留条数来自设置，估算随消息变化实时更新
+  const [contextWindow, setContextWindow] = useState(DEFAULT_CONTEXT_WINDOW_TOKENS);
+  const [historyLimit, setHistoryLimit] = useState(30);
+  const [contextSheetVisible, setContextSheetVisible] = useState(false);
   useFocusEffect(useCallback(() => {
     void (async () => {
       const prefs = await readChatPrefs();
@@ -392,6 +403,12 @@ export function AssistantScreen() {
         lineHeight: Math.round(prefs.fontSize * 1.5),
         fontFamily: editorFontFamily(prefs.fontFamily),
       });
+      const [windowValue, limitValue] = await Promise.all([
+        getSetting(CONTEXT_WINDOW_KEY),
+        getSetting("context.historyLimit"),
+      ]);
+      setContextWindow(normalizeContextWindow(windowValue));
+      setHistoryLimit(Math.max(1, Number(limitValue) || 30));
     })();
   }, []));
   useFocusEffect(useCallback(() => {
@@ -754,14 +771,28 @@ export function AssistantScreen() {
     }
   };
   if (!projectId) return <Screen><EmptyState title="请先从书架选择一部作品" /></Screen>;
-  if (loading) return <Screen><Header title="创作助手" /><View style={styles.loading}><ActivityIndicator color={colors.primary} /></View></Screen>;
+  const contextUsage = useMemo(
+    () => computeContextUsage(messages, contextWindow, historyLimit),
+    [contextWindow, historyLimit, messages],
+  );
 
+  if (loading) return <Screen><Header title="创作助手" /><View style={styles.loading}><ActivityIndicator color={colors.primary} /></View></Screen>;
   return (
     <Screen>
       <Header
         title="创作助手"
         action={
           <View style={styles.headerActions}>
+            <Pressable
+              accessibilityLabel="查看上下文占用"
+              onPress={() => setContextSheetVisible(true)}
+              style={styles.contextButton}
+            >
+              <Ionicons name="pie-chart-outline" size={18} color={contextUsage.overflow ? colors.danger : colors.primary} />
+              <Text style={[styles.contextButtonText, contextUsage.overflow && styles.contextButtonTextOverflow]}>
+                {formatUsagePercent(contextUsage.ratio)}
+              </Text>
+            </Pressable>
             <Pressable accessibilityLabel="新建对话" disabled={sending} onPress={() => void newSession()} style={styles.iconButton}>
               <Ionicons name="create-outline" size={22} color={colors.primary} />
             </Pressable>
@@ -955,6 +986,54 @@ export function AssistantScreen() {
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      <Modal visible={contextSheetVisible} transparent animationType="slide" onRequestClose={() => setContextSheetVisible(false)}>
+        <SheetBackdrop onPress={() => setContextSheetVisible(false)}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetHeader}>
+              <View style={styles.sheetTitleWrap}>
+                <Text style={styles.sheetTitle}>上下文占用</Text>
+                <Text style={styles.sheetSubtitle}>按字符估算，供观察趋势，非精确计费</Text>
+              </View>
+              <Pressable accessibilityLabel="关闭上下文占用" onPress={() => setContextSheetVisible(false)} style={styles.iconButton}>
+                <Ionicons name="close" size={24} color={colors.textMuted} />
+              </Pressable>
+            </View>
+            <View style={styles.contextMeter}>
+              <View style={[styles.contextMeterFill, {
+                width: `${Math.min(100, Math.round(contextUsage.ratio * 100))}%`,
+                backgroundColor: contextUsage.overflow ? colors.danger : colors.primary,
+              }]} />
+            </View>
+            <Text style={styles.contextPercent}>{formatUsagePercent(contextUsage.ratio)}</Text>
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetRowLabel}>估算占用</Text>
+              <Text style={styles.sheetRowValue}>{contextUsage.estimatedTokens.toLocaleString()} / {contextUsage.windowTokens.toLocaleString()} Token</Text>
+            </View>
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetRowLabel}>参与对话的消息</Text>
+              <Text style={styles.sheetRowValue}>{contextUsage.keptMessages} 条 · {contextUsage.characters.toLocaleString()} 字</Text>
+            </View>
+            <View style={styles.sheetRow}>
+              <Text style={styles.sheetRowLabel}>会话消息总数</Text>
+              <Text style={styles.sheetRowValue}>{contextUsage.messages} 条</Text>
+            </View>
+            {contextUsage.droppedMessages > 0 ? (
+              <Text style={styles.contextNote}>
+                超出「保留最近消息数」的 {contextUsage.droppedMessages} 条不会发送给模型；需要它们参与时，可在设置 → 上下文提高保留条数。
+              </Text>
+            ) : null}
+            {contextUsage.overflow ? (
+              <Text style={[styles.contextNote, styles.contextNoteWarning]}>
+                已超出所填窗口上限。继续追加内容可能导致模型截断或报错，建议新建对话，或调高「模型上下文窗口」的数值。
+              </Text>
+            ) : null}
+            <Text style={styles.contextNote}>
+              估算含约 1500 Token 的固定开销（系统提示、技能说明与工具定义）。实际占用随模型分词器不同会有偏差。
+            </Text>
+          </View>
+        </SheetBackdrop>
+      </Modal>
 
       <Modal visible={sessionPickerVisible} transparent animationType="slide" onRequestClose={() => setSessionPickerVisible(false)}>
         <SheetBackdrop onPress={() => setSessionPickerVisible(false)}>
@@ -1218,4 +1297,14 @@ const styles = StyleSheet.create({
   sheetRowText: { flex: 1, minWidth: 0 },
   sheetRowTitle: { color: colors.text, fontSize: 15, fontWeight: "600" },
   sheetRowMeta: { marginTop: 3, color: colors.textMuted, fontSize: 12 },
+  contextButton: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: spacing.sm, minHeight: 34, borderRadius: radius.sm },
+  contextButtonText: { color: colors.primary, fontSize: 13, fontWeight: "600" },
+  contextButtonTextOverflow: { color: colors.danger },
+  contextMeter: { height: 8, marginHorizontal: spacing.lg, borderRadius: 4, overflow: "hidden", backgroundColor: colors.surfaceMuted },
+  contextMeterFill: { height: 8, borderRadius: 4 },
+  contextPercent: { marginTop: spacing.sm, marginHorizontal: spacing.lg, color: colors.text, fontSize: 26, fontWeight: "700" },
+  sheetRowLabel: { color: colors.textMuted, fontSize: 13 },
+  sheetRowValue: { color: colors.text, fontSize: 13, fontWeight: "600" },
+  contextNote: { marginTop: spacing.sm, marginHorizontal: spacing.lg, color: colors.textMuted, fontSize: 12, lineHeight: 18 },
+  contextNoteWarning: { color: colors.danger },
 });

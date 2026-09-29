@@ -1,3 +1,5 @@
+import * as ImagePicker from "expo-image-picker";
+import { Directory, File, Paths } from "expo-file-system";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -6,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Modal,
   Pressable,
   StyleSheet,
@@ -18,6 +21,7 @@ import { KeyboardAwareScrollView, KeyboardAvoidingView } from "react-native-keyb
 import { Button, EmptyState, ErrorNotice, Field, Header, Screen } from "@/components/ui";
 import { deleteCharacter, getProject, listCharacters, saveCharacter } from "@/data/repositories";
 import { exportCharacters, type LibraryExportFormat } from "@/lib/export";
+import { createId } from "@/lib/id";
 import type { RootStackParamList } from "@/navigation/types";
 import { useAppStore } from "@/store/app-store";
 import { colors, radius, spacing } from "@/theme";
@@ -38,6 +42,7 @@ export function CharactersScreen() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [isFavorited, setIsFavorited] = useState(false);
+  const [imagePath, setImagePath] = useState("");
 
   const load = useCallback(async () => {
     if (!projectId) {
@@ -68,8 +73,31 @@ export function CharactersScreen() {
     setEditing(character ?? null);
     setName(character?.name ?? "");
     setDescription(character?.description ?? "");
+    setImagePath(character?.imagePath ?? "");
     setIsFavorited(character?.isFavorited ?? false);
     setEditorVisible(true);
+  };
+
+  /** 从相册选一张图，复制到应用私有目录后作为角色头像（卸载应用会一起清除）。 */
+  const pickCharacterImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.9,
+      });
+      if (result.canceled || !result.assets[0]) return;
+      const asset = result.assets[0];
+      const directory = new Directory(Paths.document, "character-images");
+      directory.create({ intermediates: true, idempotent: true });
+      const extension = (asset.fileName?.split(".").pop() ?? "jpg").toLowerCase();
+      const target = new File(directory, `${createId()}.${extension}`);
+      new File(asset.uri).copy(target);
+      setImagePath(target.uri);
+    } catch (pickError) {
+      Alert.alert("无法读取图片", pickError instanceof Error ? pickError.message : String(pickError));
+    }
   };
 
   const submit = async () => {
@@ -82,6 +110,7 @@ export function CharactersScreen() {
         projectId,
         name,
         description,
+        imagePath: imagePath || null,
         isFavorited,
       });
       setCharacters((current) => {
@@ -178,7 +207,13 @@ export function CharactersScreen() {
         ListEmptyComponent={loading ? <ActivityIndicator color={colors.primary} /> : <EmptyState title="还没有角色" action={<Button label="新建角色" onPress={() => openEditor()} />} />}
         renderItem={({ item }) => (
           <Pressable onPress={() => openEditor(item)} style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
-            <View style={styles.avatar}><Text style={styles.avatarText}>{item.name.slice(0, 1)}</Text></View>
+            <View style={styles.avatar}>
+              {item.imagePath ? (
+                <Image source={{ uri: item.imagePath }} style={styles.avatarImage} />
+              ) : (
+                <Text style={styles.avatarText}>{item.name.slice(0, 1)}</Text>
+              )}
+            </View>
             <View style={styles.rowText}>
               <View style={styles.nameLine}>
                 <Text numberOfLines={1} style={styles.name}>{item.name}</Text>
@@ -215,6 +250,19 @@ export function CharactersScreen() {
               contentContainerStyle={styles.form}
             >
               <Field label="角色名称" value={name} onChangeText={setName} autoFocus={!editing} />
+              <View style={styles.imageRow}>
+                {imagePath ? (
+                  <Image source={{ uri: imagePath }} style={styles.imagePreview} />
+                ) : (
+                  <View style={[styles.imagePreview, styles.imagePlaceholder]}>
+                    <Ionicons name="person-outline" size={26} color={colors.textMuted} />
+                  </View>
+                )}
+                <View style={styles.imageActions}>
+                  <Button label={imagePath ? "更换图片" : "选择图片"} variant="secondary" onPress={() => void pickCharacterImage()} />
+                  {imagePath ? <Button label="移除图片" variant="secondary" onPress={() => setImagePath("")} /> : null}
+                </View>
+              </View>
               <Field label="角色设定" value={description} onChangeText={setDescription} multiline textAlignVertical="top" style={styles.descriptionInput} placeholder="外貌、性格、经历、关系和写作注意事项" />
               <View style={styles.switchRow}>
                 <Text style={styles.switchLabel}>收藏角色</Text>
@@ -241,8 +289,13 @@ const styles = StyleSheet.create({
   emptyList: { flexGrow: 1 },
   row: { minHeight: 98, flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   rowPressed: { backgroundColor: colors.surfaceMuted },
-  avatar: { width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary },
+  avatar: { width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary, overflow: "hidden" },
+  avatarImage: { width: 52, height: 52 },
   avatarText: { color: "#FFFFFF", fontSize: 22, fontWeight: "700" },
+  imageRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  imagePreview: { width: 84, height: 84, borderRadius: radius.md, backgroundColor: colors.surfaceMuted },
+  imagePlaceholder: { alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border },
+  imageActions: { flex: 1, gap: spacing.xs },
   rowText: { flex: 1, minWidth: 0, gap: spacing.xs },
   rowActions: { flexDirection: "row", alignItems: "center" },
   nameLine: { flexDirection: "row", alignItems: "center", gap: spacing.xs },

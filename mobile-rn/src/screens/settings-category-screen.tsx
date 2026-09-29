@@ -56,7 +56,11 @@ import {
   type EditorFontId,
 } from "@/settings/editor-prefs";
 import { clearProjectIndex, getProjectIndexStats, indexProject } from "@/search/indexer";
-import { getLocalModelStatus, warmUpLocalModels } from "@/search/local-models";
+import {
+  CONTEXT_WINDOW_KEY,
+  DEFAULT_CONTEXT_WINDOW_TOKENS,
+  normalizeContextWindow,
+} from "@/agent/context-usage";import { getLocalModelStatus, warmUpLocalModels } from "@/search/local-models";
 import {
   ALL_OPTIONAL_RESOURCE_KINDS,
   getRuntimeResourceState,
@@ -229,6 +233,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
   const [agentPrompt, setAgentPrompt] = useState("");
   const [agentModelId, setAgentModelId] = useState("");
   const [historyLimit, setHistoryLimit] = useState("30");
+  const [contextWindow, setContextWindow] = useState(String(DEFAULT_CONTEXT_WINDOW_TOKENS));
   const [compression, setCompression] = useState(false);
   const [autoSaveDelay, setAutoSaveDelay] = useState("1000");
   const [editorFontSize, setEditorFontSize] = useState("17");
@@ -476,7 +481,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
     setLoading(true);
     setError(null);
     try {
-      const [nextIndex, nextRules, nextSkills, nextAgents, nextPermissions, active, history, compress, autoSave, fontSize, fontFamily, chatFontSizeRaw, chatFontFamilyRaw, timeout, nextModels, nextOhStoryState, nextResourceState] = await Promise.all([
+      const [nextIndex, nextRules, nextSkills, nextAgents, nextPermissions, active, history, compress, autoSave, fontSize, fontFamily, chatFontSizeRaw, chatFontFamilyRaw, contextWindowRaw, timeout, nextModels, nextOhStoryState, nextResourceState] = await Promise.all([
         getIndexSettings(),
         getAgentRules(),
         getAgentSkills(),
@@ -490,6 +495,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
         getSetting(EDITOR_FONT_KEY),
         getSetting(CHAT_FONT_SIZE_KEY),
         getSetting(CHAT_FONT_KEY),
+        getSetting(CONTEXT_WINDOW_KEY),
         getSetting("connections.requestTimeout"),
         listModels(),
         getOhStoryUpdateState(),
@@ -509,6 +515,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       setActiveAgentId(nextActiveAgentId);
       if (nextActiveAgentId !== (active ?? "")) await setSetting("agent.activeDefinitionId", nextActiveAgentId);
       setHistoryLimit(history ?? "30");
+      setContextWindow(String(normalizeContextWindow(contextWindowRaw)));
       setCompression(compress === "true");
       setAutoSaveDelay(autoSave ?? "1000");
       setEditorFontSize(String(normalizeEditorFontSize(fontSize)));
@@ -975,7 +982,6 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       ) : null}
       {category === "editor" ? (
         <View style={styles.section}>
-          <Text style={styles.sectionHint}>写作时指写作页的正文编辑器；对话时指创作助手与其他说明性文本。两者诉求不同，可分别设置。</Text>
           <Text style={styles.subsectionTitle}>写作时</Text>
           <Field
             label={`正文字号（可填 ${MIN_EDITOR_FONT_SIZE} ~ ${MAX_EDITOR_FONT_SIZE}）`}
@@ -1091,6 +1097,18 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
         <View style={styles.section}>
           <Field label="保留最近消息数" value={historyLimit} onChangeText={setHistoryLimit} onBlur={() => void savePreference("context.historyLimit", historyLimit, setHistoryLimit)} keyboardType="number-pad" />
           <Text style={styles.sectionHint}>决定多少条历史消息参与后续对话，数量越大上下文越长。</Text>
+          <Field
+            label="模型上下文窗口（Token）"
+            value={contextWindow}
+            onChangeText={setContextWindow}
+            onBlur={() => {
+              const normalized = normalizeContextWindow(contextWindow);
+              setContextWindow(String(normalized));
+              void savePreference(CONTEXT_WINDOW_KEY, String(normalized));
+            }}
+            keyboardType="number-pad"
+          />
+          <Text style={styles.sectionHint}>用于助手页的上下文占用估算；按所用模型的窗口大小填写。</Text>
           <ToggleRow label="压缩系统提示词" value={compression} onChange={(value) => {
             setCompression(value);
             void savePreference("context.compressSystemPrompts", String(value), (stored) => setCompression(stored === "true"));
