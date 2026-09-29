@@ -1,0 +1,82 @@
+# 构建未签名 iOS 安装包（.ipa）
+#
+# 目的：为 iOS 用户提供可自行侧载的未签名安装包——本仓库不持有 Apple 开发者账号，
+# 也不上架 App Store，签名由用户在自己的设备上用 AltStore / Sideloadly 等工具完成。
+#
+# 说明：
+# - 仅手动触发（workflow_dispatch），不会在推送时自动运行，因此不影响 Android 发布流程；
+# - 使用 GitHub 托管的 macOS 运行器，公开仓库免费；
+# - 产物未签名，**未在真机验证**，属于实验性构建。
+name: Build iOS IPA (unsigned)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: mobile-rn
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile-rn/package-lock.json
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: 安装依赖
+        run: npm ci
+
+      - uses: actions/cache@v4
+        with:
+          path: mobile-rn/ios/Pods
+          key: pods-${{ hashFiles('mobile-rn/package-lock.json') }}
+
+      - name: 生成 iOS 原生工程
+        run: npx expo prebuild --platform ios --no-install
+
+      - name: 安装 CocoaPods 依赖
+        run: |
+          cd ios
+          pod install
+
+      - name: 构建未签名归档
+        run: |
+          cd ios
+          WORKSPACE=$(ls -d *.xcworkspace | head -1)
+          SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            EXPANDED_CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: 打包为 ipa
+        run: |
+          APP_PATH=$(find ios/build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
+          if [ -z "$APP_PATH" ]; then echo "未找到 .app 产物"; exit 1; fi
+          APP_NAME=$(basename "$APP_PATH" .app)
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$APP_PATH" "$RUNNER_TEMP/ipa/Payload/"
+          cd "$RUNNER_TEMP/ipa"
+          zip -qry "$RUNNER_TEMP/Storyloom-iOS-unsigned.ipa" Payload
+          ls -lh "$RUNNER_TEMP/Storyloom-iOS-unsigned.ipa"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Storyloom-iOS-unsigned
+          path: ${{ runner.temp }}/Storyloom-iOS-unsigned.ipa

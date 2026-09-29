@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: 安装与常见问题（请先看这里）
-    url: https://github.com/Meeko529/Storyloom/blob/main/docs/安装与常见问题.md
+    url: https://github.com/Meekoriela/Storyloom/blob/main/docs/安装与常见问题.md
     about: 安装失败、被手机安全机制拦截、模型配置、数据备份等问题，本文档已有说明
   - name: 上游来源与改动清单
-    url: https://github.com/Meeko529/Storyloom/blob/main/docs/上游来源与改动清单.md
+    url: https://github.com/Meekoriela/Storyloom/blob/main/docs/上游来源与改动清单.md
     about: 了解本项目与上游 OpenFicM 的关系、以及我们做了哪些改动
