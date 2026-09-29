@@ -252,7 +252,7 @@ export function ProjectsScreen() {
           <Pressable onPress={() => openProject(item)} onLongPress={() => openProjectMenu(item)} style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
             <View style={styles.cover}>
               {item.coverPath ? (
-                <Image source={{ uri: item.coverPath }} style={styles.coverImage} />
+                <Image source={{ uri: item.coverPath }} style={styles.coverImage} resizeMethod="resize" />
               ) : (
                 <Text style={styles.coverText}>{item.title.slice(0, 1)}</Text>
               )}

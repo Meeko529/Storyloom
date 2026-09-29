@@ -15,7 +15,8 @@ import {
 } from "react-native";
 
 import { Button, EmptyState, ErrorNotice, Field, Header, Screen, SheetBackdrop } from "@/components/ui";
-import { listChapters, listVolumes } from "@/data/repositories";
+import { getProject, listChapters, listVolumes } from "@/data/repositories";
+import { exportNotes } from "@/lib/export";
 import {
   createNote,
   deleteNote,
@@ -58,6 +59,7 @@ export function NotesScreen() {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [movingNote, setMovingNote] = useState<Note | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async () => {
     if (!projectId) {
@@ -134,6 +136,22 @@ export function NotesScreen() {
     setEditing(null);
     setTitle("");
     setContent("");
+  };
+
+  /** 导出本作品全部笔记为 Markdown，按整书 → 卷 → 章分层。 */
+  const exportAllNotes = async () => {
+    if (!projectId) return;
+    setExporting(true);
+    setError(null);
+    try {
+      const project = await getProject(projectId);
+      if (!project) throw new Error("作品不存在，无法导出笔记");
+      await exportNotes({ project, volumes, chapters, notes });
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : String(exportError));
+    } finally {
+      setExporting(false);
+    }
   };
 
   const openEdit = (note: Note) => {
@@ -249,7 +267,22 @@ export function NotesScreen() {
 
   return (
     <Screen>
-      <Header title="笔记" onBack={() => navigation.goBack()} />
+      <Header
+        title="笔记"
+        onBack={() => navigation.goBack()}
+        action={
+          <Pressable
+            accessibilityLabel="导出笔记"
+            disabled={exporting || !notes.length}
+            onPress={() => void exportAllNotes()}
+            style={styles.iconButton}
+          >
+            {exporting
+              ? <ActivityIndicator size="small" color={colors.primary} />
+              : <Ionicons name="download-outline" size={22} color={notes.length ? colors.primary : colors.textMuted} />}
+          </Pressable>
+        }
+      />
       {error ? <View style={styles.errorWrap}><ErrorNotice message={error} onRetry={() => void load()} /></View> : null}
       <FlatList
         data={groups}

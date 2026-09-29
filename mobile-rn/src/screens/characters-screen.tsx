@@ -209,7 +209,7 @@ export function CharactersScreen() {
           <Pressable onPress={() => openEditor(item)} style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
             <View style={styles.avatar}>
               {item.imagePath ? (
-                <Image source={{ uri: item.imagePath }} style={styles.avatarImage} />
+                <Image source={{ uri: item.imagePath }} style={styles.avatarImage} resizeMethod="resize" />
               ) : (
                 <Text style={styles.avatarText}>{item.name.slice(0, 1)}</Text>
               )}
@@ -252,7 +252,7 @@ export function CharactersScreen() {
               <Field label="角色名称" value={name} onChangeText={setName} autoFocus={!editing} />
               <View style={styles.imageRow}>
                 {imagePath ? (
-                  <Image source={{ uri: imagePath }} style={styles.imagePreview} />
+                  <Image source={{ uri: imagePath }} style={styles.imagePreview} resizeMethod="resize" />
                 ) : (
                   <View style={[styles.imagePreview, styles.imagePlaceholder]}>
                     <Ionicons name="person-outline" size={26} color={colors.textMuted} />

@@ -3,7 +3,7 @@
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 
-import type { Chapter, Character, Project, Volume, WorldInfo, WorldInfoEntry } from "@/types";
+import type { Chapter, Character, Note, Project, Volume, WorldInfo, WorldInfoEntry } from "@/types";
 import { buildEpub, type EpubChapter, type EpubCover } from "@/lib/epub";
 
 export type ExportScope = "chapter" | "volume" | "book";
@@ -152,6 +152,71 @@ function dateStamp(): string {  const date = new Date();
 
 function libraryFileName(projectTitle: string, label: string, format: LibraryExportFormat): string {
   return `${safeFileName(projectTitle)}_${label}_${dateStamp()}.${format === "json" ? "json" : "md"}`;
+}
+
+/**
+ * 导出本作品全部笔记为 Markdown：按「整书 → 卷 → 章」分层，与笔记页的层级一致。
+ * 卷/章已被删除的笔记归入「其他」，避免静默丢数据。
+ */
+export async function exportNotes(input: {
+  project: Project;
+  volumes: Volume[];
+  chapters: Chapter[];
+  notes: Note[];
+}): Promise<void> {
+  const { project, notes } = input;
+  if (!notes.length) throw new Error("本作品还没有笔记，先写一条再导出");
+
+  const volumes = [...input.volumes].sort((left, right) => left.orderIndex - right.orderIndex);
+  const chapters = [...input.chapters].sort((left, right) => left.orderIndex - right.orderIndex);
+  const noteBlock = (note: Note): string[] => [
+    `### ${note.title}`,
+    "",
+    note.content.trim() || "（空）",
+    "",
+  ];
+
+  const lines: string[] = [`# 《${project.title}》笔记`, "", `> 导出时间：${dateStamp()} · 共 ${notes.length} 条`, ""];
+
+  const bookNotes = notes.filter((note) => !note.volumeId && !note.chapterId);
+  if (bookNotes.length) {
+    lines.push("## 整书笔记", "");
+    for (const note of bookNotes) lines.push(...noteBlock(note));
+  }
+
+  const exportedIds = new Set(bookNotes.map((note) => note.id));
+  for (const volume of volumes) {
+    const volumeNotes = notes.filter((note) => note.volumeId === volume.id && !note.chapterId);
+    const chapterNotes = chapters
+      .filter((chapter) => chapter.volumeId === volume.id)
+      .flatMap((chapter) => notes
+        .filter((note) => note.chapterId === chapter.id)
+        .map((note) => ({ note, chapter })));
+    if (!volumeNotes.length && !chapterNotes.length) continue;
+    lines.push(`## ${volume.title}`, "");
+    for (const note of volumeNotes) {
+      lines.push(...noteBlock(note));
+      exportedIds.add(note.id);
+    }
+    for (const { note, chapter } of chapterNotes) {
+      lines.push(`### ${chapter.title}｜${note.title}`, "", note.content.trim() || "（空）", "");
+      exportedIds.add(note.id);
+    }
+  }
+
+  // 挂在已删除卷/章下的笔记：单独归入「其他」，保证一条不少
+  const orphans = notes.filter((note) => !exportedIds.has(note.id));
+  if (orphans.length) {
+    lines.push("## 其他（原位置已删除）", "");
+    for (const note of orphans) lines.push(...noteBlock(note));
+  }
+
+  await shareTextFile(
+    libraryFileName(project.title, "笔记", "markdown"),
+    lines.join("\n"),
+    "markdown",
+    "导出笔记",
+  );
 }
 
 async function shareTextFile(fileName: string, content: string, format: LibraryExportFormat, dialogTitle: string): Promise<void> {

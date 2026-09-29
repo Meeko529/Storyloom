@@ -10,6 +10,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { installCrashLogger } from "@/lib/crash-log";
 import type { RootStackParamList, RootTabParamList } from "@/navigation/types";
 import { CharactersScreen } from "@/screens/characters-screen";
 import { AssistantScreen } from "@/screens/assistant-screen";
@@ -22,6 +23,9 @@ import { WorldInfoScreen } from "@/screens/world-info-screen";
 import { colors } from "@/theme";
 import { getRuntimeResourceState, type RuntimeResourceState } from "@/settings/remote-resources";
 import { warmUpLocalModels } from "@/search/local-models";
+
+// 在渲染任何界面之前挂载全局错误处理，保证最早发生的异常也能被记录。
+installCrashLogger();
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
 const Stack = createNativeStackNavigator<RootStackParamList>();

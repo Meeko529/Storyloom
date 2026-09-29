@@ -85,6 +85,7 @@ import {
   type AppUpdateInfo,
 } from "@/settings/app-update";
 import { downloadUpdateApk, installApkFile } from "@/settings/app-installer";
+import { crashLogEntryCount, clearCrashLog } from "@/lib/crash-log";
 import { exportDiagnosticsReport } from "@/settings/diagnostics";
 import { exportBackup, pickBackupFile, restoreBackup } from "@/settings/backup";
 import {
@@ -255,6 +256,8 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
   // 应用内更新：下载进度状态
   const [apkBusy, setApkBusy] = useState(false);
   const [apkProgress, setApkProgress] = useState("");
+  // 本地捕获的错误记录条数（0 表示无记录）
+  const [crashEntryCount, setCrashEntryCount] = useState(0);
   // 诊断报告导出状态
   const [diagnosticsBusy, setDiagnosticsBusy] = useState(false);
   // 备份 / 恢复状态
@@ -516,6 +519,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       if (nextActiveAgentId !== (active ?? "")) await setSetting("agent.activeDefinitionId", nextActiveAgentId);
       setHistoryLimit(history ?? "30");
       setContextWindow(String(normalizeContextWindow(contextWindowRaw)));
+      setCrashEntryCount(crashLogEntryCount());
       setCompression(compress === "true");
       setAutoSaveDelay(autoSave ?? "1000");
       setEditorFontSize(String(normalizeEditorFontSize(fontSize)));
@@ -1385,6 +1389,18 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
             loading={diagnosticsBusy}
           />
           <Text style={styles.sectionHint}>遇到问题时可导出这份报告发给开发者，其中不含 API Key 与稿件内容。</Text>
+          {crashEntryCount > 0 ? (
+            <Text style={styles.sectionHint}>已记录 {crashEntryCount} 条错误，会一并写进报告。</Text>
+          ) : (
+            <Text style={styles.sectionHint}>暂无错误记录；若应用崩溃过而这里仍为空，说明是原生层问题（如内存不足）。</Text>
+          )}
+          {crashEntryCount > 0 ? (
+            <Button
+              label="清空错误记录"
+              variant="secondary"
+              onPress={() => { clearCrashLog(); setCrashEntryCount(0); }}
+            />
+          ) : null}
           <View style={styles.subsectionDivider} />
           <Text style={styles.subsectionTitle}>备份与恢复</Text>
           <Button
