@@ -42,11 +42,15 @@ import {
   type ToolPermissionMode,
 } from "@/settings/config";
 import {
+  CHAT_FONT_KEY,
+  CHAT_FONT_SIZE_KEY,
   EDITOR_FONT_KEY,
   EDITOR_FONT_OPTIONS,
   EDITOR_FONT_SIZE_KEY,
   MAX_EDITOR_FONT_SIZE,
   MIN_EDITOR_FONT_SIZE,
+  editorFontFamily,
+  normalizeChatFontSize,
   normalizeEditorFont,
   normalizeEditorFontSize,
   type EditorFontId,
@@ -229,6 +233,10 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
   const [autoSaveDelay, setAutoSaveDelay] = useState("1000");
   const [editorFontSize, setEditorFontSize] = useState("17");
   const [editorFontId, setEditorFontId] = useState<EditorFontId>("system");
+  const [chatFontSize, setChatFontSize] = useState("15");
+  const [chatFontId, setChatFontId] = useState<EditorFontId>("system");
+  const editorFontSizeValue = normalizeEditorFontSize(editorFontSize);
+  const chatFontSizeValue = normalizeChatFontSize(chatFontSize);
   const [requestTimeout, setRequestTimeout] = useState("120000");
   const [ohStoryState, setOhStoryState] = useState<OhStoryUpdateState>(EMPTY_OH_STORY_STATE);
   const [ohStoryProgress, setOhStoryProgress] = useState("");
@@ -468,7 +476,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
     setLoading(true);
     setError(null);
     try {
-      const [nextIndex, nextRules, nextSkills, nextAgents, nextPermissions, active, history, compress, autoSave, fontSize, fontFamily, timeout, nextModels, nextOhStoryState, nextResourceState] = await Promise.all([
+      const [nextIndex, nextRules, nextSkills, nextAgents, nextPermissions, active, history, compress, autoSave, fontSize, fontFamily, chatFontSizeRaw, chatFontFamilyRaw, timeout, nextModels, nextOhStoryState, nextResourceState] = await Promise.all([
         getIndexSettings(),
         getAgentRules(),
         getAgentSkills(),
@@ -480,6 +488,8 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
         getSetting("general.autoSaveDelay"),
         getSetting(EDITOR_FONT_SIZE_KEY),
         getSetting(EDITOR_FONT_KEY),
+        getSetting(CHAT_FONT_SIZE_KEY),
+        getSetting(CHAT_FONT_KEY),
         getSetting("connections.requestTimeout"),
         listModels(),
         getOhStoryUpdateState(),
@@ -503,6 +513,8 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       setAutoSaveDelay(autoSave ?? "1000");
       setEditorFontSize(String(normalizeEditorFontSize(fontSize)));
       setEditorFontId(normalizeEditorFont(fontFamily));
+      setChatFontSize(String(normalizeChatFontSize(chatFontSizeRaw)));
+      setChatFontId(normalizeEditorFont(chatFontFamilyRaw));
       setRequestTimeout(timeout ?? "120000");
       setAvailableModels(nextModels);
       setOhStoryState(nextOhStoryState);
@@ -963,6 +975,8 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       ) : null}
       {category === "editor" ? (
         <View style={styles.section}>
+          <Text style={styles.sectionHint}>写作时指写作页的正文编辑器；对话时指创作助手与其他说明性文本。两者诉求不同，可分别设置。</Text>
+          <Text style={styles.subsectionTitle}>写作时</Text>
           <Field
             label={`正文字号（可填 ${MIN_EDITOR_FONT_SIZE} ~ ${MAX_EDITOR_FONT_SIZE}）`}
             value={editorFontSize}
@@ -993,7 +1007,40 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
           <Text style={styles.sectionHint}>
             {EDITOR_FONT_OPTIONS.find((option) => option.id === editorFontId)?.hint}
           </Text>
-          <Text style={styles.previewSample}>她推开那扇门，院子里落着一地月光。</Text>
+          <Text style={[styles.previewSample, { fontSize: editorFontSizeValue, fontFamily: editorFontFamily(editorFontId) }]}>
+            她推开那扇门，院子里落着一地月光。
+          </Text>
+          <View style={styles.subsectionDivider} />
+          <Text style={styles.subsectionTitle}>对话时</Text>
+          <Field
+            label={`对话字号（可填 ${MIN_EDITOR_FONT_SIZE} ~ ${MAX_EDITOR_FONT_SIZE}）`}
+            value={chatFontSize}
+            onChangeText={setChatFontSize}
+            onBlur={() => {
+              const normalized = normalizeChatFontSize(chatFontSize);
+              setChatFontSize(String(normalized));
+              void savePreference(CHAT_FONT_SIZE_KEY, String(normalized));
+            }}
+            keyboardType="number-pad"
+          />
+          <Text style={styles.subsectionTitle}>对话字体</Text>
+          <View style={styles.modelChoices}>
+            {EDITOR_FONT_OPTIONS.map((option) => (
+              <Pressable
+                key={option.id}
+                onPress={() => {
+                  setChatFontId(option.id);
+                  void savePreference(CHAT_FONT_KEY, option.id);
+                }}
+                style={[styles.modelChoice, chatFontId === option.id && styles.modelChoiceActive]}
+              >
+                <Text style={styles.modelChoiceText}>{option.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={[styles.previewSample, { fontSize: chatFontSizeValue, fontFamily: editorFontFamily(chatFontId) }]}>
+            这一章可以收在误会发生的当晚，把解释留到下一章。
+          </Text>
         </View>
       ) : null}
       {category === "connections" ? (

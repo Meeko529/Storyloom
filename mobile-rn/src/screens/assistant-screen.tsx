@@ -19,6 +19,7 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 import { AgentRunError, runAgent } from "@/agent/runtime";
 import { undoLastWrite, undoLabel, type WritePreview } from "@/agent/write-review";
+import { editorFontFamily, readChatPrefs } from "@/settings/editor-prefs";
 import { AgentQuestionSheet, AgentTraceView } from "@/components/agent-run-view";
 import { MessageActionBar } from "@/components/message-action-bar";
 import { Button, EmptyState, ErrorNotice, Header, Screen, SheetBackdrop } from "@/components/ui";
@@ -352,6 +353,21 @@ export function AssistantScreen() {
     setInput("");
     setEditingMessageId(null);
   }, [activeSession?.id]);
+  // 对话字体与字号跟随「设置 → 编辑器 → 对话时」，在页面获得焦点时读取，改完返回即生效。
+  const [chatTextStyle, setChatTextStyle] = useState<{ fontSize: number; lineHeight: number; fontFamily?: string }>({
+    fontSize: 16,
+    lineHeight: 24,
+  });
+  useFocusEffect(useCallback(() => {
+    void (async () => {
+      const prefs = await readChatPrefs();
+      setChatTextStyle({
+        fontSize: prefs.fontSize,
+        lineHeight: Math.round(prefs.fontSize * 1.5),
+        fontFamily: editorFontFamily(prefs.fontFamily),
+      });
+    })();
+  }, []));
   useFocusEffect(useCallback(() => {
     void load();
     return () => {
@@ -761,7 +777,7 @@ export function AssistantScreen() {
                   ) : null}
                 </View>
               ) : null}
-              <Text selectable style={styles.messageText}>{item.content}</Text>
+              <Text selectable style={[styles.messageText, chatTextStyle]}>{item.content}</Text>
               {failed && item.metadata?.errorDetail ? <ErrorDetails detail={item.metadata.errorDetail} /> : null}
               {item.role === "assistant" && messageRetry ? (
                 <MessageActionBar content={item.content} onRetry={() => void send(messageRetry)} retryDisabled={sending} />

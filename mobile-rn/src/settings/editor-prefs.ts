@@ -7,9 +7,13 @@ export type EditorFontId = "system" | "serif" | "kai";
 
 export const EDITOR_FONT_KEY = "general.editorFontFamily";
 export const EDITOR_FONT_SIZE_KEY = "general.editorFontSize";
+/** 对话与界面文本单独一套：写作讲究久读舒适，对话讲究信息密度，两者诉求不同。 */
+export const CHAT_FONT_KEY = "general.chatFontFamily";
+export const CHAT_FONT_SIZE_KEY = "general.chatFontSize";
 
 export const DEFAULT_EDITOR_FONT: EditorFontId = "system";
 export const DEFAULT_EDITOR_FONT_SIZE = 17;
+export const DEFAULT_CHAT_FONT_SIZE = 15;
 export const MIN_EDITOR_FONT_SIZE = 11;
 export const MAX_EDITOR_FONT_SIZE = 28;
 
@@ -27,6 +31,13 @@ export function normalizeEditorFont(value: string | null | undefined): EditorFon
 export function normalizeEditorFontSize(value: string | number | null | undefined): number {
   const size = Number(value);
   if (!Number.isFinite(size)) return DEFAULT_EDITOR_FONT_SIZE;
+  return Math.min(MAX_EDITOR_FONT_SIZE, Math.max(MIN_EDITOR_FONT_SIZE, Math.round(size)));
+}
+
+/** 对话字号同样有下限与上限，但默认值与正文不同。 */
+export function normalizeChatFontSize(value: string | number | null | undefined): number {
+  const size = Number(value);
+  if (!Number.isFinite(size)) return DEFAULT_CHAT_FONT_SIZE;
   return Math.min(MAX_EDITOR_FONT_SIZE, Math.max(MIN_EDITOR_FONT_SIZE, Math.round(size)));
 }
 
@@ -62,4 +73,24 @@ export async function saveEditorFont(id: EditorFontId): Promise<void> {
 
 export async function saveEditorFontSize(size: number): Promise<void> {
   await setSetting(EDITOR_FONT_SIZE_KEY, String(normalizeEditorFontSize(size)));
+}
+
+/** 读取「对话时」的字体与字号；未设置过时沿用默认值。 */
+export async function readChatPrefs(): Promise<EditorPrefs> {
+  const [fontValue, sizeValue] = await Promise.all([
+    getSetting(CHAT_FONT_KEY),
+    getSetting(CHAT_FONT_SIZE_KEY),
+  ]);
+  return {
+    fontFamily: normalizeEditorFont(fontValue),
+    fontSize: normalizeChatFontSize(sizeValue),
+  };
+}
+
+export async function saveChatFont(id: EditorFontId): Promise<void> {
+  await setSetting(CHAT_FONT_KEY, id);
+}
+
+export async function saveChatFontSize(size: number): Promise<void> {
+  await setSetting(CHAT_FONT_SIZE_KEY, String(normalizeChatFontSize(size)));
 }
