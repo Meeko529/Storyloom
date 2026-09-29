@@ -51,23 +51,20 @@ const PROVIDER_PRESETS: Array<{
   name: string;
   url: string;
   modelHint: string;
-  /** 有值表示该平台提供免费额度，界面据此显示「免费」标记 */
-  freeTier?: string;
 }> = [
-  // —— 有免费额度：没有预算时先用这几家 ——
-  { id: "zhipu", label: "智谱", name: "智谱 GLM", url: "https://open.bigmodel.cn/api/paas/v4", modelHint: "glm-4.7-flash", freeTier: "glm-4.7-flash 目前免费" },
-  { id: "siliconflow", label: "硅基流动", name: "硅基流动", url: "https://api.siliconflow.cn/v1", modelHint: "Qwen/Qwen2.5-7B-Instruct", freeTier: "部分小模型免费" },
-  { id: "openrouter", label: "OpenRouter", name: "OpenRouter", url: "https://openrouter.ai/api/v1", modelHint: "deepseek/deepseek-chat-v3.1:free", freeTier: "带 :free 后缀的模型免费" },
-  { id: "dashscope", label: "通义千问", name: "阿里云百炼", url: "https://dashscope.aliyuncs.com/compatible-mode/v1", modelHint: "qwen-turbo", freeTier: "新用户赠送额度" },
-  // —— 按量付费 ——
+  // 免费额度与免费模型的说明统一由「免费模型」分类页负责，此处只做地址预设。
+  { id: "zhipu", label: "智谱", name: "智谱 GLM", url: "https://open.bigmodel.cn/api/paas/v4", modelHint: "glm-4.7-flash" },
+  { id: "siliconflow", label: "硅基流动", name: "硅基流动", url: "https://api.siliconflow.cn/v1", modelHint: "Qwen/Qwen2.5-7B-Instruct" },
+  { id: "openrouter", label: "OpenRouter", name: "OpenRouter", url: "https://openrouter.ai/api/v1", modelHint: "deepseek/deepseek-chat-v3.1:free" },
+  { id: "dashscope", label: "通义千问", name: "阿里云百炼", url: "https://dashscope.aliyuncs.com/compatible-mode/v1", modelHint: "qwen-turbo" },
   { id: "deepseek", label: "DeepSeek", name: "DeepSeek", url: "https://api.deepseek.com/v1", modelHint: "deepseek-chat" },
   { id: "moonshot", label: "Kimi", name: "月之暗面 Kimi", url: "https://api.moonshot.cn/v1", modelHint: "moonshot-v1-8k" },
   { id: "custom", label: "中转站 / 自定义", name: "", url: "", modelHint: "" },
 ];
 
 /**
- * 设置分组：12 个入口按职能分成 5 组，避免平铺一长串。
- * 每项的 hint 是一行小字说明，用户不用进二级页就知道这项是干嘛的。
+ * 设置分组：13 个入口按职能分成 5 组，避免平铺一长串。
+ * 入口只显示名称，不写说明——说明统一放在二级页顶部，保持列表一致与清爽。
  */
 const settingsGroups: Array<{
   title: string;
@@ -75,8 +72,6 @@ const settingsGroups: Array<{
   items: Array<{
     id: SettingsCategory;
     label: string;
-    /** 仅在名称不足以自明时提供一行说明 */
-    hint?: string;
     icon: keyof typeof Ionicons.glyphMap;
   }>;
 }> = [
@@ -98,24 +93,24 @@ const settingsGroups: Array<{
   {
     title: "创作系统",
     items: [
-      { id: "agents", label: "智能体", hint: "写作流程与输出结构", icon: "git-network-outline" },
-      { id: "skills", label: "技能", hint: "写作手法与规范", icon: "flash-outline" },
-      { id: "rules", label: "规则", hint: "全程生效，无需每次挑选", icon: "list-outline" },
-      { id: "agent-tools", label: "工具权限", hint: "智能体可用的工具开关", icon: "shield-checkmark-outline" },
+      { id: "agents", label: "智能体", icon: "git-network-outline" },
+      { id: "skills", label: "技能", icon: "flash-outline" },
+      { id: "rules", label: "规则", icon: "list-outline" },
+      { id: "agent-tools", label: "工具权限", icon: "shield-checkmark-outline" },
       { id: "style", label: "作者文风", icon: "color-wand-outline" },
     ],
   },
   {
     title: "知识",
     items: [
-      { id: "index", label: "索引", hint: "全文检索，供 AI 召回前文", icon: "layers-outline" },
-      { id: "context", label: "上下文", hint: "每次生成携带的设定与前文范围", icon: "document-text-outline" },
+      { id: "index", label: "索引", icon: "layers-outline" },
+      { id: "context", label: "上下文", icon: "document-text-outline" },
     ],
   },
   {
     title: "系统",
     items: [
-      { id: "advanced", label: "高级", hint: "内容包、应用更新、诊断报告", icon: "construct-outline" },
+      { id: "advanced", label: "高级", icon: "construct-outline" },
     ],
   },
 ];
@@ -432,7 +427,6 @@ export function SettingsScreen() {
                 <View style={styles.categoryIcon}><Ionicons name={category.icon} size={21} color={colors.primary} /></View>
                 <View style={styles.categoryTextWrap}>
                   <Text style={styles.categoryLabel}>{category.label}</Text>
-                  {category.hint ? <Text style={styles.categoryHint}>{category.hint}</Text> : null}
                 </View>
                 <Ionicons name="chevron-forward" size={19} color={colors.textMuted} />
               </Pressable>
@@ -459,18 +453,11 @@ export function SettingsScreen() {
               style={[styles.presetChip, presetId === preset.id && styles.presetChipActive]}
             >
               <Text style={[styles.presetChipText, presetId === preset.id && styles.presetChipTextActive]}>
-                {preset.freeTier ? `${preset.label} · 免费` : preset.label}
+                {preset.label}
               </Text>
             </Pressable>
           ))}
         </View>
-        {PROVIDER_PRESETS.find((preset) => preset.id === presetId)?.freeTier ? (
-          <Text style={styles.fieldHint}>
-            {PROVIDER_PRESETS.find((preset) => preset.id === presetId)?.label}：
-            {PROVIDER_PRESETS.find((preset) => preset.id === presetId)?.freeTier}
-            —— 到该平台官网注册、生成 API Key 后粘贴到下面即可。
-          </Text>
-        ) : null}
         <Text style={styles.sectionTitle}>或者手动填</Text>
         <View style={styles.segmented}>
           {(["openai-compatible", "google-genai", "anthropic"] as ProviderType[]).map((type) => (
@@ -666,7 +653,6 @@ const styles = StyleSheet.create({
   categoryIcon: { width: 36, height: 36, alignItems: "center", justifyContent: "center", borderRadius: radius.sm, backgroundColor: "#E6F3EF" },
   categoryTextWrap: { flex: 1 },
   categoryLabel: { color: colors.text, fontSize: 16, fontWeight: "600" },
-  categoryHint: { color: colors.textMuted, fontSize: 12, lineHeight: 17, marginTop: 2 },
   section: { padding: spacing.lg, gap: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   errorWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   sectionTitle: { color: colors.text, fontSize: 18, fontWeight: "700" },
