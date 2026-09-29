@@ -809,9 +809,20 @@ export function WritingScreen() {
               >
                 <Text style={[styles.exportFormatText, exportFormat === "txt" && styles.exportFormatTextActive]}>纯文本（TXT）</Text>
               </Pressable>
+              <Pressable
+                accessibilityLabel="导出为 EPUB"
+                onPress={() => setExportFormat("epub")}
+                style={[styles.exportFormatChip, exportFormat === "epub" && styles.exportFormatChipActive]}
+              >
+                <Text style={[styles.exportFormatText, exportFormat === "epub" && styles.exportFormatTextActive]}>EPUB</Text>
+              </Pressable>
             </View>
             <Text style={styles.exportFormatHint}>
-              {exportFormat === "txt" ? "不带任何标记符号，适合直接投稿或粘贴到别处。" : "带标题层级，适合再排版或导入其他写作工具。"}
+              {exportFormat === "txt"
+                ? "不带任何标记符号，适合直接投稿或粘贴到别处。"
+                : exportFormat === "epub"
+                  ? "按卷与章节生成电子书，带作品封面，可直接放进阅读器或电子书应用。"
+                  : "带标题层级，适合再排版或导入其他写作工具。"}
             </Text>
             <Pressable disabled={exporting || !activeChapter} onPress={() => { void handleExport("chapter"); }} style={[styles.exportOption, (!activeChapter || exporting) && styles.exportOptionDisabled]}>
               <Ionicons name="document-text-outline" size={23} color={activeChapter ? colors.primary : colors.textMuted} />

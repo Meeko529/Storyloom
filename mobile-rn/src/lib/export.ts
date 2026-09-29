@@ -4,11 +4,12 @@ import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 
 import type { Chapter, Character, Project, Volume, WorldInfo, WorldInfoEntry } from "@/types";
+import { buildEpub, type EpubChapter, type EpubCover } from "@/lib/epub";
 
 export type ExportScope = "chapter" | "volume" | "book";
 export type LibraryExportFormat = "json" | "markdown";
-/** 正文导出格式：Markdown 便于再排版，纯文本便于直接投稿或粘贴到别处。 */
-export type NovelExportFormat = "markdown" | "txt";
+/** 正文导出格式：Markdown 便于再排版，纯文本便于直接投稿或粘贴，EPUB 便于在阅读器里读整本。 */
+export type NovelExportFormat = "markdown" | "txt" | "epub";
 
 export interface ExportNovelInput {
   project: Project;
@@ -34,10 +35,16 @@ function renderChapterText(chapter: Chapter): string {
 }
 
 export async function exportNovel(input: ExportNovelInput): Promise<void> {
-  const format: NovelExportFormat = input.format === "txt" ? "txt" : "markdown";
+  const format: NovelExportFormat = input.format === "txt" ? "txt" : input.format === "epub" ? "epub" : "markdown";
   const isPlainText = format === "txt";
   const orderedVolumes = [...input.volumes].sort((left, right) => left.orderIndex - right.orderIndex);
   const orderedChapters = [...input.chapters].sort((left, right) => left.orderIndex - right.orderIndex);
+
+  if (format === "epub") {
+    await exportNovelEpub({ ...input, orderedVolumes, orderedChapters });
+    return;
+  }
+
   const renderBody = isPlainText ? renderChapterText : renderChapter;
   let title = input.project.title;
   // 纯文本不写 # 记号：书名与卷名各占一行，其余保持正文原样，方便直接投稿或粘贴。
@@ -78,8 +85,65 @@ export async function exportNovel(input: ExportNovelInput): Promise<void> {
   });
 }
 
-function dateStamp(): string {
-  const date = new Date();
+/** EPUB 导出：按所选范围组卷、带上作品封面，生成后在系统分享里交给阅读器或网盘。 */
+async function exportNovelEpub(input: ExportNovelInput & { orderedVolumes: Volume[]; orderedChapters: Chapter[] }): Promise<void> {
+  const { orderedVolumes, orderedChapters } = input;
+  let title = input.project.title;
+  let chapters: EpubChapter[] = [];
+
+  if (input.scope === "chapter") {
+    const chapter = orderedChapters.find((item) => item.id === input.chapterId);
+    if (!chapter) throw new Error("当前章节不存在，无法导出");
+    title = chapter.title;
+    const volume = orderedVolumes.find((item) => item.id === chapter.volumeId);
+    chapters = [{ title: chapter.title, content: chapter.content, volumeTitle: volume?.title }];
+  } else {
+    const volumes = input.scope === "volume"
+      ? orderedVolumes.filter((volume) => volume.id === input.volumeId)
+      : orderedVolumes;
+    if (!volumes.length) throw new Error(input.scope === "volume" ? "当前卷不存在，无法导出" : "作品没有可导出的卷");
+    if (input.scope === "volume") title = volumes[0].title;
+    chapters = volumes.flatMap((volume) => orderedChapters
+      .filter((chapter) => chapter.volumeId === volume.id)
+      .map((chapter) => ({ title: chapter.title, content: chapter.content, volumeTitle: volume.title })));
+    if (!chapters.length) throw new Error("所选范围没有可导出的章节");
+  }
+
+  let cover: EpubCover | null = null;
+  if (input.project.coverPath) {
+    try {
+      const coverFile = new File(input.project.coverPath);
+      if (coverFile.exists) {
+        cover = {
+          bytes: await coverFile.bytes(),
+          extension: (input.project.coverPath.split(".").pop() ?? "jpg").toLowerCase(),
+        };
+      }
+    } catch {
+      // 封面读不到不影响正文导出，跳过封面继续
+    }
+  }
+
+  const bytes = buildEpub({
+    title,
+    description: input.project.description,
+    chapters,
+    cover,
+  });
+
+  const scopeLabel = input.scope === "chapter" ? "章节" : input.scope === "volume" ? "卷" : "全书";
+  const timestamp = new Date().toISOString().replace(/[.:]/g, "-");
+  const file = new File(Paths.cache, `${safeFileName(input.project.title)}-${safeFileName(title)}-${scopeLabel}-${timestamp}.epub`);
+  if (file.exists) file.delete();
+  file.write(bytes);
+  if (!(await Sharing.isAvailableAsync())) throw new Error("当前设备不支持系统分享，请稍后重试");
+  await Sharing.shareAsync(file.uri, {
+    mimeType: "application/epub+zip",
+    dialogTitle: `导出${scopeLabel}`,
+  });
+}
+
+function dateStamp(): string {  const date = new Date();
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
