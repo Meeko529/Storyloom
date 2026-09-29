@@ -74,7 +74,18 @@ function parseStoredUpdate(raw: string | null): AppUpdateInfo | null {
 }
 
 export async function getLastAppUpdateCheck(): Promise<AppUpdateInfo | null> {
-  return parseStoredUpdate(await getSetting(LAST_CHECK_KEY));
+  const stored = parseStoredUpdate(await getSetting(LAST_CHECK_KEY));
+  if (!stored) return null;
+  // 记录是按"检查当时安装的版本"算出来的。应用升级后，缓存里的 hasUpdate 会停留在旧结论，
+  // 导致已经是最新的版本仍显示"可更新"并展示上一版的说明——因此按当前版本重新判定。
+  if (stored.currentVersion === CURRENT_APP_VERSION) return stored;
+  const hasUpdate = compareVersions(stored.latestVersion, CURRENT_APP_VERSION) > 0;
+  return {
+    ...stored,
+    currentVersion: CURRENT_APP_VERSION,
+    hasUpdate,
+    notes: hasUpdate ? stored.notes : "",
+  };
 }
 
 export async function checkAppUpdate(): Promise<AppUpdateInfo> {

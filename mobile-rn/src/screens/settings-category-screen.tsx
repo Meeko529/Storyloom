@@ -1266,6 +1266,12 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
               />
               {apkProgress ? <Text style={styles.progressText}>{apkProgress}</Text> : null}
               <Text style={styles.sectionHint}>下载失败时会自动尝试国内加速镜像；安装时系统会要求授权「安装未知应用」。</Text>
+              {appUpdate.notes ? (
+                <>
+                  <Text style={styles.sectionHint}>本次更新说明</Text>
+                  <Text style={styles.updateNotes} numberOfLines={12}>{appUpdate.notes}</Text>
+                </>
+              ) : null}
               <Button
                 label="改用浏览器下载"
                 variant="secondary"
@@ -1299,9 +1305,6 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
             备份包含全部作品、章节、笔记、智能体、技能与设置；不包含 API Key（恢复后需重新填写）与可重新下载的内容包资源。恢复会覆盖当前数据。
           </Text>
           {appUpdateError ? <Text style={styles.progressText}>{appUpdateError}</Text> : null}
-          {appUpdate?.hasUpdate && appUpdate.notes ? (
-            <Text style={styles.updateNotes} numberOfLines={12}>{appUpdate.notes}</Text>
-          ) : null}
           <View style={styles.subsectionDivider} />
           <Text style={styles.subsectionTitle}>oh-story 内容包</Text>
           <SettingRow label="本地版本" value={ohStoryState.installed?.version ?? "未安装"} />
