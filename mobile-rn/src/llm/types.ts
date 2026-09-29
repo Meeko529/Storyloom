@@ -25,4 +25,6 @@ export interface AgentToolDefinition {
 export interface ModelTurn {
   content: string;
   toolCalls: AgentToolCall[];
+  /** 思考型模型返回的推理过程（若有）。不是所有模型都提供，缺省时不显示。 */
+  reasoning?: string;
 }

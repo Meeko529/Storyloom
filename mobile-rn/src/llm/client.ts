@@ -191,6 +191,8 @@ async function callOpenAi(
       };
     });
   const content = typeof message.content === "string" ? message.content : "";
+  // 思考型模型（DeepSeek-R1 系、智谱推理档等）把推理过程放在独立字段，不解析就等于用户看不到。
+  const reasoning = firstNonEmptyText(message.reasoning_content, message.reasoning, message.thinking);
   // 思考模型的推理 Token 也计入 max_tokens，正文可能一个字都没吐出来就被截断。
   // 不做静默降级，否则调用方只会看到"内容为空"，无法判断该调高上限。
   if (!content.trim() && !toolCalls.length) {
@@ -201,7 +203,15 @@ async function callOpenAi(
       throw new Error(`模型没有返回内容，finish_reason=${finishReason}`);
     }
   }
-  return { content, toolCalls };
+  return { content, toolCalls, ...(reasoning ? { reasoning } : {}) };
+}
+
+/** 依次取第一个非空字符串字段，用于兼容各家推理字段命名差异。 */
+function firstNonEmptyText(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return "";
 }
 
 function toGeminiSchema(value: unknown): unknown {
@@ -300,9 +310,13 @@ async function callGemini(
       providerMetadata: { geminiThoughtSignature: part.thoughtSignature ?? part.thought_signature },
     } : {}),
   }));
+  // Gemini 的前瞻思考内容以 thought: true 的 part 返回，不能混进正文。
+  const geminiReasoning = parts.filter((part) => part.thought === true && typeof part.text === "string")
+    .map((part) => part.text).join("");
   return {
-    content: parts.filter((part) => typeof part.text === "string").map((part) => part.text).join(""),
+    content: parts.filter((part) => typeof part.text === "string" && part.thought !== true).map((part) => part.text).join(""),
     toolCalls,
+    ...(geminiReasoning ? { reasoning: geminiReasoning } : {}),
   };
 }
 
@@ -360,13 +374,16 @@ async function callAnthropic(
   });
   const blocks: any[] = data.content ?? [];
   const content = blocks.filter((block) => block.type === "text").map((block) => block.text).join("");
+  // Anthropic 的扩展思考以 type: "thinking" 的块返回。
+  const anthropicReasoning = blocks.filter((block) => block.type === "thinking" && typeof block.thinking === "string")
+    .map((block) => block.thinking).join("");
   const toolCalls = blocks.filter((block) => block.type === "tool_use").map((block) => ({
     id: String(block.id), name: String(block.name), arguments: block.input ?? {},
   }));
   if (!content.trim() && !toolCalls.length && data.stop_reason === "max_tokens") {
     throw new Error(`模型在返回正文前就用完了 ${maxOutputTokens} 个输出 Token（stop_reason=max_tokens）。请在“设置 → 模型与供应商”调高最大输出 Token 数。`);
   }
-  return { content, toolCalls };
+  return { content, toolCalls, ...(anthropicReasoning ? { reasoning: anthropicReasoning } : {}) };
 }
 
 export interface ModelCallOptions {

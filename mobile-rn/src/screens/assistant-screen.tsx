@@ -19,6 +19,13 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 import { AgentRunError, runAgent } from "@/agent/runtime";
 import { undoLastWrite, undoLabel, type WritePreview } from "@/agent/write-review";
+import {
+  attachmentContextBlock,
+  MAX_ATTACHMENTS_PER_MESSAGE,
+  pickTextAttachment,
+  saveAttachmentAsNote,
+  type TextAttachment,
+} from "@/agent/attachments";
 import { editorFontFamily, readChatPrefs } from "@/settings/editor-prefs";
 import { AgentQuestionSheet, AgentTraceView } from "@/components/agent-run-view";
 import { MessageActionBar } from "@/components/message-action-bar";
@@ -60,6 +67,23 @@ import type {
   Provider,
   StyleProfile,
 } from "@/types";
+
+/** 思考型模型的推理过程：默认折叠，由用户决定是否展开查看。 */
+function ReasoningBlock({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const characters = text.trim().length;
+  return (
+    <View style={styles.reasoningCard}>
+      <Pressable accessibilityRole="button" accessibilityLabel={expanded ? "收起思考过程" : "展开思考过程"} onPress={() => setExpanded((value) => !value)} style={styles.reasoningHeader}>
+        <Ionicons name="bulb-outline" size={16} color={colors.textMuted} />
+        <Text style={styles.reasoningTitle}>思考过程</Text>
+        <Text style={styles.reasoningMeta}>{characters} 字</Text>
+        <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
+      </Pressable>
+      {expanded ? <Text selectable style={styles.reasoningText}>{text}</Text> : null}
+    </View>
+  );
+}
 
 /**
  * 工具授权。写入类工具先展示「改前 / 改后」，按一整组接受或驳回，
@@ -217,6 +241,8 @@ export function AssistantScreen() {
   const [liveTrace, setLiveTrace] = useState<AgentRunTrace | null>(null);
   // 最近一次被接受的 AI 写入（撤销入口），null 表示当前没有可撤销的改动
   const [undoTarget, setUndoTarget] = useState<string | null>(null);
+  // 待随下一条消息发送的文本附件
+  const [attachments, setAttachments] = useState<TextAttachment[]>([]);
   const [pendingQuestion, setPendingQuestion] = useState<AgentClarificationRequest | null>(null);
   const [retryRequest, setRetryRequest] = useState<RetryRequest | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -503,6 +529,50 @@ export function AssistantScreen() {
     setInput("");
   };
 
+  /** 选一个文本文件，由用户决定是这次发给助手，还是存进本作品的资料。 */
+  const handlePickAttachment = async () => {
+    let picked: TextAttachment | null = null;
+    try {
+      picked = await pickTextAttachment();
+    } catch (pickError) {
+      Alert.alert("无法读取文件", pickError instanceof Error ? pickError.message : String(pickError));
+      return;
+    }
+    if (!picked) return;
+    const attachment = picked;
+    Alert.alert(
+      attachment.name,
+      `共 ${attachment.characters} 字${attachment.truncated ? "（内容较长，已截取前 10 万字）" : ""}\n\n「加入本次对话」：随下一条消息发给助手，不写入数据库。\n「存入资料」：写成本作品的笔记，之后助手可长期检索引用。`,
+      [
+        { text: "取消", style: "cancel" },
+        {
+          text: "存入资料",
+          onPress: () => {
+            void (async () => {
+              if (!project) return;
+              try {
+                const title = await saveAttachmentAsNote(project.id, attachment);
+                refreshData();
+                Alert.alert("已存入资料", `「${title}」已写成本作品的笔记，助手可在需要时检索到。`);
+              } catch (saveError) {
+                Alert.alert("存入失败", saveError instanceof Error ? saveError.message : String(saveError));
+              }
+            })();
+          },
+        },
+        {
+          text: "加入本次对话",
+          onPress: () => setAttachments((current) => (
+            current.some((item) => item.name === attachment.name) || current.length >= MAX_ATTACHMENTS_PER_MESSAGE
+              ? current
+              : [...current, attachment]
+          )),
+        },
+      ],
+      { cancelable: true },
+    );
+  };
+
   /** 撤销最近一次被接受的 AI 写入，把对象还原为改动前的内容。 */
   const handleUndoWrite = () => {
     void (async () => {
@@ -586,7 +656,9 @@ export function AssistantScreen() {
           workingSession = replacement.session;
           setEditingMessageId(null);
         } else {
-          userMessage = await addMessage(sessionId, "user", content);
+          userMessage = await addMessage(sessionId, "user", content, attachments.length
+            ? { attachments: attachments.map((item) => ({ name: item.name, characters: item.characters })) }
+            : null);
           userMessageSaved = true;
           nextHistory = [...baseHistory, userMessage];
           workingSession = {
@@ -601,10 +673,23 @@ export function AssistantScreen() {
         setSessions((current) => [workingSession, ...current.filter((session) => session.id !== workingSession.id)]);
       }
       if (!userMessage) throw new Error("消息准备失败，请重试");
+      // 附件内容不写进消息正文（避免气泡里堆满原文），而是作为一条独立的资料消息随本次请求发给模型。
+      const attachmentMessage = attachments.length
+        ? {
+            id: `${userMessage.id}-attachments`,
+            projectId: userMessage.projectId,
+            sessionId: userMessage.sessionId,
+            role: "user" as const,
+            content: attachmentContextBlock(attachments),
+            metadata: null,
+            createdAt: userMessage.createdAt,
+          }
+        : null;
+      const runHistory = attachmentMessage ? [...nextHistory, attachmentMessage] : nextHistory;
       const response = await runAgent({
         project,
         selection: runSelection,
-        history: nextHistory,
+        history: runHistory,
         agentId: retry?.agentId ?? activeAgentId,
         approveTool: requestToolApproval,
         askUser,
@@ -616,6 +701,7 @@ export function AssistantScreen() {
       });
       const assistantMessage = await addMessage(sessionId, "assistant", response.content, {
         agentTrace: response.trace,
+        ...(response.reasoning ? { reasoning: response.reasoning } : {}),
         taskStatus: "completed",
         retryContext: { userMessageId: userMessage.id, modelId: runSelection.model.id, agentId: retry?.agentId ?? activeAgentId },
       });
@@ -628,6 +714,7 @@ export function AssistantScreen() {
       setRetryRequest(null);
       setLiveTrace(null);
       setUndoTarget(undoLabel());
+      setAttachments([]);
       refreshData();
       requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
     } catch (sendError) {
@@ -777,6 +864,20 @@ export function AssistantScreen() {
                   ) : null}
                 </View>
               ) : null}
+              {item.role === "assistant" && item.metadata?.reasoning ? (
+                <ReasoningBlock text={item.metadata.reasoning} />
+              ) : null}
+              {item.role === "user" && item.metadata?.attachments?.length ? (
+                <View style={styles.attachmentRow}>
+                  {item.metadata.attachments.map((entry) => (
+                    <View key={entry.name} style={styles.attachmentChip}>
+                      <Ionicons name="document-text-outline" size={14} color={colors.primary} />
+                      <Text numberOfLines={1} style={styles.attachmentName}>{entry.name}</Text>
+                      <Text style={styles.attachmentMeta}>{entry.characters} 字</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
               <Text selectable style={[styles.messageText, chatTextStyle]}>{item.content}</Text>
               {failed && item.metadata?.errorDetail ? <ErrorDetails detail={item.metadata.errorDetail} /> : null}
               {item.role === "assistant" && messageRetry ? (
@@ -798,6 +899,20 @@ export function AssistantScreen() {
           </View>
         ) : null}
         <View style={styles.composer}>
+          {attachments.length ? (
+            <View style={styles.attachmentRow}>
+              {attachments.map((item) => (
+                <View key={item.name} style={styles.attachmentChip}>
+                  <Ionicons name="document-text-outline" size={14} color={colors.primary} />
+                  <Text numberOfLines={1} style={styles.attachmentName}>{item.name}</Text>
+                  <Text style={styles.attachmentMeta}>{item.characters} 字</Text>
+                  <Pressable accessibilityLabel={`移除附件 ${item.name}`} onPress={() => setAttachments((current) => current.filter((entry) => entry.name !== item.name))} style={styles.attachmentRemove}>
+                    <Ionicons name="close" size={15} color={colors.textMuted} />
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          ) : null}
           {editingMessageId ? (
             <View style={styles.editingBanner}>
               <View style={styles.editingCopy}>
@@ -810,6 +925,14 @@ export function AssistantScreen() {
             </View>
           ) : null}
           <View style={styles.composerRow}>
+            <Pressable
+              accessibilityLabel="添加附件"
+              disabled={sending || attachments.length >= MAX_ATTACHMENTS_PER_MESSAGE}
+              onPress={() => void handlePickAttachment()}
+              style={({ pressed }) => [styles.attachButton, (pressed || sending) && styles.sendDisabled]}
+            >
+              <Ionicons name="attach" size={22} color={colors.textMuted} />
+            </Pressable>
             <TextInput
               ref={composerRef}
               value={input}
@@ -1043,6 +1166,17 @@ const styles = StyleSheet.create({
   composerRow: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm },
   editingBanner: { minHeight: 36, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   undoBanner: { minHeight: 36, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.md, paddingVertical: spacing.xs, backgroundColor: "#E6F3EF", borderRadius: 8 },
+  reasoningCard: { borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, borderRadius: 8, marginBottom: spacing.xs },
+  reasoningHeader: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: spacing.sm, paddingVertical: 8 },
+  reasoningTitle: { color: colors.textMuted, fontSize: 13 },
+  reasoningMeta: { flex: 1, color: colors.textMuted, fontSize: 12 },
+  reasoningText: { color: colors.textMuted, fontSize: 13, lineHeight: 20, paddingHorizontal: spacing.sm, paddingBottom: spacing.sm },
+  attachmentRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  attachmentChip: { flexDirection: "row", alignItems: "center", gap: 5, maxWidth: "100%", paddingHorizontal: 9, paddingVertical: 6, borderRadius: 8, backgroundColor: "#E6F3EF" },
+  attachmentName: { color: colors.text, fontSize: 12, maxWidth: 150 },
+  attachmentMeta: { color: colors.textMuted, fontSize: 11 },
+  attachmentRemove: { padding: 2 },
+  attachButton: { width: 34, height: 34, alignItems: "center", justifyContent: "center", borderRadius: 17 },
   undoText: { flex: 1, color: colors.text, fontSize: 13 },
   undoButton: { minWidth: 56, minHeight: 30, alignItems: "center", justifyContent: "center", borderRadius: 6, backgroundColor: colors.primary },
   undoButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "600" },

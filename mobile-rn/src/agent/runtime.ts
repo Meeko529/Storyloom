@@ -82,6 +82,8 @@ type RuntimeCatalog = {
 
 type LoopResult = {
   content: string;
+  /** 最后一轮模型返回的推理过程（思考型模型才有） */
+  reasoning?: string;
   consistencyRequired: boolean;
   characterConsistencyChecked: boolean;
   worldConsistencyChecked: boolean;
@@ -111,6 +113,8 @@ type LoopInput = {
 
 export interface AgentRunResult {
   content: string;
+  /** 思考型模型的推理过程；模型未提供时为空 */
+  reasoning?: string;
   trace: AgentRunTrace;
 }
 
@@ -611,6 +615,7 @@ async function runAgentLoop(input: LoopInput): Promise<LoopResult> {
       }
       return {
         content: turn.content || "模型没有返回内容",
+        ...(turn.reasoning ? { reasoning: turn.reasoning } : {}),
         consistencyRequired,
         characterConsistencyChecked,
         worldConsistencyChecked,
@@ -856,7 +861,11 @@ export async function runAgent(input: {
       await setSetting(consistencyKey, "");
     }
     recorder.complete();
-    return { content: result.content, trace: recorder.snapshot() };
+    return {
+      content: result.content,
+      ...(result.reasoning ? { reasoning: result.reasoning } : {}),
+      trace: recorder.snapshot(),
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     recorder.fail(message);
