@@ -1233,7 +1233,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       ) : null}
       {category === "skills" ? (
         <View style={styles.section}>
-          <Text style={styles.sectionHint}>技能是可按需启用的写作方法，助手会在合适的环节调用它，例如改写口吻或处理对话。</Text>
+          <Text style={styles.sectionHint}>技能是可按需启用的写作方法，助手会在合适的环节调用它，例如改写口吻或处理对话。带锁图标的技能来自内置内容包或在线更新：本机只保存开关，内容随内容包变化，因此不能查看与修改；用下方「添加技能」自建的技能保存在本机，随时可以查看、编辑与删除。</Text>
           <TextInput
             value={skillQuery}
             onChangeText={setSkillQuery}
