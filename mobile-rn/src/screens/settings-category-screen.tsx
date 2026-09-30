@@ -144,9 +144,10 @@ type IndexNumberDraft = Record<IndexNumberKey, string>;
 const SKILL_GROUPS: { title: string; test: (name: string) => boolean }[] = [
   { title: "人物", test: (name) => /人物|角色|反派/.test(name) },
   { title: "对话与文风", test: (name) => /对话|文风|口吻|风格|AI ?味/.test(name) },
+  { title: "题材与设定", test: (name) => /剧本|世界观|类型|题材|设定|起名|命名/.test(name) },
   { title: "审查与打磨", test: (name) => /审查|检查|修订|禁用词|模板|质量|契约|一致性/.test(name) },
   { title: "规范与连续性", test: (name) => /格式|规范|状态|追踪|连续|设定/.test(name) },
-  { title: "情节与结构", test: (name) => /开篇|结构|反转|钩子|悬念|情绪|投稿|大纲|节奏|剧情|情节/.test(name) },
+  { title: "情节与结构", test: (name) => /开篇|结构|反转|钩子|悬念|情绪|投稿|大纲|节奏|剧情|情节|场景|爽点|打脸/.test(name) },
 ];
 const SKILL_GROUP_OTHER = "其他";
 
