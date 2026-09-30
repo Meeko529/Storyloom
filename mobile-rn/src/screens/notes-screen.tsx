@@ -60,6 +60,7 @@ export function NotesScreen() {
   const [content, setContent] = useState("");
   const [movingNote, setMovingNote] = useState<Note | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [formatPickerVisible, setFormatPickerVisible] = useState(false);
 
   const load = useCallback(async () => {
     if (!projectId) {
@@ -156,12 +157,7 @@ export function NotesScreen() {
 
   const chooseNotesFormat = () => {
     if (!notes.length) return;
-    Alert.alert("导出笔记", `共 ${notes.length} 条，选择格式：`, [
-      { text: "Markdown（分层）", onPress: () => void exportAllNotes("markdown") },
-      { text: "纯文本（TXT）", onPress: () => void exportAllNotes("txt") },
-      { text: "JSON（结构化）", onPress: () => void exportAllNotes("json") },
-      { text: "取消", style: "cancel" },
-    ]);
+    setFormatPickerVisible(true);
   };
 
   const openEdit = (note: Note) => {
@@ -401,7 +397,40 @@ export function NotesScreen() {
           </View>
         </SheetBackdrop>
       </Modal>
-    </Screen>
+          <Modal visible={formatPickerVisible} transparent animationType="fade" onRequestClose={() => setFormatPickerVisible(false)}>
+        <SheetBackdrop onPress={() => setFormatPickerVisible(false)}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>导出笔记</Text>
+              <Pressable accessibilityLabel="关闭导出格式选择" onPress={() => setFormatPickerVisible(false)} style={styles.iconButton}>
+                <Ionicons name="close" size={24} color={colors.textMuted} />
+              </Pressable>
+            </View>
+            <Pressable onPress={() => { setFormatPickerVisible(false); void exportAllNotes("markdown"); }} style={styles.formatRow}>
+              <Ionicons name="document-text-outline" size={20} color={colors.primary} />
+              <View style={styles.formatRowText}>
+                <Text style={styles.formatRowTitle}>Markdown（分层）</Text>
+                <Text style={styles.formatRowMeta}>按整书 → 卷 → 章分层</Text>
+              </View>
+            </Pressable>
+            <Pressable onPress={() => { setFormatPickerVisible(false); void exportAllNotes("txt"); }} style={styles.formatRow}>
+              <Ionicons name="document-outline" size={20} color={colors.primary} />
+              <View style={styles.formatRowText}>
+                <Text style={styles.formatRowTitle}>纯文本（TXT）</Text>
+                <Text style={styles.formatRowMeta}>无标记符号，直接可读</Text>
+              </View>
+            </Pressable>
+            <Pressable onPress={() => { setFormatPickerVisible(false); void exportAllNotes("json"); }} style={styles.formatRow}>
+              <Ionicons name="code-slash-outline" size={20} color={colors.primary} />
+              <View style={styles.formatRowText}>
+                <Text style={styles.formatRowTitle}>JSON（结构化）</Text>
+                <Text style={styles.formatRowMeta}>带卷章归属的结构化数据</Text>
+              </View>
+            </Pressable>
+          </View>
+        </SheetBackdrop>
+      </Modal>
+</Screen>
   );
 }
 
@@ -432,6 +461,10 @@ const styles = StyleSheet.create({
   sheetHeader: { minHeight: 70, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingLeft: spacing.lg, paddingRight: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   sheetTitleWrap: { flex: 1, minWidth: 0 },
   sheetTitle: { color: colors.text, fontSize: 19, fontWeight: "700" },
+  formatRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12, borderRadius: 12, backgroundColor: colors.surfaceMuted, marginBottom: 6 },
+  formatRowText: { flex: 1, minWidth: 0 },
+  formatRowTitle: { color: colors.text, fontSize: 14, fontWeight: "600" },
+  formatRowMeta: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
   sheetMeta: { marginTop: 3, color: colors.textMuted, fontSize: 12 },
   sheetContent: { gap: spacing.lg, padding: spacing.lg, paddingBottom: spacing.xxl },
   contentInput: { minHeight: 260 },

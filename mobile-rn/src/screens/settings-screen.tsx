@@ -579,8 +579,8 @@ export function SettingsScreen() {
   return (
     <Screen scroll>
       <Header
-        title="模型"
-        onBack={() => setActiveCategory(null)}
+        title={modelsView === "addProvider" ? "添加供应商" : "模型"}
+        onBack={modelsView === "addProvider" ? () => setModelsView("home") : () => setActiveCategory(null)}
         action={
           <View style={styles.providerActions}>
             <Pressable
