@@ -90,7 +90,7 @@ const settingsGroups: Array<{
       { id: "models", label: "模型", icon: "hardware-chip-outline" },
       { id: "free-models", label: "免费模型", icon: "gift-outline" },
       { id: "model-capabilities", label: "模型能力", icon: "speedometer-outline" },
-      { id: "conv-advanced", label: "连接与高级", icon: "link-outline" },
+      { id: "conv-advanced", label: "连接", icon: "link-outline" },
     ],
   },
   {
@@ -489,7 +489,7 @@ export function SettingsScreen() {
               <Ionicons name={capExpandedId === model.id ? "chevron-down" : "chevron-forward"} size={18} color={colors.textMuted} />
             </Pressable>
             {capExpandedId === model.id ? (
-              <View>
+              <View style={styles.capExpand}>
                 <Field label="温度（0 ~ 2，越大越发散；小说创作建议 0.7 ~ 0.9）" value={capDraft.temperature} onChangeText={(v) => setCapDraft({ ...capDraft, temperature: v })} keyboardType="decimal-pad" />
                 <Field label={`最大输出 Token 数（1 ~ ${MAX_CONFIGURED_OUTPUT_TOKENS}）`} value={capDraft.maxTokens} onChangeText={(v) => setCapDraft({ ...capDraft, maxTokens: v })} keyboardType="number-pad" />
                 <Text style={styles.fieldHint}>单次回复长度，不是上下文窗口；1M 上下文模型保持 {DEFAULT_MAX_OUTPUT_TOKENS} 或按需填写。</Text>
@@ -497,10 +497,12 @@ export function SettingsScreen() {
                 <Text style={styles.fieldHint}>关闭后助手只能对话，无法读取或写入作品内容。</Text>
                 <ToggleRow label="支持图片输入" value={capDraft.supportsVision} onChange={(value) => setCapDraft({ ...capDraft, supportsVision: value })} />
                 <Text style={styles.fieldHint}>当前判断依据：{guessModelCapabilities(model.modelId).reason}</Text>
+                <View style={{ marginTop: spacing.sm }}>
                 <Button label="按模型名重新推测" variant="secondary" onPress={() => {
                   const guess = guessModelCapabilities(model.modelId);
                   setCapDraft({ ...capDraft, supportsTools: guess.supportsTools, supportsVision: guess.supportsVision });
                 }} />
+                </View>
                 <Button label="保存" onPress={() => {
                   const parsedTemperature = Number(capDraft.temperature);
                   const parsedMaxTokens = Number(capDraft.maxTokens);
@@ -528,19 +530,7 @@ export function SettingsScreen() {
           <Field label="模型请求超时（毫秒）" value={requestTimeout} onChangeText={setRequestTimeout} onBlur={() => void setSetting("connections.requestTimeout", requestTimeout)} keyboardType="number-pad" />
           <Text style={styles.fieldHint}>请求超过这个时间仍未返回即判定失败。</Text>
         </View>
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>各供应商高级设置</Text>
-          <Text style={styles.fieldHint}>自定义请求头、鉴权头名与前缀、关闭 function calling、替换 max_tokens 参数名——用于中转站 / 自建网关。</Text>
-          {providers.map((provider) => (
-            <Pressable key={provider.id} onPress={() => void openAdvancedEditor(provider)} style={styles.modelRow}>
-              <View style={styles.providerInfo}>
-                <Text style={styles.providerName}>{provider.name}</Text>
-                <Text style={styles.providerUrl} numberOfLines={1}>{provider.baseUrl}</Text>
-              </View>
-              <Ionicons name={advancedFlags[provider.id] ? "options" : "options-outline"} size={18} color={advancedFlags[provider.id] ? colors.primary : colors.textMuted} />
-            </Pressable>
-          ))}
-        </View>
+
         {error ? <View style={styles.errorWrap}><ErrorNotice message={error} onRetry={() => void load()} /></View> : null}
         <View style={{ height: spacing.md }} />
       </Screen>
@@ -936,6 +926,7 @@ const styles = StyleSheet.create({
   addModelRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.sm, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   btnrow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm },
   providerBlock: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  capExpand: { paddingTop: spacing.xs, paddingBottom: spacing.md, gap: 2 },
   providerHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   providerActions: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   providerInfo: { flex: 1, minWidth: 0, marginRight: spacing.sm },
@@ -954,7 +945,7 @@ const styles = StyleSheet.create({
   choiceActive: { borderColor: colors.primary, backgroundColor: "#E6F3EF" },
   choiceText: { color: colors.textMuted, fontSize: 13 },
   choiceTextActive: { color: colors.primary, fontWeight: "700" },
-  modelSheet: { maxHeight: "78%", paddingBottom: spacing.lg, borderTopLeftRadius: radius.md, borderTopRightRadius: radius.md, backgroundColor: colors.background },
+  modelSheet: { maxHeight: "78%", paddingHorizontal: spacing.md, gap: spacing.xs, paddingBottom: spacing.lg, borderTopLeftRadius: radius.md, borderTopRightRadius: radius.md, backgroundColor: colors.background },
   modelFilterWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   modelFilterEmpty: { padding: spacing.lg, color: colors.textMuted, fontSize: 14, lineHeight: 20 },
   sheetHeader: { minHeight: 64, flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.lg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },

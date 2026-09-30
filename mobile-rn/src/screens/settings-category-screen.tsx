@@ -1048,11 +1048,11 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
                 <Text style={styles.modelChoiceText}>{option.label}</Text>
               </Pressable>
             ))}
-                    <ToggleRow label="吉祥物挂件（助手输入框）" value={mascotEnabled} onChange={(value) => { setMascotEnabled(value); void savePreference("general.mascotEnabled", value ? "true" : "false", (v) => setMascotEnabled(v === "true")); }} />
 </View>
           <Text style={[styles.previewSample, { fontSize: chatFontSizeValue, fontFamily: editorFontFamily(chatFontId) }]}>
             这一章可以收在误会发生的当晚，把解释留到下一章。
           </Text>
+          <ToggleRow label="吉祥物挂件（助手输入框）" value={mascotEnabled} onChange={(value) => { setMascotEnabled(value); void savePreference("general.mascotEnabled", value ? "true" : "false", (v) => setMascotEnabled(v === "true")); }} />
         </View>
       ) : null}
       {category === "index" ? (
