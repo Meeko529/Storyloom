@@ -254,6 +254,101 @@ export async function getProjectStats(projectId: string): Promise<ProjectStats> 
   };
 }
 
+/** 助手「无作品模式」的固定载体：查找或创建「灵感速记」项目（未选书时的对话与灵感都落在这里）。 */
+export async function ensureScratchProject(): Promise<Project> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<ProjectRow>(
+    "SELECT * FROM projects WHERE title = '灵感速记' ORDER BY created_at LIMIT 1",
+  );
+  if (row) return mapProject(row);
+  return createProject("灵感速记", "助手未选作品时的对话与灵感记录（系统自动创建）");
+}
+
+export interface DedupeSummary {
+  mergedProviders: number;
+  removedModels: number;
+}
+
+/**
+ * 恢复备份 / 换包名重装后清理重复：
+ * - 同名供应商合并（优先保留 SecureStore 里**存有 API Key** 的那个；保留方没有 Key 时把被合并方的 Key 搬过去）
+ * - 模型随供应商迁移，并按「供应商 + 模型 ID」去重（恢复后重新添加模型会产生重复，2026-09-30 用户实测）
+ */
+export async function dedupeProvidersAndModels(): Promise<DedupeSummary> {
+  const db = await getDatabase();
+  const providers = await db.getAllAsync<{ id: string; name: string; api_key_ref: string; created_at: string }>(
+    "SELECT id, name, api_key_ref, created_at FROM providers ORDER BY created_at",
+  );
+  const hasKey = async (ref: string) => {
+    try {
+      return (await SecureStore.getItemAsync(ref)) != null;
+    } catch {
+      return false;
+    }
+  };
+
+  const groups = new Map<string, Array<{ id: string; name: string; api_key_ref: string; created_at: string }>>();
+  for (const provider of providers) {
+    const key = provider.name.trim().toLowerCase();
+    const list = groups.get(key) ?? [];
+    list.push(provider);
+    groups.set(key, list);
+  }
+
+  const idMap = new Map<string, string>();
+  let mergedProviders = 0;
+  for (const list of groups.values()) {
+    if (list.length <= 1) continue;
+    const withKey: Array<{ id: string; name: string; api_key_ref: string; created_at: string }> = [];
+    for (const provider of list) {
+      if (await hasKey(provider.api_key_ref)) withKey.push(provider);
+    }
+    const keeper = (withKey.length ? withKey : list).reduce((a, b) => (a.created_at >= b.created_at ? a : b));
+    for (const provider of list) {
+      if (provider.id === keeper.id) continue;
+      if (!(await hasKey(keeper.api_key_ref))) {
+        const oldKey = await SecureStore.getItemAsync(provider.api_key_ref).catch(() => null);
+        if (oldKey) {
+          await SecureStore.setItemAsync(keeper.api_key_ref, oldKey);
+          await SecureStore.deleteItemAsync(provider.api_key_ref).catch(() => {});
+        }
+      } else {
+        await SecureStore.deleteItemAsync(provider.api_key_ref).catch(() => {});
+      }
+      idMap.set(provider.id, keeper.id);
+      mergedProviders += 1;
+    }
+  }
+
+  let removedModels = 0;
+  const models = await db.getAllAsync<{ id: string; provider_id: string; model_id: string }>(
+    "SELECT id, provider_id, model_id, rowid FROM models ORDER BY rowid",
+  );
+  const seen = new Set<string>();
+  const toDelete: string[] = [];
+  for (const model of models) {
+    const target = idMap.get(model.provider_id);
+    if (target && target !== model.provider_id) {
+      await db.runAsync("UPDATE models SET provider_id = ? WHERE id = ?", target, model.id);
+      model.provider_id = target;
+    }
+    const key = `${model.provider_id}::${model.model_id}`;
+    if (seen.has(key)) {
+      toDelete.push(model.id);
+      removedModels += 1;
+    } else {
+      seen.add(key);
+    }
+  }
+  for (const id of toDelete) await db.runAsync("DELETE FROM models WHERE id = ?", id);
+  for (const [oldId] of idMap) {
+    const stillUsed = await db.getFirstAsync("SELECT id FROM models WHERE provider_id = ? LIMIT 1", oldId);
+    if (!stillUsed) await db.runAsync("DELETE FROM providers WHERE id = ?", oldId);
+  }
+
+  return { mergedProviders, removedModels };
+}
+
 /** 一次性取全部作品的规模统计（书架列表用，避免逐作品查询）。 */
 export async function getProjectStatsMap(): Promise<Record<string, ProjectStats>> {
   const db = await getDatabase();

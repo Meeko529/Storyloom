@@ -363,6 +363,10 @@ function enabledDelegates(catalog: RuntimeCatalog, agent: AgentDefinition): Agen
 function toolsForAgent(agent: AgentDefinition): AgentToolDefinition[] {
   const allowed = new Set(agent.toolNames.length ? agent.toolNames : agentTools.map((tool) => tool.name));
   allowed.add("ask_user");
+  // 笔记读取是只读能力，始终放行：远程内容包的旧 toolNames 清单没有收录它们，
+  // 会导致「无权使用工具 read_note」（2026-09-30 用户实测）
+  allowed.add("list_notes");
+  allowed.add("read_note");
   allowed.add("read_author_style_guide");
   allowed.add("save_author_style_guide");
   allowed.add("evolve_author_style");

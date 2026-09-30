@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Image,
   ActivityIndicator,
+  PanResponder,
   Alert,
   FlatList,
   Modal,
@@ -43,6 +44,8 @@ import {
   createChatSession,
   deleteChatSession,
   getChatMessageCounts,
+  ensureScratchProject,
+  listProjects,
   deleteMessagesFrom,
   getProject,
   getProviderApiKey,
@@ -63,7 +66,7 @@ import {
 import type { RootTabParamList } from "@/navigation/types";
 import { getAgentDefinitions } from "@/settings/config";
 import { useAppStore } from "@/store/app-store";
-import { colors, radius, spacing } from "@/theme";
+import { colors, radius, shadow, spacing } from "@/theme";
 import type {
   AgentClarificationRequest,
   AgentClarificationResponse,
@@ -225,6 +228,10 @@ function ErrorDetails({ detail }: { detail: string }) {
 export function AssistantScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList>>();
   const projectId = useAppStore((state) => state.currentProjectId);
+  const setCurrentProject = useAppStore((state) => state.setCurrentProject);
+  const [scratchProjectId, setScratchProjectId] = useState<string | null>(null);
+  // 无作品模式：未选书时落到「灵感速记」，助手照常可用
+  const effectiveProjectId = projectId ?? scratchProjectId;
   const refreshData = useAppStore((state) => state.refreshData);
   const revision = useAppStore((state) => state.dataRevision);
   const [project, setProject] = useState<Project | null>(null);
@@ -241,11 +248,16 @@ export function AssistantScreen() {
   const [selection, setSelection] = useState<ModelSelection | null>(null);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [thinkingSeconds, setThinkingSeconds] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sessionPickerVisible, setSessionPickerVisible] = useState(false);
   const [messageCounts, setMessageCounts] = useState<Record<string, number>>({});
   const [renaming, setRenaming] = useState<ChatSession | null>(null);
+  const [mascotEnabled, setMascotEnabled] = useState(true);
+  const [mascotOffset, setMascotOffset] = useState({ x: 0, y: 0 });
+  const [projectPickerVisible, setProjectPickerVisible] = useState(false);
+  const [projectsForPicker, setProjectsForPicker] = useState<Project[]>([]);
   const [renameTitle, setRenameTitle] = useState("");
   const [modelPickerVisible, setModelPickerVisible] = useState(false);
   const [stylePickerVisible, setStylePickerVisible] = useState(false);
@@ -272,26 +284,14 @@ export function AssistantScreen() {
     resolver?.({ answers: [], cancelled: true });
   }, []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (overrideId?: string) => {
     const requestId = loadRequestRef.current + 1;
     loadRequestRef.current = requestId;
-    if (!projectId) {
-      setProject(null);
-      setSessions([]);
-      setActiveSession(null);
-      setMessages([]);
-      setModels([]);
-      setProviders([]);
-      setDefaultModelId(null);
-      setActiveAgentId(null);
-      setActiveAgentName("Build");
-      setStyleProfiles([]);
-      setActiveStyleProfileState(null);
-      setSelection(null);
-      setLiveTrace(null);
-      cancelPendingQuestion();
-      setLoading(false);
-      return;
+    let activeProjectId = overrideId ?? projectId ?? scratchProjectId;
+    if (!activeProjectId) {
+      const scratch = await ensureScratchProject();
+      activeProjectId = scratch.id;
+      setScratchProjectId(scratch.id);
     }
     setLoading(true);
     setError(null);
@@ -308,16 +308,16 @@ export function AssistantScreen() {
         nextStyleProfiles,
         nextActiveStyleProfile,
       ] = await Promise.all([
-        getProject(projectId),
-        listChatSessions(projectId),
-        getSetting(activeSessionSettingKey(projectId)),
+        getProject(activeProjectId),
+        listChatSessions(activeProjectId),
+        getSetting(activeSessionSettingKey(activeProjectId)),
         getSetting("activeModelId"),
         listModels(),
         listProviders(),
         getSetting("agent.activeDefinitionId"),
         getAgentDefinitions(),
-        listStyleProfiles(projectId),
-        getActiveStyleProfile(projectId),
+        listStyleProfiles(activeProjectId),
+        getActiveStyleProfile(activeProjectId),
       ]);
       if (!nextProject) throw new Error("作品不存在");
       const activeAgent = agents.find((agent) => agent.id === activeAgentId && agent.enabled && agent.kind === "primary")
@@ -332,7 +332,7 @@ export function AssistantScreen() {
       let nextSessions = storedSessions;
       let nextSession = nextSessions.find((session) => session.id === preferredSessionId) ?? nextSessions[0] ?? null;
       if (!nextSession) {
-        nextSession = await createChatSession(projectId, nextDefaultModelId);
+        nextSession = await createChatSession(activeProjectId, nextDefaultModelId);
         nextSessions = [nextSession];
       }
       const selectedModelId = nextModels.some((model) => model.id === nextSession?.modelId)
@@ -350,7 +350,7 @@ export function AssistantScreen() {
       } catch (resolveError) {
         selectionError = resolveError instanceof Error ? resolveError.message : String(resolveError);
       }
-      await setSetting(activeSessionSettingKey(projectId), nextSession.id);
+      await setSetting(activeSessionSettingKey(activeProjectId), nextSession.id);
       if (loadRequestRef.current !== requestId) return;
       setProject(nextProject);
       setSessions(nextSessions);
@@ -375,7 +375,7 @@ export function AssistantScreen() {
     } finally {
       if (loadRequestRef.current === requestId) setLoading(false);
     }
-  }, [cancelPendingQuestion, projectId]);
+  }, [cancelPendingQuestion, effectiveProjectId]);
 
   useEffect(() => {
     cancelPendingQuestion();
@@ -385,7 +385,7 @@ export function AssistantScreen() {
       sendRequestRef.current += 1;
       cancelPendingQuestion();
     };
-  }, [cancelPendingQuestion, projectId]);
+  }, [cancelPendingQuestion, effectiveProjectId]);
 
   useEffect(() => {
     setInput("");
@@ -400,6 +400,36 @@ export function AssistantScreen() {
   const [contextWindow, setContextWindow] = useState(DEFAULT_CONTEXT_WINDOW_TOKENS);
   const [historyLimit, setHistoryLimit] = useState(30);
   const [contextSheetVisible, setContextSheetVisible] = useState(false);
+  // 思考计时：请求进行中每秒 +1，给用户“正在思考”的实时感知
+  useEffect(() => {
+    if (!sending) {
+      setThinkingSeconds(0);
+      return;
+    }
+    const timer = setInterval(() => setThinkingSeconds((value) => value + 1), 1000);
+    return () => clearInterval(timer);
+  }, [sending]);
+
+  const mascotOffsetRef = useRef({ x: 0, y: 0 });
+  const mascotDragStartRef = useRef({ x: 0, y: 0 });
+  const mascotPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        mascotDragStartRef.current = { ...mascotOffsetRef.current };
+      },
+      onPanResponderMove: (_event, gesture) => {
+        const next = { x: mascotDragStartRef.current.x + gesture.dx, y: mascotDragStartRef.current.y + gesture.dy };
+        mascotOffsetRef.current = next;
+        setMascotOffset(next);
+      },
+      onPanResponderRelease: () => {
+        void setSetting("assistant.mascotOffset", JSON.stringify(mascotOffsetRef.current)).catch(() => {});
+      },
+    }),
+  ).current;
+
   useFocusEffect(useCallback(() => {
     void (async () => {
       const prefs = await readChatPrefs();
@@ -414,6 +444,18 @@ export function AssistantScreen() {
       ]);
       setContextWindow(normalizeContextWindow(windowValue));
       setHistoryLimit(Math.max(1, Number(limitValue) || 30));
+      setMascotEnabled((await getSetting("general.mascotEnabled")) !== "false");
+      const mascotRaw = await getSetting("assistant.mascotOffset");
+      if (mascotRaw) {
+        try {
+          const parsed = JSON.parse(mascotRaw) as { x?: number; y?: number };
+          if (typeof parsed?.x === "number" && typeof parsed?.y === "number") {
+            const next = { x: parsed.x, y: parsed.y };
+            mascotOffsetRef.current = next;
+            setMascotOffset(next);
+          }
+        } catch {}
+      }
     })();
   }, []));
   useFocusEffect(useCallback(() => {
@@ -425,10 +467,10 @@ export function AssistantScreen() {
   }, [cancelPendingQuestion, load, revision]));
 
   const switchSession = async (session: ChatSession) => {
-    if (!projectId || sending) return;
+    if (!effectiveProjectId || sending) return;
     setError(null);
     try {
-      if (session.projectId !== projectId || !sessions.some((item) => item.id === session.id)) {
+      if (session.projectId !== effectiveProjectId || !sessions.some((item) => item.id === session.id)) {
         throw new Error("对话不属于当前作品");
       }
       const effectiveModelId = models.some((model) => model.id === session.modelId) ? session.modelId : defaultModelId;
@@ -440,7 +482,7 @@ export function AssistantScreen() {
       } catch (resolveError) {
         selectionError = resolveError instanceof Error ? resolveError.message : String(resolveError);
       }
-      await setSetting(activeSessionSettingKey(projectId), session.id);
+      await setSetting(activeSessionSettingKey(effectiveProjectId), session.id);
       setActiveSession(session);
       setMessages(nextMessages);
       const lastFailed = [...nextMessages].reverse().find((message) => message.role === "assistant" && (message.metadata?.taskStatus === "failed" || message.metadata?.agentTrace?.status === "error"));
@@ -456,13 +498,13 @@ export function AssistantScreen() {
 
   // 消息条数：面板打开或会话增删时刷新（目录里要显示每条对话聊了多少）。
   useEffect(() => {
-    if (!projectId || !sessionPickerVisible) return;
-    void getChatMessageCounts(projectId).then(setMessageCounts).catch(() => setMessageCounts({}));
-  }, [projectId, sessionPickerVisible, sessions.length]);
+    if (!effectiveProjectId || !sessionPickerVisible) return;
+    void getChatMessageCounts(effectiveProjectId).then(setMessageCounts).catch(() => setMessageCounts({}));
+  }, [effectiveProjectId, sessionPickerVisible, sessions.length]);
 
   /** 新建对话前先确认：误触会立刻切走，且每次点都会新建。 */
   const confirmNewSession = () => {
-    if (!projectId || sending) return;
+    if (!effectiveProjectId || sending) return;
     Alert.alert("新建对话？", "当前对话不会被删除，之后可在管理对话里找回。", [
       { text: "取消", style: "cancel" },
       { text: "新建", onPress: () => void newSession() },
@@ -483,11 +525,11 @@ export function AssistantScreen() {
   };
 
   const newSession = async () => {
-    if (!projectId || sending) return;
+    if (!effectiveProjectId || sending) return;
     setError(null);
     try {
-      const session = await createChatSession(projectId, selection?.model.id ?? defaultModelId);
-      await setSetting(activeSessionSettingKey(projectId), session.id);
+      const session = await createChatSession(effectiveProjectId, selection?.model.id ?? defaultModelId);
+      await setSetting(activeSessionSettingKey(effectiveProjectId), session.id);
       setSessions((current) => [session, ...current]);
       setActiveSession(session);
       setMessages([]);
@@ -514,11 +556,11 @@ export function AssistantScreen() {
   };
 
   const chooseStyle = async (profile: StyleProfile | null) => {
-    if (!projectId || sending || updatingStyle) return;
+    if (!effectiveProjectId || sending || updatingStyle) return;
     setUpdatingStyle(true);
     setError(null);
     try {
-      await setActiveStyleProfile(projectId, profile?.id ?? null);
+      await setActiveStyleProfile(effectiveProjectId, profile?.id ?? null);
       setActiveStyleProfileState(profile);
       setStylePickerVisible(false);
     } catch (styleError) {
@@ -531,16 +573,16 @@ export function AssistantScreen() {
   const removeSession = async (session: ChatSession) => {
     if (!projectId || sending) return;
     try {
-      if (session.projectId !== projectId || !sessions.some((item) => item.id === session.id)) {
+      if (session.projectId !== effectiveProjectId || !sessions.some((item) => item.id === session.id)) {
         throw new Error("对话不属于当前作品");
       }
       await deleteChatSession(session.id);
       const remaining = sessions.filter((item) => item.id !== session.id);
       setSessions(remaining);
       if (activeSession?.id !== session.id) return;
-      const replacement = remaining[0] ?? await createChatSession(projectId, selection?.model.id ?? defaultModelId);
+      const replacement = remaining[0] ?? await createChatSession(effectiveProjectId, selection?.model.id ?? defaultModelId);
       if (!remaining.length) setSessions([replacement]);
-      await setSetting(activeSessionSettingKey(projectId), replacement.id);
+      await setSetting(activeSessionSettingKey(effectiveProjectId), replacement.id);
       const effectiveModelId = models.some((model) => model.id === replacement.modelId) ? replacement.modelId : defaultModelId;
       const nextMessages = await listMessages(replacement.id);
       setActiveSession(replacement);
@@ -803,7 +845,6 @@ export function AssistantScreen() {
       if (isCurrentRequest()) setSending(false);
     }
   };
-  if (!projectId) return <Screen><EmptyState title="请先从书架选择一部作品" /></Screen>;
   const contextUsage = useMemo(
     () => computeContextUsage(messages, contextWindow, historyLimit),
     [contextWindow, historyLimit, messages],
@@ -836,13 +877,19 @@ export function AssistantScreen() {
         }
       />
       <View style={styles.contextBar}>
-        <View style={styles.projectContext}>
+        <Pressable
+          accessibilityLabel="切换作品"
+          onPress={() => {
+            void listProjects().then((list) => { setProjectsForPicker(list); setProjectPickerVisible(true); }).catch(() => {});
+          }}
+          style={({ pressed }) => [styles.projectContext, pressed && { opacity: 0.7 }]}
+        >
           <Ionicons name="book-outline" size={19} color={colors.primary} />
           <View style={styles.projectCopy}>
             <Text style={styles.projectTitle} numberOfLines={1}>{project?.title ?? "当前作品"}</Text>
-            <Text style={styles.agentLabel} numberOfLines={1}>{activeAgentName} 主智能体</Text>
+            <Text style={styles.agentLabel} numberOfLines={1}>{activeAgentName} 主智能体 · 点此切换作品</Text>
           </View>
-        </View>
+        </Pressable>
         <Pressable
           accessibilityLabel="切换助手模型"
           disabled={!models.length || sending}
@@ -884,14 +931,20 @@ export function AssistantScreen() {
           style={styles.flex}
           data={messages}
           keyExtractor={(item) => item.id}
+          onContentSizeChange={() => requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false }))}
           contentContainerStyle={messages.length ? styles.messages : styles.emptyMessages}
-          ListFooterComponent={liveTrace ? (
+          ListFooterComponent={sending && !liveTrace ? (
+            <View style={styles.thinkingRow}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.thinkingText}>思考中…（{thinkingSeconds}s）</Text>
+            </View>
+          ) : liveTrace ? (
             <View style={styles.liveTrace}>
               <AgentTraceView trace={liveTrace} defaultExpanded />
             </View>
           ) : null}
           ListEmptyComponent={models.length ? (
-            <EmptyState title="告诉助手你想续写、修改或检索什么" />
+            <EmptyState title="聊灵感、记想法——没选作品也能直接聊，之后可让助手整理成作品" />
           ) : (
             <EmptyState title="请先配置供应商并添加模型" action={<Button label="打开模型设置" onPress={() => navigation.navigate("Settings")} />} />
           )}
@@ -902,15 +955,18 @@ export function AssistantScreen() {
                 const failed = item.role === "assistant" && (item.metadata?.taskStatus === "failed" || item.metadata?.agentTrace?.status === "error");
                 return (
                   <>
-              <View style={styles.messageHeader}>
-                <Text style={styles.messageRole}>{item.role === "user" ? "你" : "Storyloom"}</Text>
-                {item.role === "user" ? (
+              {item.role === "assistant" ? (
+                <View style={styles.messageHeader}>
+                  <Text style={styles.messageRole}>Storyloom</Text>
+                </View>
+              ) : (
+                <View style={styles.messageHeader}>
                   <Pressable accessibilityLabel="编辑这条消息" disabled={sending} onPress={() => beginEditMessage(item)} style={styles.messageEditButton}>
                     <Ionicons name="create-outline" size={17} color={colors.primary} />
                     <Text style={styles.messageEditText}>编辑</Text>
                   </Pressable>
-                ) : null}
-              </View>
+                </View>
+              )}
               {item.metadata?.agentTrace ? (
                 <AgentTraceView
                   trace={item.metadata.agentTrace}
@@ -972,12 +1028,17 @@ export function AssistantScreen() {
         ) : null}
         {/* 吉祥物挂件：坐在输入框上沿，纯装饰不响应点击。可在设置里换/关（外观主题批）。 */}
         <View style={styles.composer}>
-          <View pointerEvents="none" style={styles.mascot}>
-            <Image
-              source={require("../../assets/images/mascot-cat.png")}
-              style={[styles.mascotImage, { tintColor: colors.primary }]}
-            />
-          </View>
+          {mascotEnabled ? (
+            <View
+              style={[styles.mascot, { transform: [{ translateX: mascotOffset.x }, { translateY: mascotOffset.y }] }]}
+              {...mascotPan.panHandlers}
+            >
+              <Image
+                source={require("../../assets/images/mascot-cat.png")}
+                style={[styles.mascotImage, { tintColor: colors.primary }]}
+              />
+            </View>
+          ) : null}
           {attachments.length ? (
             <View style={styles.attachmentRow}>
               {attachments.map((item) => (
@@ -1079,6 +1140,42 @@ export function AssistantScreen() {
             <Text style={styles.contextNote}>
               估算含约 1500 Token 的固定开销（系统提示、技能说明与工具定义）。实际占用随模型分词器不同会有偏差。
             </Text>
+          </View>
+        </SheetBackdrop>
+      </Modal>
+
+      <Modal visible={projectPickerVisible} transparent animationType="fade" onRequestClose={() => setProjectPickerVisible(false)}>
+        <SheetBackdrop onPress={() => setProjectPickerVisible(false)}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>切换作品</Text>
+              <Pressable accessibilityLabel="关闭作品列表" onPress={() => setProjectPickerVisible(false)} style={styles.iconButton}>
+                <Ionicons name="close" size={24} color={colors.textMuted} />
+              </Pressable>
+            </View>
+            <FlatList
+              data={projectsForPicker}
+              keyExtractor={(item) => item.id}
+              style={styles.sheetList}
+              renderItem={({ item }) => (
+                <Pressable
+                  onPress={() => {
+                    setProjectPickerVisible(false);
+                    if (item.id !== projectId) {
+                      setCurrentProject(item.id);
+                      void load(item.id);
+                    }
+                  }}
+                  style={[styles.sheetRow, item.id === (project?.id ?? projectId) && styles.sheetRowActive]}
+                >
+                  <Ionicons name={item.id === (project?.id ?? projectId) ? "radio-button-on" : "radio-button-off"} size={20} color={item.id === (project?.id ?? projectId) ? colors.primary : colors.textMuted} />
+                  <View style={styles.sheetRowText}>
+                    <Text style={styles.sheetRowTitle} numberOfLines={1}>{item.title}</Text>
+                    <Text style={styles.sheetRowMeta} numberOfLines={1}>{item.description || "暂无简介"}</Text>
+                  </View>
+                </Pressable>
+              )}
+            />
           </View>
         </SheetBackdrop>
       </Modal>
@@ -1292,6 +1389,8 @@ const styles = StyleSheet.create({
   sessionTime: { color: colors.textMuted, fontSize: 11 },
   errorWrap: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   messages: { padding: spacing.lg, gap: spacing.md },
+  thinkingRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm },
+  thinkingText: { color: colors.textMuted, fontSize: 12 },
   liveTrace: { marginTop: spacing.md },
   emptyMessages: { flexGrow: 1 },
   message: { gap: spacing.md, paddingVertical: spacing.md },
@@ -1311,7 +1410,7 @@ const styles = StyleSheet.create({
   errorDetailsToggle: { minHeight: 28, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   errorDetailsLabel: { color: colors.textMuted, fontSize: 12, fontWeight: "600" },
   errorDetailsText: { color: colors.textMuted, fontSize: 12, lineHeight: 17 },
-  composer: { gap: spacing.xs, padding: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, backgroundColor: colors.surface },
+  composer: { gap: spacing.xs, marginHorizontal: spacing.md, marginBottom: spacing.sm, padding: spacing.sm, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, ...shadow.card },
   mascot: { position: "absolute", right: 14, top: -40, width: 40, height: 44 },
   mascotImage: { width: "100%", height: "100%", resizeMode: "contain" },
   composerRow: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm },

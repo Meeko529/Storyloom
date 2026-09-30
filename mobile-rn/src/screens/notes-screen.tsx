@@ -16,7 +16,7 @@ import {
 
 import { Button, EmptyState, ErrorNotice, Field, Header, Screen, SheetBackdrop } from "@/components/ui";
 import { getProject, listChapters, listVolumes } from "@/data/repositories";
-import { exportNotes } from "@/lib/export";
+import { exportNotes, type NotesExportFormat } from "@/lib/export";
 import {
   createNote,
   deleteNote,
@@ -138,20 +138,30 @@ export function NotesScreen() {
     setContent("");
   };
 
-  /** 导出本作品全部笔记为 Markdown，按整书 → 卷 → 章分层。 */
-  const exportAllNotes = async () => {
+  /** 导出本作品全部笔记：Markdown（分层）/ TXT / JSON 三种格式，先选格式再导出。 */
+  const exportAllNotes = async (format: NotesExportFormat) => {
     if (!projectId) return;
     setExporting(true);
     setError(null);
     try {
       const project = await getProject(projectId);
       if (!project) throw new Error("作品不存在，无法导出笔记");
-      await exportNotes({ project, volumes, chapters, notes });
+      await exportNotes({ project, volumes, chapters, notes, format });
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : String(exportError));
     } finally {
       setExporting(false);
     }
+  };
+
+  const chooseNotesFormat = () => {
+    if (!notes.length) return;
+    Alert.alert("导出笔记", `共 ${notes.length} 条，选择格式：`, [
+      { text: "Markdown（分层）", onPress: () => void exportAllNotes("markdown") },
+      { text: "纯文本（TXT）", onPress: () => void exportAllNotes("txt") },
+      { text: "JSON（结构化）", onPress: () => void exportAllNotes("json") },
+      { text: "取消", style: "cancel" },
+    ]);
   };
 
   const openEdit = (note: Note) => {
@@ -274,7 +284,7 @@ export function NotesScreen() {
           <Pressable
             accessibilityLabel="导出笔记"
             disabled={exporting || !notes.length}
-            onPress={() => void exportAllNotes()}
+            onPress={chooseNotesFormat}
             style={styles.iconButton}
           >
             {exporting

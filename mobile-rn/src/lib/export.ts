@@ -7,7 +7,7 @@ import type { Chapter, Character, Note, Project, Volume, WorldInfo, WorldInfoEnt
 import { buildEpub, type EpubChapter, type EpubCover } from "@/lib/epub";
 
 export type ExportScope = "chapter" | "volume" | "book";
-export type LibraryExportFormat = "json" | "markdown";
+export type LibraryExportFormat = "json" | "markdown" | "txt";
 /** 正文导出格式：Markdown 便于再排版，纯文本便于直接投稿或粘贴，EPUB 便于在阅读器里读整本。 */
 export type NovelExportFormat = "markdown" | "txt" | "epub";
 
@@ -151,21 +151,72 @@ function dateStamp(): string {  const date = new Date();
 }
 
 function libraryFileName(projectTitle: string, label: string, format: LibraryExportFormat): string {
-  return `${safeFileName(projectTitle)}_${label}_${dateStamp()}.${format === "json" ? "json" : "md"}`;
+  return `${safeFileName(projectTitle)}_${label}_${dateStamp()}.${format === "json" ? "json" : format === "txt" ? "txt" : "md"}`;
 }
 
 /**
  * 导出本作品全部笔记为 Markdown：按「整书 → 卷 → 章」分层，与笔记页的层级一致。
  * 卷/章已被删除的笔记归入「其他」，避免静默丢数据。
  */
+export type NotesExportFormat = "markdown" | "txt" | "json";
+
 export async function exportNotes(input: {
   project: Project;
   volumes: Volume[];
   chapters: Chapter[];
   notes: Note[];
+  format?: NotesExportFormat;
 }): Promise<void> {
+  const format = input.format ?? "markdown";
   const { project, notes } = input;
   if (!notes.length) throw new Error("本作品还没有笔记，先写一条再导出");
+  const sortedVolumes = [...input.volumes].sort((left, right) => left.orderIndex - right.orderIndex);
+  const sortedChapters = [...input.chapters].sort((left, right) => left.orderIndex - right.orderIndex);
+
+  if (format === "json") {
+    const volumeById = new Map(sortedVolumes.map((volume) => [volume.id, volume.title]));
+    const chapterById = new Map(sortedChapters.map((chapter) => [chapter.id, chapter.title]));
+    const payload = {
+      app: "Storyloom",
+      kind: "notes",
+      exportedAt: new Date().toISOString(),
+      project: { title: project.title, description: project.description },
+      notes: notes.map((note) => ({
+        id: note.id,
+        title: note.title,
+        content: note.content,
+        scope: note.chapterId ? "chapter" : note.volumeId ? "volume" : "project",
+        volume: note.volumeId ? volumeById.get(note.volumeId) ?? null : null,
+        chapter: note.chapterId ? chapterById.get(note.chapterId) ?? null : null,
+        updatedAt: note.updatedAt,
+      })),
+    };
+    const jsonFile = new File(Paths.cache, libraryFileName(project.title, "笔记", "json"));
+    if (jsonFile.exists) jsonFile.delete();
+    jsonFile.write(JSON.stringify(payload, null, 2));
+    if (!(await Sharing.isAvailableAsync())) throw new Error("当前设备不支持系统分享，请稍后重试");
+    await Sharing.shareAsync(jsonFile.uri, { mimeType: "application/json", dialogTitle: "导出笔记" });
+    return;
+  }
+
+  if (format === "txt") {
+    const lines: string[] = [`《${project.title}》笔记`, `导出时间：${dateStamp()} · 共 ${notes.length} 条`, ""];
+    for (const note of notes) {
+      const volumeTitle = note.volumeId ? sortedVolumes.find((volume) => volume.id === note.volumeId)?.title : null;
+      const chapterTitle = note.chapterId ? sortedChapters.find((chapter) => chapter.id === note.chapterId)?.title : null;
+      const scopeLabel = chapterTitle ? `${volumeTitle ?? ""} · ${chapterTitle}` : volumeTitle ? volumeTitle : "整书";
+      lines.push("==============================");
+      lines.push(`【${scopeLabel}】${note.title}`);
+      lines.push(note.content.trim() || "（空）");
+      lines.push("");
+    }
+    const txtFile = new File(Paths.cache, `${safeFileName(project.title)}_笔记_${dateStamp()}.txt`);
+    if (txtFile.exists) txtFile.delete();
+    txtFile.write(lines.join("\n"));
+    if (!(await Sharing.isAvailableAsync())) throw new Error("当前设备不支持系统分享，请稍后重试");
+    await Sharing.shareAsync(txtFile.uri, { mimeType: "text/plain", dialogTitle: "导出笔记" });
+    return;
+  }
 
   const volumes = [...input.volumes].sort((left, right) => left.orderIndex - right.orderIndex);
   const chapters = [...input.chapters].sort((left, right) => left.orderIndex - right.orderIndex);
@@ -225,7 +276,7 @@ async function shareTextFile(fileName: string, content: string, format: LibraryE
   file.write(content);
   if (!(await Sharing.isAvailableAsync())) throw new Error("当前设备不支持系统分享，请稍后重试");
   await Sharing.shareAsync(file.uri, {
-    mimeType: format === "json" ? "application/json" : "text/markdown",
+    mimeType: format === "json" ? "application/json" : format === "txt" ? "text/plain" : "text/markdown",
     dialogTitle,
   });
 }

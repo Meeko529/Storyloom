@@ -33,6 +33,7 @@ import {
   renameChapter,
   renameVolume,
   saveChapter,
+  listProjects,
 } from "@/data/repositories";
 import {
   getPendingChapterStyleEvolution,
@@ -73,6 +74,7 @@ type NameDialog =
 
 export function WritingScreen() {
   const projectId = useAppStore((state) => state.currentProjectId);
+  const setCurrentProject = useAppStore((state) => state.setCurrentProject);
   const currentChapterId = useAppStore((state) => state.currentChapterId);
   const setCurrentChapter = useAppStore((state) => state.setCurrentChapter);
   const refreshData = useAppStore((state) => state.refreshData);
@@ -98,6 +100,8 @@ export function WritingScreen() {
   const [exportPickerVisible, setExportPickerVisible] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportFormat, setExportFormat] = useState<NovelExportFormat>("markdown");
+  const [projectPickerVisible, setProjectPickerVisible] = useState(false);
+  const [projectPickerList, setProjectPickerList] = useState<Project[]>([]);
   const [editing, setEditing] = useState(false);
   const [styleProfiles, setStyleProfiles] = useState<StyleProfile[]>([]);
   const [activeStyleProfile, setActiveStyleProfileState] = useState<StyleProfile | null>(null);
@@ -566,6 +570,15 @@ export function WritingScreen() {
         title={project?.title ?? "写作"}
         action={(
           <View style={styles.headerActions}>
+            <Pressable
+              accessibilityLabel="切换作品"
+              onPress={() => {
+                void listProjects().then((list) => { setProjectPickerList(list); setProjectPickerVisible(true); }).catch(() => {});
+              }}
+              style={styles.iconButton}
+            >
+              <Ionicons name="book-outline" size={22} color={colors.primary} />
+            </Pressable>
             <Pressable accessibilityLabel="导出作品" onPress={() => setExportPickerVisible(true)} style={styles.iconButton}>
               <Ionicons name="share-outline" size={22} color={colors.primary} />
             </Pressable>
@@ -662,6 +675,37 @@ export function WritingScreen() {
           />
         )}
       </KeyboardAvoidingView>
+
+      <Modal visible={projectPickerVisible} transparent animationType="fade" onRequestClose={() => setProjectPickerVisible(false)}>
+        <SheetBackdrop onPress={() => setProjectPickerVisible(false)}>
+          <View style={styles.directorySheet}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>切换作品</Text>
+              <Pressable accessibilityLabel="关闭作品列表" onPress={() => setProjectPickerVisible(false)} style={styles.iconButton}>
+                <Ionicons name="close" size={24} color={colors.textMuted} />
+              </Pressable>
+            </View>
+            <ScrollView style={styles.previewScroll} contentContainerStyle={styles.previewContent}>
+              {projectPickerList.map((item) => (
+                <Pressable
+                  key={item.id}
+                  onPress={() => {
+                    setProjectPickerVisible(false);
+                    if (item.id !== projectId) setCurrentProject(item.id);
+                  }}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 10, padding: 10, borderRadius: 12, backgroundColor: colors.surfaceMuted, marginBottom: 6 }}
+                >
+                  <Ionicons name={item.id === projectId ? "radio-button-on" : "radio-button-off"} size={20} color={item.id === projectId ? colors.primary : colors.textMuted} />
+                  <View style={{ flex: 1 }}>
+                    <Text numberOfLines={1} style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>{item.title}</Text>
+                    <Text numberOfLines={1} style={{ color: colors.textMuted, fontSize: 11 }}>{item.description || "暂无简介"}</Text>
+                  </View>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        </SheetBackdrop>
+      </Modal>
 
       <Modal visible={stylePickerVisible} transparent animationType="slide" onRequestClose={() => setStylePickerVisible(false)}>
         <SheetBackdrop onPress={() => setStylePickerVisible(false)}>

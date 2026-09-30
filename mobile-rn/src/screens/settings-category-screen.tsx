@@ -88,6 +88,7 @@ import { downloadUpdateApk, installApkFile } from "@/settings/app-installer";
 import { crashLogEntryCount, clearCrashLog } from "@/lib/crash-log";
 import { exportDiagnosticsReport } from "@/settings/diagnostics";
 import { exportBackup, pickBackupFile, restoreBackup } from "@/settings/backup";
+import { dedupeProvidersAndModels } from "@/data/repositories";
 import {
   applyContentPack,
   exportContentPack,
@@ -258,6 +259,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
   const [apkProgress, setApkProgress] = useState("");
   // 本地捕获的错误记录条数（0 表示无记录）
   const [crashEntryCount, setCrashEntryCount] = useState(0);
+  const [mascotEnabled, setMascotEnabled] = useState(true);
   // 诊断报告导出状态
   const [diagnosticsBusy, setDiagnosticsBusy] = useState(false);
   // 备份 / 恢复状态
@@ -464,9 +466,14 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
               setBackupBusy(true);
               try {
                 const summary = await restoreBackup(pickedFile as NonNullable<typeof pickedFile>);
+                // 恢复后自动清理重复：同名供应商合并、同「供应商+模型」去重（备份不含 API Key，重添模型后易产生重复）
+                const dedupe = await dedupeProvidersAndModels().catch(() => ({ mergedProviders: 0, removedModels: 0 }));
+                const dedupeNote = dedupe.mergedProviders + dedupe.removedModels > 0
+                  ? `；已自动合并重复供应商 ${dedupe.mergedProviders} 个、清理重复模型 ${dedupe.removedModels} 个`
+                  : "";
                 Alert.alert(
                   "恢复完成",
-                  `已恢复 ${summary.fileCount} 个文件（备份时间 ${new Date(summary.exportedAt).toLocaleString()}）。请完全关闭并重新打开应用后生效。`,
+                  `已恢复 ${summary.fileCount} 个文件（备份时间 ${new Date(summary.exportedAt).toLocaleString()}）${dedupeNote}。请完全关闭并重新打开应用后生效。`,
                 );
               } catch (restoreError) {
                 Alert.alert("恢复失败", restoreError instanceof Error ? restoreError.message : String(restoreError));
@@ -520,6 +527,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       setHistoryLimit(history ?? "30");
       setContextWindow(String(normalizeContextWindow(contextWindowRaw)));
       setCrashEntryCount(crashLogEntryCount());
+      setMascotEnabled((await getSetting("general.mascotEnabled")) !== "false");
       setCompression(compress === "true");
       setAutoSaveDelay(autoSave ?? "1000");
       setEditorFontSize(String(normalizeEditorFontSize(fontSize)));
@@ -979,6 +987,8 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
           <Field label="自动保存延迟（毫秒）" value={autoSaveDelay} onChangeText={setAutoSaveDelay} onBlur={() => void savePreference("general.autoSaveDelay", autoSaveDelay, setAutoSaveDelay)} keyboardType="number-pad" />
           <Text style={styles.sectionHint}>可填 250 ~ 10000。数值越大写入频率越低，数值越小保存越及时。</Text>
           <SettingRow label="数据位置" value="本机 SQLite · API Key 使用 SecureStore" />
+          <ToggleRow label="吉祥物挂件（助手输入框）" value={mascotEnabled} onChange={(value) => { setMascotEnabled(value); void savePreference("general.mascotEnabled", value ? "true" : "false", (v) => setMascotEnabled(v === "true")); }} />
+          <Text style={styles.sectionHint}>助手输入框角落的小猫挂件；可在助手页长按拖到任意位置。</Text>
           <Button label="恢复默认" variant="secondary" onPress={() => restoreDefaults("通用", [
             { key: "general.autoSaveDelay", value: "1000" },
           ])} />

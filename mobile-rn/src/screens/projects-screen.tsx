@@ -238,7 +238,7 @@ function coverColor(title: string): string {
       <FlatList
         data={projects}
         key={viewMode}
-        numColumns={viewMode === "grid" ? 3 : 1}
+        numColumns={viewMode === "grid" ? 4 : 1}
         columnWrapperStyle={viewMode === "grid" ? { gap: 10, paddingHorizontal: 14 } : undefined}
         keyExtractor={(item) => item.id}
         contentContainerStyle={projects.length ? styles.list : styles.emptyList}
@@ -425,21 +425,21 @@ const styles = StyleSheet.create({
   list: { paddingVertical: spacing.sm },
   emptyList: { flexGrow: 1 },
   separator: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginLeft: 88 },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.md, marginBottom: spacing.sm, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, ...shadow.card },
+  row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.sm, paddingVertical: 8, marginBottom: 2 },
   rowPressed: { backgroundColor: colors.surfaceMuted },
-  cover: { width: 62, height: 82, borderRadius: 10, alignItems: "flex-end", justifyContent: "center", overflow: "hidden" },
-  coverImage: { width: 62, height: 82 },
-  coverText: { color: "rgba(255,255,255,0.85)", fontSize: 42, fontWeight: "800", lineHeight: 48, marginBottom: 2 },
+  cover: { width: 52, height: 70, borderRadius: 8, alignItems: "flex-end", justifyContent: "center", overflow: "hidden" },
+  coverImage: { width: 52, height: 70 },
+  coverText: { color: "rgba(255,255,255,0.85)", fontSize: 34, fontWeight: "800", lineHeight: 40, marginBottom: 2 },
   statsRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: 6 },
   meter: { width: 56, height: 4, borderRadius: 99, backgroundColor: colors.surfaceMuted, overflow: "hidden" },
   meterFill: { height: 4, borderRadius: 99, backgroundColor: colors.primary },
   statsText: { flex: 1, color: colors.textMuted, fontSize: 10.5 },
   headerActions: { flexDirection: "row", alignItems: "center" },
-  gridItem: { flex: 1, alignItems: "center", gap: 5, padding: 7, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, ...shadow.card },
+  gridItem: { flex: 1, alignItems: "center", gap: 4, padding: 6, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, ...shadow.card },
   gridCover: { width: "100%", aspectRatio: 3 / 4, borderRadius: 10, alignItems: "flex-end", justifyContent: "center", overflow: "hidden" },
   gridCoverImage: { width: "100%", height: "100%" },
-  gridCoverText: { color: "rgba(255,255,255,0.85)", fontSize: 52, fontWeight: "800", lineHeight: 58, marginBottom: 2 },
-  gridName: { alignSelf: "stretch", fontSize: 13, fontWeight: "600", textAlign: "center" },
+  gridCoverText: { color: "rgba(255,255,255,0.85)", fontSize: 40, fontWeight: "800", lineHeight: 46, marginBottom: 2 },
+  gridName: { alignSelf: "stretch", fontSize: 12, fontWeight: "600", textAlign: "center" },
   gridStats: { alignSelf: "stretch", fontSize: 10, color: colors.textMuted, textAlign: "center" },
   menuBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay },
   menuSheet: { paddingVertical: spacing.sm, paddingBottom: spacing.xl, borderTopLeftRadius: radius.md, borderTopRightRadius: radius.md, backgroundColor: colors.background },
