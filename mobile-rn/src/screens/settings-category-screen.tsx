@@ -1308,7 +1308,6 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       ) : null}
       {category === "advanced" ? (
         <View style={styles.section}>
-          <SettingRow label="数据位置" value="本机 SQLite · API Key 使用 SecureStore" />
           <Text style={styles.subsectionTitle}>应用版本</Text>
           <SettingRow label="当前版本" value={CURRENT_APP_VERSION} />
           <SettingRow

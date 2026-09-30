@@ -584,6 +584,14 @@ export function SettingsScreen() {
         action={
           <View style={styles.providerActions}>
             <Pressable
+              accessibilityLabel="切换模型"
+              onPress={() => { if (providers.length) { const first = providers[0]; void fetchRemoteModels(first); setModelPickerProvider(first); } }}
+              disabled={!providers.length || fetchingProviderId !== null}
+              style={styles.iconButton}
+            >
+              <Ionicons name="hardware-chip-outline" size={22} color={models.length ? colors.primary : colors.textMuted} />
+            </Pressable>
+            <Pressable
               accessibilityLabel="清理重复"
               onPress={() => {
                 Alert.alert("清理重复", "合并同名供应商并删除重复模型（优先保留有 API Key 的）。", [
