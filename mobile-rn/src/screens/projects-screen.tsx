@@ -9,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { appendBreadcrumb } from "@/lib/crash-log";
+import { downsampleToFile } from "@/lib/media-downsample";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 import { Button, EmptyState, ErrorNotice, Field, Header, Screen } from "@/components/ui";
@@ -176,6 +177,10 @@ function coverColor(title: string): string {
       const extension = (picked.fileName?.split(".").pop() ?? "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
       target = new File(directory, `${project.id}-${Date.now()}.${extension}`);
       new File(picked.uri).copy(target);
+      try {
+        await downsampleToFile(target.uri, 1080);
+      } catch {}
+      void appendBreadcrumb(`封面已保存（降采样）`);
     } catch (copyError) {
       Alert.alert("封面保存失败", `图片已选中，但写入本地目录失败：${copyError instanceof Error ? copyError.message : String(copyError)}`);
       return;

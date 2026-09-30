@@ -19,6 +19,7 @@ import {
 import { KeyboardAwareScrollView, KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 import { Button, EmptyState, ErrorNotice, Field, Header, Screen } from "@/components/ui";
+import { downsampleToFile } from "@/lib/media-downsample";
 import { deleteCharacter, getProject, listCharacters, saveCharacter } from "@/data/repositories";
 import { exportCharacters, type LibraryExportFormat } from "@/lib/export";
 import { createId } from "@/lib/id";
@@ -94,6 +95,9 @@ export function CharactersScreen() {
       const extension = (asset.fileName?.split(".").pop() ?? "jpg").toLowerCase();
       const target = new File(directory, `${createId()}.${extension}`);
       new File(asset.uri).copy(target);
+      try {
+        await downsampleToFile(target.uri, 512);
+      } catch {}
       setImagePath(target.uri);
     } catch (pickError) {
       Alert.alert("无法读取图片", pickError instanceof Error ? pickError.message : String(pickError));
