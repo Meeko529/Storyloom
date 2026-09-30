@@ -1050,6 +1050,14 @@ export function AssistantScreen() {
                 </View>
               ) : null}
               <Text selectable style={[styles.messageText, chatTextStyle]}>{item.content}</Text>
+              {item.role === "user" ? (
+                <View style={styles.messageEditRow}>
+                  <Pressable accessibilityLabel="编辑这条消息" disabled={sending} onPress={() => beginEditMessage(item)} style={styles.messageEditButton}>
+                    <Ionicons name="create-outline" size={15} color={colors.primary} />
+                    <Text style={styles.messageEditText}>编辑</Text>
+                  </Pressable>
+                </View>
+              ) : null}
               {failed && item.metadata?.errorDetail ? <ErrorDetails detail={item.metadata.errorDetail} /> : null}
               {item.role === "assistant" && messageRetry ? (
                 <MessageActionBar content={item.content} onRetry={() => void send(messageRetry)} retryDisabled={sending} />
@@ -1499,7 +1507,8 @@ const styles = StyleSheet.create({
   emptyMessages: { flexGrow: 1 },
   message: { gap: spacing.md, paddingVertical: spacing.md },
   messageHeader: { minHeight: 28, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
-  messageEditButton: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.sm },
+  messageEditRow: { alignSelf: "flex-end", marginTop: 2 },
+  messageEditButton: { minHeight: 32, flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.xs },
   messageEditText: { color: colors.primary, fontSize: 13, fontWeight: "700" },
   userMessage: { marginLeft: 42, paddingHorizontal: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceMuted },
   assistantMessage: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
