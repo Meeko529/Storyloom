@@ -13,6 +13,7 @@ import { Directory, File, Paths } from "expo-file-system";
 
 const LOG_DIRECTORY = "logs";
 const LOG_FILE_NAME = "crash.log";
+const BREADCRUMB_FILE_NAME = "breadcrumb.log";
 /** 最多保留的条目数与文件体积，防止日志无限增长。 */
 const MAX_ENTRIES = 20;
 const MAX_FILE_BYTES = 200_000;
@@ -80,9 +81,29 @@ export function clearCrashLog(): void {
 /** 操作轨迹（breadcrumb）：记录用户关键动作序列，闪退后随诊断报告带出。 */
 export function appendBreadcrumb(line: string): void {
   try {
+    const directory = logDirectory();
+    directory.create({ intermediates: true, idempotent: true });
+    const file = new File(directory, BREADCRUMB_FILE_NAME);
     const stamp = new Date().toISOString().slice(11, 19);
-    appendCrashLog("轨迹", `[${stamp}] ${line}`);
-  } catch {}
+    const entry = `[${stamp}] ${line}`;
+    const previous = file.exists ? file.textSync() : "";
+    let chunks = [entry, ...(previous ? previous.split("\n") : [])];
+    if (chunks.length > 30) chunks = chunks.slice(0, 30);
+    file.create({ overwrite: true });
+    file.write(chunks.join("\n"));
+  } catch {
+    // 轨迹记录失败不影响应用运行
+  }
+}
+
+/** 读取操作轨迹（与错误记录分开存储，不占用错误条数上限）。 */
+export function readBreadcrumbLog(): string {
+  try {
+    const file = new File(logDirectory(), BREADCRUMB_FILE_NAME);
+    return file.exists ? file.textSync() : "";
+  } catch {
+    return "";
+  }
 }
 
 export function crashLogEntryCount(): number {

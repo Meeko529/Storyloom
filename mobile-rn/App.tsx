@@ -158,8 +158,16 @@ function RuntimeResourceGate() {
     <NavigationContainer
       onStateChange={(state) => {
         try {
-          const route = state?.routes[state?.index ?? 0];
-          if (route) appendBreadcrumb(`进入「${route.name}」`);
+          // 递归下钻嵌套导航状态，取当前最深层路由名（Stack → Tab → 页面）
+          type NavNode = { index?: number; routes?: NavNode[]; name?: string; state?: NavNode };
+          let node = state as unknown as NavNode | undefined;
+          while (node?.routes?.length) {
+            const next = node.routes[node.index ?? 0];
+            if (!next) break;
+            if (next.state) { node = next.state; continue; }
+            appendBreadcrumb(`进入「${next.name ?? "未知"}」`);
+            return;
+          }
         } catch {}
       }}
     >

@@ -9,7 +9,7 @@ import * as Sharing from "expo-sharing";
 import { Platform } from "react-native";
 
 import { getSetting } from "@/data/repositories";
-import { crashLogEntryCount, readCrashLog } from "@/lib/crash-log";
+import { crashLogEntryCount, readBreadcrumbLog, readCrashLog } from "@/lib/crash-log";
 import { CURRENT_APP_VERSION } from "@/settings/app-update";
 
 /** 会写进报告的非敏感设置项。 */
@@ -79,6 +79,11 @@ export async function buildDiagnosticsReport(): Promise<string> {
   }
   lines.push("");
   lines.push("> 仅记录 JS 层异常；若应用崩溃过但此处为空，说明属原生层问题（如内存不足）。");
+  lines.push("");
+  lines.push("## 最近操作轨迹（与错误无关，供定位）");
+  lines.push("");
+  const breadcrumb = readBreadcrumbLog();
+  lines.push(breadcrumb ? "```\n" + breadcrumb.trim() + "\n```" : "（无记录）");
   lines.push("> 本报告不包含 API Key，也不包含任何稿件内容。");
   lines.push("");
   return lines.join("\n");
