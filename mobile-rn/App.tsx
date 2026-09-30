@@ -144,7 +144,7 @@ function RuntimeResourceGate() {
     <NavigationContainer
       onStateChange={(state) => {
         try {
-          const route = state.routes[state.index ?? 0];
+          const route = state?.routes[state?.index ?? 0];
           if (route) appendBreadcrumb(`进入「${route.name}」`);
         } catch {}
       }}

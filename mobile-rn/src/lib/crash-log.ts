@@ -81,7 +81,7 @@ export function clearCrashLog(): void {
 export function appendBreadcrumb(line: string): void {
   try {
     const stamp = new Date().toISOString().slice(11, 19);
-    appendLog(`[轨迹] ${stamp} ${line}`);
+    appendCrashLog("轨迹", `[${stamp}] ${line}`);
   } catch {}
 }
 
