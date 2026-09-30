@@ -309,13 +309,11 @@ function coverColor(title: string): string {
               <View style={styles.shelfRow}>
                 <View style={styles.shelfBooks}>
                   {row.map((project) => {
-                    const statsLine = (() => { const st = stats[project.id]; return st ? `${st.volumes} 卷 · ${st.chapters} 章 · ${(st.characters / 10000).toFixed(1)} 万字` : "…"; })();
                     const lines = bookTitleLines(project.title);
                     return (
                       <Pressable key={project.id} onPress={() => openProject(project)} onLongPress={() => openProjectMenu(project)} style={({ pressed }) => [styles.shelfCell, pressed && styles.rowPressed]}>
                         <View style={[styles.bookObject, { backgroundColor: coverColor(project.title) }]}>
                           <View style={styles.bookSpine} />
-                          <View style={styles.bookFrame} />
                           {project.coverPath ? (
                             <Image source={{ uri: project.coverPath }} style={styles.gridCoverImage} resizeMethod="resize" />
                           ) : (
@@ -325,17 +323,24 @@ function coverColor(title: string): string {
                               ))}
                             </View>
                           )}
-                          <View style={styles.bookGloss} />
-                          <View style={styles.bookPages} />
                         </View>
-                        <View style={styles.bookShadow} />
-                        <Text style={styles.gridName} numberOfLines={1}>{project.title}</Text>
-                        <Text style={styles.gridStats}>{statsLine}</Text>
                       </Pressable>
                     );
                   })}
                 </View>
                 <View style={styles.shelfPlank} />
+                <View style={styles.shelfLabels}>
+                  {row.map((project) => {
+                    const st = stats[project.id];
+                    const statsLine = st ? `${st.volumes} 卷 · ${st.chapters} 章 · ${(st.characters / 10000).toFixed(1)} 万字` : "…";
+                    return (
+                      <View key={project.id} style={styles.shelfLabelCell}>
+                        <Text style={styles.gridName} numberOfLines={1}>{project.title}</Text>
+                        <Text style={styles.gridStats} numberOfLines={1}>{statsLine}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
               </View>
             );
           }
@@ -478,17 +483,15 @@ const styles = StyleSheet.create({
   headerActions: { flexDirection: "row", alignItems: "center" },
   shelfRow: { paddingHorizontal: 14, marginBottom: 2 },
   shelfBooks: { flexDirection: "row", alignItems: "flex-end", gap: 10 },
-  shelfCell: { flex: 1, alignItems: "center", gap: 3 },
-  bookObject: { width: "100%", aspectRatio: 3 / 4, borderRadius: 3, overflow: "hidden", justifyContent: "center", elevation: 6, shadowColor: "#000", shadowOffset: { width: 2, height: 3 }, shadowOpacity: 0.35, shadowRadius: 4 },
-  bookSpine: { position: "absolute", left: 0, top: 0, bottom: 0, width: 7, backgroundColor: "rgba(0,0,0,0.28)", borderRightWidth: 1, borderRightColor: "rgba(255,255,255,0.15)" },
-  bookPages: { position: "absolute", right: 0, top: 2, bottom: 2, width: 4, backgroundColor: "#F3EFE6", opacity: 0.9 },
-  bookFrame: { position: "absolute", left: 13, right: 9, top: 8, bottom: 8, borderWidth: 1, borderColor: "rgba(255,255,255,0.35)", borderRadius: 2 },
-  bookCoverTextWrap: { alignSelf: "stretch", alignItems: "center", gap: 2, paddingHorizontal: 16 },
-  bookCoverLine: { color: "rgba(255,255,255,0.95)", fontSize: 19, fontWeight: "800", letterSpacing: 2 },
-  bookCoverLineLead: { fontSize: 24 },
-  bookShadow: { alignSelf: "stretch", height: 9, marginHorizontal: -5, backgroundColor: "rgba(0,0,0,0.34)", borderRadius: 4, marginTop: -2 },
-  shelfPlank: { alignSelf: "stretch", height: 11, marginTop: 0, borderRadius: 3, backgroundColor: "#C2B29C", borderBottomWidth: 4, borderBottomColor: "#8E7B63" },
-  bookGloss: { position: "absolute", left: 7, top: 0, bottom: 0, width: "32%", backgroundColor: "rgba(255,255,255,0.16)" },
+  shelfCell: { flex: 1, alignItems: "center" },
+  bookObject: { width: "100%", aspectRatio: 3 / 4, borderRadius: 10, overflow: "hidden", justifyContent: "center", elevation: 5, shadowColor: "#000", shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.3, shadowRadius: 4 },
+  bookSpine: { position: "absolute", left: 0, top: 0, bottom: 0, width: "9%", backgroundColor: "#EDE6D8", borderRightWidth: 1, borderRightColor: "rgba(0,0,0,0.10)" },
+  bookCoverTextWrap: { alignSelf: "stretch", alignItems: "center", gap: 2, paddingHorizontal: 18 },
+  bookCoverLine: { color: "rgba(255,255,255,0.95)", fontSize: 16, fontWeight: "800", letterSpacing: 1 },
+  bookCoverLineLead: { fontSize: 20 },
+  shelfPlank: { alignSelf: "stretch", height: 7, borderRadius: 2, backgroundColor: "#D8CDBA", borderBottomWidth: 5, borderBottomColor: "#A5947C" },
+  shelfLabels: { flexDirection: "row", gap: 10, marginTop: 8 },
+  shelfLabelCell: { flex: 1, alignItems: "center" },
   gridCover: { width: "100%", aspectRatio: 3 / 4, borderRadius: 10, alignItems: "flex-end", justifyContent: "center", overflow: "hidden" },
   gridCoverImage: { width: "100%", height: "100%" },
   gridCoverText: { color: "rgba(255,255,255,0.85)", fontSize: 40, fontWeight: "800", lineHeight: 46, marginBottom: 2 },
