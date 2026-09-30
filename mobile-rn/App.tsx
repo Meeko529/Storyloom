@@ -3,6 +3,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { NavigationContainer } from "@react-navigation/native";
+import { appendBreadcrumb } from "@/lib/crash-log";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
@@ -140,7 +141,14 @@ function RuntimeResourceGate() {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer
+      onStateChange={(state) => {
+        try {
+          const route = state.routes[state.index ?? 0];
+          if (route) appendBreadcrumb(`进入「${route.name}」`);
+        } catch {}
+      }}
+    >
       <StatusBar style="dark" />
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Main" component={MainTabs} />

@@ -2,7 +2,6 @@ import {
   createChapterDraftSnapshot,
 } from "@/data/chapter-draft-repositories";
 import {
-  createChapter,
   deleteCharacter,
   deleteWorldInfoEntry,
   getCharacter,
@@ -11,6 +10,9 @@ import {
   getWorldInfoEntry,
   listChapters,
   listCharacters,
+  createProject,
+  createVolume,
+  createChapter,
   listVolumes,
   listWorldInfoEntries,
   saveCharacter,
@@ -49,6 +51,42 @@ function boundedToolText(value: string, maximum = MAX_TOOL_TEXT_CHARACTERS): { t
 }
 
 export const agentTools: AgentToolDefinition[] = [
+  {
+    name: "create_project",
+    description: "新建一部独立的空白作品。仅在用户明确要求「创建作品 / 新建作品 / 把这些整理成一部新作品」时使用；创建章节、笔记、角色等请用各自的工具，不要用这个。",
+    parameters: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "作品名" },
+        description: { type: "string", description: "作品简介（可省略）" },
+      },
+      required: ["title"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "create_volume",
+    description: "在当前作品下新建一卷",
+    parameters: {
+      type: "object",
+      properties: { title: { type: "string", description: "卷名，如「第一卷 风起」" } },
+      required: ["title"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "create_chapter",
+    description: "在当前作品下新建一章。可指定卷；省略则放到最新一卷",
+    parameters: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "章节标题" },
+        volume_id: { type: "string", description: "目标卷 ID；省略则放入最新一卷" },
+      },
+      required: ["title"],
+      additionalProperties: false,
+    },
+  },
   {
     name: "list_chapters",
     description: "列出当前项目的章节",
@@ -602,6 +640,23 @@ export async function executeAgentTool(
     const guide = requiredString(args, "guide");
     await saveAuthorStyleGuide(projectId, guide);
     return { success: true, guide_characters: guide.trim().length };
+  }
+  if (name === "create_project") {
+    const title = requiredString(args, "title");
+    const project = await createProject(title, typeof args.description === "string" ? args.description : "");
+    return { success: true, project_id: project.id, title: project.title, note: "空白作品已创建；要往里写内容请让用户切换到该作品后再进行" };
+  }
+  if (name === "create_volume") {
+    const volume = await createVolume(projectId, requiredString(args, "title"));
+    return { success: true, volume_id: volume.id, title: volume.title };
+  }
+  if (name === "create_chapter") {
+    const volumes = await listVolumes(projectId);
+    const requested = typeof args.volume_id === "string" ? volumes.find((v) => v.id === args.volume_id) : undefined;
+    const target = requested ?? volumes[volumes.length - 1];
+    if (!target) throw new Error("当前作品还没有卷，请先创建卷");
+    const chapter = await createChapter(projectId, target.id, requiredString(args, "title"));
+    return { success: true, chapter_id: chapter.id, title: chapter.title, volume: target.title };
   }
   if (name === "create_character") {
     const characterName = requiredString(args, "name");

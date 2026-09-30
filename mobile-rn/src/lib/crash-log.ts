@@ -77,6 +77,14 @@ export function clearCrashLog(): void {
 }
 
 /** 已记录的条目数，用于在设置页提示。 */
+/** 操作轨迹（breadcrumb）：记录用户关键动作序列，闪退后随诊断报告带出。 */
+export function appendBreadcrumb(line: string): void {
+  try {
+    const stamp = new Date().toISOString().slice(11, 19);
+    appendLog(`[轨迹] ${stamp} ${line}`);
+  } catch {}
+}
+
 export function crashLogEntryCount(): number {
   const content = readCrashLog();
   if (!content.trim()) return 0;

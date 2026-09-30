@@ -8,6 +8,7 @@ import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { appendBreadcrumb } from "@/lib/crash-log";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 import { Button, EmptyState, ErrorNotice, Field, Header, Screen } from "@/components/ui";
@@ -68,6 +69,7 @@ export function ProjectsScreen() {
   };
 
   const openProject = (project: Project) => {
+    appendBreadcrumb(`书架点开作品「${project.title}」`);
     setCurrentProject(project.id);
     navigation.navigate("Writing");
   };
