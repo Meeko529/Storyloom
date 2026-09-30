@@ -454,14 +454,18 @@ export function AssistantScreen() {
 
   const mascotOffsetRef = useRef({ x: 0, y: 0 });
   const mascotDragStartRef = useRef({ x: 0, y: 0 });
+  const mascotPressAtRef = useRef(0);
   const mascotPan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: () => {
         mascotDragStartRef.current = { ...mascotOffsetRef.current };
+        mascotPressAtRef.current = Date.now();
       },
       onPanResponderMove: (_event, gesture) => {
+        // 长按 350ms 后才进入拖动，避免误触页面滑动
+        if (Date.now() - mascotPressAtRef.current < 350) return;
         const next = { x: mascotDragStartRef.current.x + gesture.dx, y: mascotDragStartRef.current.y + gesture.dy };
         mascotOffsetRef.current = next;
         setMascotOffset(next);
@@ -993,11 +997,13 @@ export function AssistantScreen() {
           ListEmptyComponent={models.length ? (
             <View style={styles.welcomeBox}>
               <Text style={styles.welcomeTitle}>聊灵感、记想法</Text>
+              <View style={styles.welcomeChipsRow}>
               {["记一个灵感", "梳理一下我的想法", "随便聊聊"].map((suggestion) => (
                 <Pressable key={suggestion} style={styles.welcomeChip} onPress={() => { void ensureConversation().then(() => setInput(suggestion)); }}>
                   <Text style={styles.welcomeChipText}>{suggestion}</Text>
                 </Pressable>
               ))}
+              </View>
             </View>
           ) : (
             <EmptyState title="请先配置供应商并添加模型" action={<Button label="打开模型设置" onPress={() => navigation.navigate("Settings")} />} />
@@ -1540,9 +1546,10 @@ const styles = StyleSheet.create({
   mascot: { position: "absolute", right: 14, top: -40, width: 40, height: 44 },
   mascotImage: { width: "100%", height: "100%", resizeMode: "contain" },
   welcomeBox: { flexGrow: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm, paddingHorizontal: spacing.xl },
+  welcomeChipsRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 8 },
   welcomeTitle: { color: colors.text, fontSize: 17, fontWeight: "700", marginBottom: spacing.xs },
-  welcomeChip: { borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: colors.surface },
-  welcomeChipText: { color: colors.text, fontSize: 13 },
+  welcomeChip: { borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: colors.surface },
+  welcomeChipText: { color: colors.textMuted, fontSize: 11.5 },
   composerInputRow: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm },
   composerChipRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   editingBanner: { minHeight: 36, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
