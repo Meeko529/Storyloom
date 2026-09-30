@@ -1032,14 +1032,7 @@ export function AssistantScreen() {
                 <View style={styles.messageHeader}>
                   <Text style={styles.messageRole}>Storyloom</Text>
                 </View>
-              ) : (
-                <View style={styles.messageHeader}>
-                  <Pressable accessibilityLabel="编辑这条消息" disabled={sending} onPress={() => beginEditMessage(item)} style={styles.messageEditButton}>
-                    <Ionicons name="create-outline" size={17} color={colors.primary} />
-                    <Text style={styles.messageEditText}>编辑</Text>
-                  </Pressable>
-                </View>
-              )}
+              ) : null}
               {item.metadata?.agentTrace ? (
                 <AgentTraceView
                   trace={item.metadata.agentTrace}
@@ -1110,7 +1103,7 @@ export function AssistantScreen() {
           </View>
         ) : null}
         {/* 吉祥物挂件：坐在输入框上沿，纯装饰不响应点击。可在设置里换/关（外观主题批）。 */}
-        <View style={styles.composer}>
+        <View style={styles.composerWrap}>
           {mascotEnabled ? (
             <View
               style={[styles.mascot, { transform: [{ translateX: mascotOffset.x }, { translateY: mascotOffset.y }] }]}
@@ -1148,48 +1141,33 @@ export function AssistantScreen() {
             </View>
           ) : null}
           <View style={styles.composer}>
-            <View style={styles.composerInputRow}>
-              <TextInput
-                ref={composerRef}
-                value={input}
-                onChangeText={setInput}
-                style={styles.composerInput}
-                placeholder={editingMessageId ? "修改后重新发送" : "输入创作任务"}
-                placeholderTextColor={colors.textMuted}
-                editable={!sending}
-                multiline
-                maxLength={12000}
-              />
-              <Pressable
-                accessibilityLabel={editingMessageId ? "重发编辑后的消息" : "发送"}
-                disabled={!selection || !input.trim() || sending}
-                onPress={() => void send(retryRequest && input.trim() === retryRequest.userMessage.content ? retryRequest : null)}
-                style={({ pressed }) => [styles.sendButton, (pressed || !selection || !input.trim()) && styles.sendDisabled]}
-              >
-                {sending ? <ActivityIndicator color="#FFFFFF" /> : <Ionicons name="arrow-up" size={22} color="#FFFFFF" />}
-              </Pressable>
-            </View>
-            <View style={styles.composerChipRow}>
-              <Pressable
-                accessibilityLabel="选择模型"
-                disabled={sending}
-                onPress={() => setModelPickerVisible(true)}
-                style={styles.composerChip}
-              >
-                <Ionicons name="hardware-chip-outline" size={14} color={colors.primary} />
-                <Text numberOfLines={1} style={styles.composerChipText}>{selection?.model.name ?? "选择模型"}</Text>
-                <Ionicons name="chevron-down" size={13} color={colors.textMuted} />
-              </Pressable>
-              <Pressable
-                accessibilityLabel={attachments.length ? `已添加附件 ${attachments.length} 份，继续添加` : "添加附件"}
-                disabled={sending || attachments.length >= MAX_ATTACHMENTS_PER_MESSAGE}
-                onPress={() => void handlePickAttachment()}
-                style={({ pressed }) => [styles.composerChip, (pressed || sending) && styles.sendDisabled]}
-              >
-                <Ionicons name="attach" size={14} color={attachments.length ? colors.primary : colors.textMuted} />
-                <Text style={styles.composerChipText}>附件{attachments.length ? ` ${attachments.length}` : ""}</Text>
-              </Pressable>
-            </View>
+            <Pressable
+              accessibilityLabel={attachments.length ? `已添加附件 ${attachments.length} 份，继续添加` : "添加附件"}
+              disabled={sending || attachments.length >= MAX_ATTACHMENTS_PER_MESSAGE}
+              onPress={() => void handlePickAttachment()}
+              style={({ pressed }) => [styles.attachButton, (pressed || sending) && styles.sendDisabled]}
+            >
+              <Ionicons name="add" size={24} color={colors.primary} />
+            </Pressable>
+            <TextInput
+              ref={composerRef}
+              value={input}
+              onChangeText={setInput}
+              style={styles.composerInput}
+              placeholder={editingMessageId ? "修改后重新发送" : "输入创作任务"}
+              placeholderTextColor={colors.textMuted}
+              editable={!sending}
+              multiline
+              maxLength={12000}
+            />
+            <Pressable
+              accessibilityLabel={editingMessageId ? "重发编辑后的消息" : "发送"}
+              disabled={!selection || !input.trim() || sending}
+              onPress={() => void send(retryRequest && input.trim() === retryRequest.userMessage.content ? retryRequest : null)}
+              style={({ pressed }) => [styles.sendButton, (pressed || !selection || !input.trim()) && styles.sendDisabled]}
+            >
+              {sending ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Ionicons name="arrow-up" size={20} color="#FFFFFF" />}
+            </Pressable>
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -1531,7 +1509,6 @@ const styles = StyleSheet.create({
   emptyMessages: { flexGrow: 1 },
   message: { gap: spacing.md, paddingVertical: spacing.md },
   messageHeader: { minHeight: 28, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
-  messageEditRow: { alignSelf: "flex-end", marginTop: 2 },
   messageEditRowOutside: { alignSelf: "flex-end", marginTop: 2, paddingRight: 2 },
   messageEditButton: { minHeight: 32, flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.xs },
   messageEditText: { color: colors.primary, fontSize: 13, fontWeight: "700" },
@@ -1550,8 +1527,6 @@ const styles = StyleSheet.create({
   errorDetailsText: { color: colors.textMuted, fontSize: 12, lineHeight: 17 },
   composerWrap: { marginHorizontal: spacing.md, marginBottom: spacing.sm, gap: 6 },
   composer: { flexDirection: "row", alignItems: "center", gap: 6, paddingLeft: 6, paddingRight: 6, paddingVertical: 6, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 999, ...shadow.card },
-  composerChip: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.surfaceMuted, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, maxWidth: 150 },
-  composerChipText: { color: colors.text, fontSize: 11.5, fontWeight: "600", flexShrink: 1 },
   writeBadge: { color: colors.primary, fontSize: 11, fontWeight: "800", backgroundColor: "rgba(23,107,87,0.12)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, overflow: "hidden" },
   writeStats: { flexDirection: "row", gap: spacing.sm, paddingVertical: 6 },
   writeStatAdd: { color: "#1B7F4D", fontSize: 12, fontWeight: "800" },
@@ -1566,8 +1541,6 @@ const styles = StyleSheet.create({
   welcomeTitle: { color: colors.text, fontSize: 17, fontWeight: "700", marginBottom: spacing.xs },
   welcomeChip: { borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: colors.surface },
   welcomeChipText: { color: colors.textMuted, fontSize: 11.5 },
-  composerInputRow: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm },
-  composerChipRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   editingBanner: { minHeight: 36, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   undoBanner: { minHeight: 36, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.md, paddingVertical: spacing.xs, backgroundColor: "#E6F3EF", borderRadius: 8 },
   reasoningCard: { borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, borderRadius: 8, marginBottom: spacing.xs },
@@ -1580,14 +1553,14 @@ const styles = StyleSheet.create({
   attachmentName: { color: colors.text, fontSize: 12, maxWidth: 150 },
   attachmentMeta: { color: colors.textMuted, fontSize: 11 },
   attachmentRemove: { padding: 2 },
-  attachButton: { width: 34, height: 34, alignItems: "center", justifyContent: "center", borderRadius: 17 },
+  attachButton: { width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 19 },
   undoText: { flex: 1, color: colors.text, fontSize: 13 },
   undoButton: { minWidth: 56, minHeight: 30, alignItems: "center", justifyContent: "center", borderRadius: 6, backgroundColor: colors.primary },
   undoButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "600" },
   editingCopy: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   editingText: { color: colors.primary, fontSize: 13, fontWeight: "600" },
   composerInput: { flex: 1, maxHeight: 130, minHeight: 40, paddingHorizontal: spacing.sm, paddingVertical: 10, color: colors.text, fontSize: 16 },
-  sendButton: { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary },
+  sendButton: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary },
   sendDisabled: { opacity: 0.48 },
   sheet: {
     maxHeight: "80%",
