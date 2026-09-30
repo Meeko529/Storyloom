@@ -2,8 +2,10 @@
 // 改动说明见仓库根目录 docs/上游来源与改动清单.md
 import { Ionicons } from "@expo/vector-icons";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { Alert } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { appendBreadcrumb } from "@/lib/crash-log";
+import { checkAppUpdate } from "@/settings/app-update";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
@@ -69,6 +71,18 @@ function MainTabs() {
 }
 
 export default function App() {
+  // 启动自动检查更新：静默检查一次，有新版才提示
+  useEffect(() => {
+    void (async () => {
+      try {
+        const info = await checkAppUpdate();
+        if (info?.hasUpdate) {
+          Alert.alert("发现新版本", `${info.latestVersion} 已发布，可在「设置 → 高级」中更新。`);
+        }
+      } catch {}
+    })();
+  }, []);
+
   return (
     <SafeAreaProvider>
       <KeyboardProvider preserveEdgeToEdge>
