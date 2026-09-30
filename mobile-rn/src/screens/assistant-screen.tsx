@@ -101,28 +101,56 @@ function ReasoningBlock({ text }: { text: string }) {
  * 工具授权。写入类工具先展示「改前 / 改后」，按一整组接受或驳回，
  * 而不是只看一段参数 JSON——借鉴 DeepWrite 的操作批次与 denova 的整组粒度。
  */
+type WriteCardRequest = {
+  name: string;
+  target?: string;
+  before?: string;
+  after?: string;
+  details?: string;
+  resolve: (ok: boolean) => void;
+};
+
+/** 红绿行统计：after 有而 before 没有的行计新增，反之计删除。 */
+function diffLineStats(before: string, after: string): { added: number; removed: number } {
+  const beforeLines = before.split("\n");
+  const afterLines = after.split("\n");
+  const pool = new Map<string, number>();
+  beforeLines.forEach((line) => pool.set(line, (pool.get(line) ?? 0) + 1));
+  let added = 0;
+  afterLines.forEach((line) => {
+    const remain = pool.get(line) ?? 0;
+    if (remain > 0) pool.set(line, remain - 1); else added += 1;
+  });
+  const pool2 = new Map<string, number>();
+  afterLines.forEach((line) => pool2.set(line, (pool2.get(line) ?? 0) + 1));
+  let removed = 0;
+  beforeLines.forEach((line) => {
+    const remain = pool2.get(line) ?? 0;
+    if (remain > 0) pool2.set(line, remain - 1); else removed += 1;
+  });
+  return { added, removed };
+}
+
+let writeCardSink: ((req: WriteCardRequest) => void) | null = null;
+
 function requestToolApproval(name: string, args: Record<string, unknown>, preview: WritePreview | null): Promise<boolean> {
   if (!preview) {
     const details = JSON.stringify(args, null, 2).slice(0, 1_200);
     return new Promise((resolve) => {
-      Alert.alert("确认工具调用", `${name}\n\n${details}`, [
-        { text: "拒绝", style: "cancel", onPress: () => resolve(false) },
-        { text: "允许一次", onPress: () => resolve(true) },
-      ], { cancelable: false });
+      if (writeCardSink) writeCardSink({ name, details, resolve });
+      else {
+        Alert.alert("确认工具调用", `${name}\n\n${details}`, [
+          { text: "拒绝", style: "cancel", onPress: () => resolve(false) },
+          { text: "允许一次", onPress: () => resolve(true) },
+        ], { cancelable: false });
+      }
     });
   }
   const before = preview.before.trim() || "（当前为空）";
   const after = preview.after.trim() || "（将清空）";
   return new Promise((resolve) => {
-    Alert.alert(
-      `确认改动：${preview.target}`,
-      `改前\n${before}\n\n改后\n${after}`,
-      [
-        { text: "驳回", style: "cancel", onPress: () => resolve(false) },
-        { text: "接受", onPress: () => resolve(true) },
-      ],
-      { cancelable: false },
-    );
+    if (writeCardSink) writeCardSink({ name, target: preview.target, before, after, resolve });
+    else resolve(false);
   });
 }
 
@@ -267,6 +295,8 @@ export function AssistantScreen() {
   const [undoTarget, setUndoTarget] = useState<string | null>(null);
   // 待随下一条消息发送的文本附件
   const [attachments, setAttachments] = useState<TextAttachment[]>([]);
+  const [writeCard, setWriteCard] = useState<WriteCardRequest | null>(null);
+  writeCardSink = (req) => setWriteCard(req);
   const [pendingQuestion, setPendingQuestion] = useState<AgentClarificationRequest | null>(null);
   const [retryRequest, setRetryRequest] = useState<RetryRequest | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -903,18 +933,7 @@ export function AssistantScreen() {
             <Text style={styles.agentLabel} numberOfLines={1}>{activeAgentName} 主智能体 · 点此切换作品</Text>
           </View>
         </Pressable>
-        <Pressable
-          accessibilityLabel="切换助手模型"
-          disabled={!models.length || sending}
-          onPress={() => setModelPickerVisible(true)}
-          style={styles.modelSelector}
-        >
-          <Ionicons name="hardware-chip-outline" size={17} color={selection ? colors.primary : colors.textMuted} />
-          <Text style={[styles.modelSelectorText, !selection && styles.mutedText]} numberOfLines={1}>
-            {selection?.model.name ?? "选择模型"}
-          </Text>
-          <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
-        </Pressable>
+
       </View>
       <Pressable
         accessibilityRole="button"
@@ -1079,12 +1098,23 @@ export function AssistantScreen() {
           ) : null}
           <View style={styles.composerRow}>
             <Pressable
-              accessibilityLabel="添加附件"
+              accessibilityLabel="选择模型"
+              disabled={sending}
+              onPress={() => setModelPickerVisible(true)}
+              style={styles.composerChip}
+            >
+              <Ionicons name="hardware-chip-outline" size={14} color={colors.primary} />
+              <Text numberOfLines={1} style={styles.composerChipText}>{selection?.model.name ?? "选择模型"}</Text>
+              <Ionicons name="chevron-down" size={13} color={colors.textMuted} />
+            </Pressable>
+            <Pressable
+              accessibilityLabel={attachments.length ? `已添加附件 ${attachments.length} 份，继续添加` : "添加附件"}
               disabled={sending || attachments.length >= MAX_ATTACHMENTS_PER_MESSAGE}
               onPress={() => void handlePickAttachment()}
-              style={({ pressed }) => [styles.attachButton, (pressed || sending) && styles.sendDisabled]}
+              style={({ pressed }) => [styles.composerChip, (pressed || sending) && styles.sendDisabled]}
             >
-              <Ionicons name="attach" size={22} color={colors.textMuted} />
+              <Ionicons name="attach" size={14} color={attachments.length ? colors.primary : colors.textMuted} />
+              <Text style={styles.composerChipText}>附件{attachments.length ? ` ${attachments.length}` : ""}</Text>
             </Pressable>
             <TextInput
               ref={composerRef}
@@ -1189,6 +1219,44 @@ export function AssistantScreen() {
                 </Pressable>
               )}
             />
+          </View>
+        </SheetBackdrop>
+      </Modal>
+
+      <Modal visible={writeCard !== null} transparent animationType="fade" onRequestClose={() => { writeCard?.resolve(false); setWriteCard(null); }}>
+        <SheetBackdrop onPress={() => { writeCard?.resolve(false); setWriteCard(null); }}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sessionTitle}>写入确认</Text>
+              <Text style={styles.sheetRowMeta} numberOfLines={1}>{writeCard?.target ?? writeCard?.name ?? ""}</Text>
+              <Text style={styles.writeBadge}>待确认</Text>
+            </View>
+            {writeCard?.before !== undefined && writeCard?.after !== undefined ? (() => {
+              const stats = diffLineStats(writeCard.before, writeCard.after);
+              return (
+                <View style={styles.writeStats}>
+                  <Text style={styles.writeStatAdd}>+{stats.added} 行</Text>
+                  <Text style={styles.writeStatDel}>−{stats.removed} 行</Text>
+                </View>
+              );
+            })() : null}
+            {writeCard?.before !== undefined && writeCard?.after !== undefined ? (
+              <View style={styles.writeDiff}>
+                {writeCard.before.split("\n").slice(0, 8).map((line, idx) => (
+                  <Text key={"b" + idx} style={styles.writeDiffDel} numberOfLines={1}>− {line}</Text>
+                ))}
+                {writeCard.after.split("\n").slice(0, 8).map((line, idx) => (
+                  <Text key={"a" + idx} style={styles.writeDiffAdd} numberOfLines={1}>+ {line}</Text>
+                ))}
+              </View>
+            ) : null}
+            {writeCard?.details ? (
+              <Text style={styles.sheetRowMeta}>{writeCard.details}</Text>
+            ) : null}
+            <View style={styles.renameActions}>
+              <Button label="驳回" variant="secondary" onPress={() => { writeCard?.resolve(false); setWriteCard(null); }} />
+              <Button label="接受" onPress={() => { writeCard?.resolve(true); setWriteCard(null); }} />
+            </View>
           </View>
         </SheetBackdrop>
       </Modal>
@@ -1424,6 +1492,15 @@ const styles = StyleSheet.create({
   errorDetailsLabel: { color: colors.textMuted, fontSize: 12, fontWeight: "600" },
   errorDetailsText: { color: colors.textMuted, fontSize: 12, lineHeight: 17 },
   composer: { gap: spacing.xs, marginHorizontal: spacing.md, marginBottom: spacing.sm, padding: spacing.sm, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, ...shadow.card },
+  composerChip: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: colors.surfaceMuted, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, maxWidth: 150 },
+  composerChipText: { color: colors.text, fontSize: 11.5, fontWeight: "600", flexShrink: 1 },
+  writeBadge: { color: colors.primary, fontSize: 11, fontWeight: "800", backgroundColor: "rgba(23,107,87,0.12)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, overflow: "hidden" },
+  writeStats: { flexDirection: "row", gap: spacing.sm, paddingVertical: 6 },
+  writeStatAdd: { color: "#1B7F4D", fontSize: 12, fontWeight: "800" },
+  writeStatDel: { color: colors.danger, fontSize: 12, fontWeight: "800" },
+  writeDiff: { backgroundColor: colors.surfaceMuted, borderRadius: 10, padding: 8, gap: 2 },
+  writeDiffAdd: { color: "#1B7F4D", fontSize: 11 },
+  writeDiffDel: { color: colors.danger, fontSize: 11 },
   mascot: { position: "absolute", right: 14, top: -40, width: 40, height: 44 },
   mascotImage: { width: "100%", height: "100%", resizeMode: "contain" },
   composerRow: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm },
