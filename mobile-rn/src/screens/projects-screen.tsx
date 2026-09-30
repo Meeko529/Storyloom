@@ -121,6 +121,21 @@ export function ProjectsScreen() {
   /** 打开作品操作面板（封面与删除统一收在这里，避免误触直接删）。 */
   const openProjectMenu = (project: Project) => setMenuProject(project);
 
+/** 把书架列表按每行 4 本分块，行下面渲染整条书架板。 */
+function chunkProjects(list: Project[], size: number): Project[][] {
+  const rows: Project[][] = [];
+  for (let index = 0; index < list.length; index += size) rows.push(list.slice(index, index + size));
+  return rows;
+}
+
+/** 无封面书封的书名排版：按长度拆成两行。 */
+function bookTitleLines(title: string): string[] {
+  const clean = title.trim();
+  if (clean.length <= 4) return [clean];
+  const half = Math.ceil(clean.length / 2);
+  return [clean.slice(0, half), clean.slice(half)];
+}
+
 /** 书架封面卡：无封面时按书名哈希取低饱和底色 + 首字水印（借鉴 QMAI / 51码字的书封卡片）。 */
 const COVER_COLORS = ["#2E6B5A", "#8A5A4A", "#4A5B8A", "#7A6A4A", "#5F4A6B"];
 function coverColor(title: string): string {
@@ -236,11 +251,9 @@ function coverColor(title: string): string {
         }
       />
       <FlatList
-        data={projects}
         key={viewMode}
-        numColumns={viewMode === "grid" ? 4 : 1}
-        columnWrapperStyle={viewMode === "grid" ? { gap: 10, paddingHorizontal: 14 } : undefined}
-        keyExtractor={(item) => item.id}
+        data={(viewMode === "grid" ? chunkProjects(projects, 4) : projects) as unknown as Project[]}
+        keyExtractor={(item, index) => (viewMode === "grid" ? `row-${index}` : (item as Project).id)}
         contentContainerStyle={projects.length ? styles.list : styles.emptyList}
         ItemSeparatorComponent={viewMode === "grid" ? () => null : () => <View style={styles.separator} />}
         ListHeaderComponent={
@@ -283,6 +296,43 @@ function coverColor(title: string): string {
         }
         ListEmptyComponent={loading ? <ActivityIndicator color={colors.primary} /> : <EmptyState title="还没有作品" action={<Button label="新建作品" onPress={() => setShowCreate(true)} />} />}
         renderItem={({ item }) => {
+          if (viewMode === "grid") {
+            const row = item as unknown as Project[];
+            return (
+              <View style={styles.shelfRow}>
+                <View style={styles.shelfBooks}>
+                  {row.map((project) => {
+                    const statsLine = (() => { const st = stats[project.id]; return st ? `${st.volumes} 卷 · ${st.chapters} 章 · ${(st.characters / 10000).toFixed(1)} 万字` : "…"; })();
+                    const lines = bookTitleLines(project.title);
+                    return (
+                      <Pressable key={project.id} onPress={() => openProject(project)} onLongPress={() => openProjectMenu(project)} style={({ pressed }) => [styles.shelfCell, pressed && styles.rowPressed]}>
+                        <View style={[styles.bookObject, { backgroundColor: coverColor(project.title) }]}>
+                          <View style={styles.bookSpine} />
+                          <View style={styles.bookFrame} />
+                          {project.coverPath ? (
+                            <Image source={{ uri: project.coverPath }} style={styles.gridCoverImage} resizeMethod="resize" />
+                          ) : (
+                            <View style={styles.bookCoverTextWrap}>
+                              {lines.map((line, index) => (
+                                <Text key={index} style={[styles.bookCoverLine, index === 0 && lines.length > 1 && styles.bookCoverLineLead]} numberOfLines={1}>{line}</Text>
+                              ))}
+                            </View>
+                          )}
+                          <View style={styles.bookPages} />
+                        </View>
+                        <View style={styles.bookShadow} />
+                        <Text style={styles.gridName} numberOfLines={1}>{project.title}</Text>
+                        <Text style={styles.gridStats}>{statsLine}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <View style={styles.shelfPlank}>
+                  <View style={styles.shelfPlankEdge} />
+                </View>
+              </View>
+            );
+          }
           const statsLine = (() => { const st = stats[item.id]; return st ? `${st.volumes} 卷 · ${st.chapters} 章 · ${(st.characters / 10000).toFixed(1)} 万字` : "…"; })();
           const progress = Math.min(100, Math.round(((stats[item.id]?.characters ?? 0) / 100000) * 100));
           const coverNode = (
@@ -299,21 +349,6 @@ function coverColor(title: string): string {
               <Ionicons name="ellipsis-horizontal" size={20} color={colors.textMuted} />
             </Pressable>
           );
-          if (viewMode === "grid") {
-            return (
-              <Pressable onPress={() => openProject(item)} onLongPress={() => openProjectMenu(item)} style={({ pressed }) => [styles.gridItem, pressed && styles.rowPressed]}>
-                <View style={[styles.gridCover, { backgroundColor: coverColor(item.title) }]}>
-                  {item.coverPath ? (
-                    <Image source={{ uri: item.coverPath }} style={styles.gridCoverImage} resizeMethod="resize" />
-                  ) : (
-                    <Text style={styles.gridCoverText}>{item.title.slice(0, 1)}</Text>
-                  )}
-                </View>
-                <Text style={styles.gridName} numberOfLines={1}>{item.title}</Text>
-                <Text style={styles.gridStats}>{statsLine}</Text>
-              </Pressable>
-            );
-          }
           return (
             <Pressable onPress={() => openProject(item)} onLongPress={() => openProjectMenu(item)} style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
               {coverNode}
@@ -435,7 +470,19 @@ const styles = StyleSheet.create({
   meterFill: { height: 4, borderRadius: 99, backgroundColor: colors.primary },
   statsText: { flex: 1, color: colors.textMuted, fontSize: 10.5 },
   headerActions: { flexDirection: "row", alignItems: "center" },
-  gridItem: { flex: 1, alignItems: "center", gap: 4, padding: 6, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, ...shadow.card },
+  shelfRow: { paddingHorizontal: 14, marginBottom: 2 },
+  shelfBooks: { flexDirection: "row", alignItems: "flex-end", gap: 10 },
+  shelfCell: { flex: 1, alignItems: "center", gap: 3 },
+  bookObject: { width: "100%", aspectRatio: 3 / 4, borderRadius: 3, overflow: "hidden", justifyContent: "center", elevation: 6, shadowColor: "#000", shadowOffset: { width: 2, height: 3 }, shadowOpacity: 0.35, shadowRadius: 4 },
+  bookSpine: { position: "absolute", left: 0, top: 0, bottom: 0, width: 7, backgroundColor: "rgba(0,0,0,0.28)", borderRightWidth: 1, borderRightColor: "rgba(255,255,255,0.15)" },
+  bookPages: { position: "absolute", right: 0, top: 2, bottom: 2, width: 4, backgroundColor: "#F3EFE6", opacity: 0.9 },
+  bookFrame: { position: "absolute", left: 13, right: 9, top: 8, bottom: 8, borderWidth: 1, borderColor: "rgba(255,255,255,0.35)", borderRadius: 2 },
+  bookCoverTextWrap: { alignSelf: "stretch", alignItems: "center", gap: 2, paddingHorizontal: 16 },
+  bookCoverLine: { color: "rgba(255,255,255,0.95)", fontSize: 19, fontWeight: "800", letterSpacing: 2 },
+  bookCoverLineLead: { fontSize: 24 },
+  bookShadow: { alignSelf: "stretch", height: 6, marginHorizontal: -4, backgroundColor: "rgba(0,0,0,0.22)", borderRadius: 3, marginTop: -1 },
+  shelfPlank: { alignSelf: "stretch", height: 9, borderRadius: 2, backgroundColor: "#C9BBA8", marginTop: 2 },
+  shelfPlankEdge: { alignSelf: "stretch", height: 3, marginTop: 6, backgroundColor: "#A8998A", borderRadius: 1 },
   gridCover: { width: "100%", aspectRatio: 3 / 4, borderRadius: 10, alignItems: "flex-end", justifyContent: "center", overflow: "hidden" },
   gridCoverImage: { width: "100%", height: "100%" },
   gridCoverText: { color: "rgba(255,255,255,0.85)", fontSize: 40, fontWeight: "800", lineHeight: 46, marginBottom: 2 },
