@@ -952,6 +952,18 @@ export function AssistantScreen() {
             <Text style={styles.agentLabel} numberOfLines={1}>{activeAgentName} 主智能体</Text>
           </View>
         </View>
+        <Pressable
+          accessibilityLabel="切换助手模型"
+          disabled={!models.length || sending}
+          onPress={() => setModelPickerVisible(true)}
+          style={styles.modelSelector}
+        >
+          <Ionicons name="hardware-chip-outline" size={17} color={selection ? colors.primary : colors.textMuted} />
+          <Text style={[styles.modelSelectorText, !selection && styles.mutedText]} numberOfLines={1}>
+            {selection?.model.name ?? "选择模型"}
+          </Text>
+          <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
+        </Pressable>
 
       </View>
       <Pressable

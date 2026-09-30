@@ -503,6 +503,7 @@ export function SettingsScreen() {
                   setCapDraft({ ...capDraft, supportsTools: guess.supportsTools, supportsVision: guess.supportsVision });
                 }} />
                 </View>
+                <View style={{ marginTop: spacing.sm }}>
                 <Button label="保存" onPress={() => {
                   const parsedTemperature = Number(capDraft.temperature);
                   const parsedMaxTokens = Number(capDraft.maxTokens);
@@ -512,6 +513,7 @@ export function SettingsScreen() {
                     .then(() => { refreshData(); toastSafe("已保存「" + model.name + "」"); })
                     .catch((saveError) => setError(saveError instanceof Error ? saveError.message : String(saveError)));
                 }} loading={savingModel} />
+                </View>
               </View>
             ) : null}
           </View>
@@ -583,14 +585,6 @@ export function SettingsScreen() {
         onBack={modelsView === "addProvider" ? () => setModelsView("home") : () => setActiveCategory(null)}
         action={
           <View style={styles.providerActions}>
-            <Pressable
-              accessibilityLabel="切换模型"
-              onPress={() => { if (providers.length) { const first = providers[0]; void fetchRemoteModels(first); setModelPickerProvider(first); } }}
-              disabled={!providers.length || fetchingProviderId !== null}
-              style={styles.iconButton}
-            >
-              <Ionicons name="hardware-chip-outline" size={22} color={models.length ? colors.primary : colors.textMuted} />
-            </Pressable>
             <Pressable
               accessibilityLabel="清理重复"
               onPress={() => {
@@ -771,7 +765,7 @@ export function SettingsScreen() {
             {convScope === "global" ? (
               <ToggleRow label="压缩系统提示词（全局）" value={convCompress} onChange={(value) => { setConvCompress(value); void setSetting("context.compressSystemPrompts", value ? "true" : "false"); }} />
             ) : (
-              <Text style={styles.fieldHint}>压缩系统提示词为全局设置；切到「全局默认」可修改。</Text>
+              <Text style={[styles.fieldHint, { marginTop: spacing.sm, marginBottom: spacing.xs }]}>压缩系统提示词为全局设置；切到「全局默认」可修改。</Text>
             )}
             <View style={styles.btnrow}>
               {convScope === "model" ? (
@@ -934,7 +928,7 @@ const styles = StyleSheet.create({
   addModelRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.sm, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   btnrow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm },
   providerBlock: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-  capExpand: { paddingTop: spacing.xs, paddingBottom: spacing.md, gap: 2 },
+  capExpand: { paddingTop: spacing.sm, paddingBottom: spacing.md, gap: spacing.sm },
   providerHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   providerActions: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   providerInfo: { flex: 1, minWidth: 0, marginRight: spacing.sm },
@@ -953,7 +947,7 @@ const styles = StyleSheet.create({
   choiceActive: { borderColor: colors.primary, backgroundColor: "#E6F3EF" },
   choiceText: { color: colors.textMuted, fontSize: 13 },
   choiceTextActive: { color: colors.primary, fontWeight: "700" },
-  modelSheet: { maxHeight: "78%", paddingHorizontal: spacing.md, gap: spacing.xs, paddingBottom: spacing.lg, borderTopLeftRadius: radius.md, borderTopRightRadius: radius.md, backgroundColor: colors.background },
+  modelSheet: { maxHeight: "78%", paddingHorizontal: spacing.md, gap: spacing.sm, paddingBottom: spacing.lg, borderTopLeftRadius: radius.md, borderTopRightRadius: radius.md, backgroundColor: colors.background },
   modelFilterWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   modelFilterEmpty: { padding: spacing.lg, color: colors.textMuted, fontSize: 14, lineHeight: 20 },
   sheetHeader: { minHeight: 64, flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.lg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },

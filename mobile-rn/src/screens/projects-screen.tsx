@@ -325,6 +325,7 @@ function coverColor(title: string): string {
                               ))}
                             </View>
                           )}
+                          <View style={styles.bookGloss} />
                           <View style={styles.bookPages} />
                         </View>
                         <View style={styles.bookShadow} />
@@ -334,9 +335,7 @@ function coverColor(title: string): string {
                     );
                   })}
                 </View>
-                <View style={styles.shelfPlank}>
-                  <View style={styles.shelfPlankEdge} />
-                </View>
+                <View style={styles.shelfPlank} />
               </View>
             );
           }
@@ -487,9 +486,9 @@ const styles = StyleSheet.create({
   bookCoverTextWrap: { alignSelf: "stretch", alignItems: "center", gap: 2, paddingHorizontal: 16 },
   bookCoverLine: { color: "rgba(255,255,255,0.95)", fontSize: 19, fontWeight: "800", letterSpacing: 2 },
   bookCoverLineLead: { fontSize: 24 },
-  bookShadow: { alignSelf: "stretch", height: 6, marginHorizontal: -4, backgroundColor: "rgba(0,0,0,0.22)", borderRadius: 3, marginTop: -1 },
-  shelfPlank: { alignSelf: "stretch", height: 9, borderRadius: 2, backgroundColor: "#C9BBA8", marginTop: 2 },
-  shelfPlankEdge: { alignSelf: "stretch", height: 3, marginTop: 6, backgroundColor: "#A8998A", borderRadius: 1 },
+  bookShadow: { alignSelf: "stretch", height: 9, marginHorizontal: -5, backgroundColor: "rgba(0,0,0,0.34)", borderRadius: 4, marginTop: -2 },
+  shelfPlank: { alignSelf: "stretch", height: 11, marginTop: 0, borderRadius: 3, backgroundColor: "#C2B29C", borderBottomWidth: 4, borderBottomColor: "#8E7B63" },
+  bookGloss: { position: "absolute", left: 7, top: 0, bottom: 0, width: "32%", backgroundColor: "rgba(255,255,255,0.16)" },
   gridCover: { width: "100%", aspectRatio: 3 / 4, borderRadius: 10, alignItems: "flex-end", justifyContent: "center", overflow: "hidden" },
   gridCoverImage: { width: "100%", height: "100%" },
   gridCoverText: { color: "rgba(255,255,255,0.85)", fontSize: 40, fontWeight: "800", lineHeight: 46, marginBottom: 2 },
