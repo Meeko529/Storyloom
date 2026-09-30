@@ -1,53 +1,52 @@
-# OpenFicM Android
+# mobile-rn
 
-这是 OpenFicM 的 React Native Android 工程。应用不依赖电脑后端，业务数据保存在本机 SQLite，API Key 保存在 Android SecureStore。
+Storyloom 的 React Native（Expo）Android 工程：应用不依赖电脑后端，业务数据保存在本机 SQLite，API Key 保存在 Android SecureStore。
 
-面向普通用户的安装、模型配置、Agent、文风、导出和故障排查说明见 [Android 使用说明](../docs/USER_GUIDE.md)，0.7.3 更新内容见 [版本说明](../docs/releases/v0.7.3.md)。
+面向使用者的安装、模型配置与故障排查见根目录 [README](../README.md) 与 [安装与常见问题](../docs/安装与常见问题.md)；来源声明与逐项改动见 [上游来源与改动清单](../docs/上游来源与改动清单.md)。本文件只讲工程本身。
 
 ## 开发
 
-~~~powershell
+```bash
 npm ci
-npm run type-check
-powershell -ExecutionPolicy Bypass -File scripts/build-release.ps1
-~~~
+npm run type-check    # 类型检查（提交前必须通过）
+npm run android       # 本地运行（需要模拟器或真机）
+```
 
-模型文件不会提交到 Git，也不会打进 APK。首次启动时，应用从 Hugging Face 下载以下文件到应用私有目录，并校验文件大小和 SHA-256：
+本地出包、签名与提交前自查清单见 [CONTRIBUTING.md](../CONTRIBUTING.md)。
 
-- bge-small-zh-v1.5-q4_k_m.gguf
-- bge-reranker-base-q4_k_m.gguf
+## 源码结构
 
-正式构建脚本会先清理 android/app/build 生成目录，并在输出前检查 APK；只要发现任何 GGUF 条目就会直接失败，避免旧增量资源被误发布。
+| 目录 | 内容 |
+| --- | --- |
+| `src/agent/` | Agent 运行时、工具定义与执行器、写入确认 |
+| `src/llm/` | 三家协议的请求 / 响应归一、供应商高级设置 |
+| `src/data/` | Expo SQLite 数据层与仓储 |
+| `src/search/` | 本地向量索引与语义检索 |
+| `src/style/` | 参考书库（文风库）与文风蒸馏 |
+| `src/settings/` | 设置项、备份恢复、更新检查、诊断报告、内置预设 |
+| `src/screens/` | 页面 |
+| `assets/builtin/` | 内置 Agent / Skill 内容包（随安装包分发） |
 
-## 正式签名
+## 资源与网络边界
 
-官方构建通过以下环境变量读取仓库外的私钥：
-
-- OPENFICM_RELEASE_STORE_FILE
-- OPENFICM_RELEASE_STORE_PASSWORD
-- OPENFICM_RELEASE_KEY_ALIAS
-- OPENFICM_RELEASE_KEY_PASSWORD
-- OPENFICM_RELEASE_LINEAGE_FILE（仅密钥轮换时需要）
-- OPENFICM_RELEASE_LEGACY_STORE_FILE（使用 lineage 时必需）
-- OPENFICM_RELEASE_LEGACY_STORE_PASSWORD（使用 lineage 时必需）
-- OPENFICM_RELEASE_LEGACY_KEY_ALIAS（使用 lineage 时必需）
-- OPENFICM_RELEASE_LEGACY_KEY_PASSWORD（使用 lineage 时必需）
-
-Release 构建缺少前四项时会直接失败；使用 lineage 时必须同时提供旧签名者的四项配置，否则构建会明确失败。本地手动安装测试使用 `npm run android:apk:debug`，它构建内置 JS 且无需 Metro 的 `standalone` APK并使用调试证书。不得把该 APK 用于发布，也不得提交 keystore、密码、签名轮换链、APK 或 GGUF。
-
-## 网络边界
-
-- 模型 API：只连接用户配置的供应商地址
-- 模型发现：读取供应商模型列表
-- 运行资源：从 OpenFicM GitHub、oh-story GitHub Release、Lorn.NovelWriteSkills 固定 commit 和 Hugging Face 获取，下载不执行远程脚本或 Hook
-- oh-story 更新：只读取正式 Release 和白名单 Markdown，绑定不可变 commit/tree SHA
+- **首次启动不需要联网下载任何资源**：基础 Agent / Skill 内容包已随安装包内置，SHA-256 与上游固定提交一致
+- 本地检索模型（GGUF）不随包分发，由用户在「设置 → 高级 → 可选内容」中按需下载；下载时主源失败自动切换国内镜像
+- 除调用用户配置的模型接口与上述资源下载外，应用没有其他网络出口；下载不执行远程脚本或 Hook，远程内容只作为模型指令数据
+- 工具集合由本地代码生成，子智能体不能自行增加工具；写工具始终遵循「允许 / 询问 / 禁止」权限
 
 ## 文风工作流
 
-- 文风书库接受 TXT、Markdown 和 EPUB；原文件及规范化正文保存在应用私有目录。
-- 蒸馏只把分布式抽样文本发送给用户配置的默认模型，完整参考书不会上传。
-- 参考文风可跨作品选择；作者文风按作品保存多个版本。助手生成正文前会在尚未选择时询问，写作页和助手页也可直接切换。
-- Agent 创建或重写章节时保存 AI 原稿与所用文风；作者修改后可在写作页生成新的作者文风版本。
-- Android 运行时不使用 FastAPI、服务地址、Socket.IO 或电脑后端。
+- 参考书库接受 TXT、Markdown、EPUB 与 **Word（.docx）**；原文件及规范化正文保存在应用私有目录
+- 蒸馏只把分布式抽样文本发送给用户配置的默认模型，完整参考书不会上传
+- 参考文风可跨作品选择；作者文风按作品保存多个版本
+- Agent 创建或重写章节时保存 AI 原稿与所用文风；作者修改后可在写作页生成新的作者文风版本
+- Android 运行时不使用 FastAPI、服务地址、Socket.IO 或电脑后端
 
-详细架构见 DESIGN.md，第三方声明见 ../THIRD_PARTY_NOTICES.md。
+## Android 工程要点
+
+- 仅构建 arm64-v8a
+- Android 原生目录随仓库交付并直接编译，**构建流程不执行 `expo prebuild`**：修改图标等原生资源时必须同时改 `android/app/src/main/res/` 下的文件，只改 `assets/` 不会生效
+- 签名环境变量为 `STORYLOOM_RELEASE_*`（四个变量，说明见 [CONTRIBUTING.md](../CONTRIBUTING.md)）
+- 不提交 keystore、密码、APK 或 GGUF 文件
+
+工程结构细节见 [DESIGN.md](DESIGN.md)。

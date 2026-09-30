@@ -1,6 +1,6 @@
 # Runtime retrieval models
 
-The Android package does not include these GGUF models. On first launch, OpenFicM downloads them from Hugging Face into the app-private document directory and verifies the recorded size and SHA-256 before use:
+Storyloom does not bundle these GGUF models. They are downloaded on demand from Hugging Face into the app-private document directory (falling back to a domestic mirror when the primary source fails), and the recorded size and SHA-256 are verified before use:
 
 - `bge-small-zh-v1.5-q4_k_m.gguf`
   - Source: `CompendiumLabs/bge-small-zh-v1.5-gguf`
