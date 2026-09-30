@@ -258,7 +258,7 @@ export function AssistantScreen() {
   const projectId = useAppStore((state) => state.currentProjectId);
   const setCurrentProject = useAppStore((state) => state.setCurrentProject);
   const [scratchProjectId, setScratchProjectId] = useState<string | null>(null);
-  // 无作品模式：未选书时落到「灵感速记」，助手照常可用
+  // 无作品模式：未选书时落到「未命名」，助手照常可用
   const effectiveProjectId = projectId ?? scratchProjectId;
   const refreshData = useAppStore((state) => state.refreshData);
   const revision = useAppStore((state) => state.dataRevision);

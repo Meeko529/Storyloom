@@ -254,14 +254,14 @@ export async function getProjectStats(projectId: string): Promise<ProjectStats> 
   };
 }
 
-/** 助手「无作品模式」的固定载体：查找或创建「灵感速记」项目（未选书时的对话与灵感都落在这里）。 */
+/** 助手「无作品模式」的固定载体：查找或创建「未命名」项目（未选书时的对话与灵感都落在这里）。 */
 export async function ensureScratchProject(): Promise<Project> {
   const db = await getDatabase();
   const row = await db.getFirstAsync<ProjectRow>(
-    "SELECT * FROM projects WHERE title = '灵感速记' ORDER BY created_at LIMIT 1",
+    "SELECT * FROM projects WHERE title = '未命名' ORDER BY created_at LIMIT 1",
   );
   if (row) return mapProject(row);
-  return createProject("灵感速记", "助手未选作品时的对话与灵感记录（系统自动创建）");
+  return createProject("未命名", "助手未选作品时的聊天记录（系统自动创建）");
 }
 
 export interface DedupeSummary {
