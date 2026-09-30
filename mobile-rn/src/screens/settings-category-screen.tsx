@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   View,
 } from "react-native";
 
@@ -137,6 +138,41 @@ const PERMISSION_MODES: Array<{ id: ToolPermissionMode; label: string }> = [
 type IndexNumberKey = "chunkSize" | "chunkOverlap" | "retrievalTopK" | "rerankTopK";
 type IndexNumberDraft = Record<IndexNumberKey, string>;
 
+/** 技能按创作环节分组：按名称关键词匹配，不改数据结构；都没命中的落到「其他」。 */
+const SKILL_GROUPS: { title: string; test: (name: string) => boolean }[] = [
+  { title: "人物", test: (name) => /人物|角色|反派/.test(name) },
+  { title: "对话与文风", test: (name) => /对话|文风|口吻|风格|AI ?味/.test(name) },
+  { title: "审查与打磨", test: (name) => /审查|检查|修订|禁用词|模板|质量|契约|一致性/.test(name) },
+  { title: "规范与连续性", test: (name) => /格式|规范|状态|追踪|连续|设定/.test(name) },
+  { title: "情节与结构", test: (name) => /开篇|结构|反转|钩子|悬念|情绪|投稿|大纲|节奏|剧情|情节/.test(name) },
+];
+const SKILL_GROUP_OTHER = "其他";
+
+function skillGroupTitle(name: string): string {
+  return SKILL_GROUPS.find((group) => group.test(name))?.title ?? SKILL_GROUP_OTHER;
+}
+
+/** 工具权限按操作对象分组：按工具 key 的关键词匹配，未命中的落到「交互与编排」。 */
+const TOOL_GROUPS: { title: string; test: (key: string) => boolean }[] = [
+  { title: "作品与章节", test: (key) => /chapter|project|volume/.test(key) },
+  { title: "角色", test: (key) => /character/.test(key) },
+  { title: "世界书", test: (key) => /world_entr/.test(key) },
+  { title: "笔记", test: (key) => /note/.test(key) },
+  { title: "文风与检索", test: (key) => /style|knowledge/.test(key) },
+  { title: "交互与编排", test: () => true },
+];
+
+function toolGroupTitle(key: string): string {
+  return TOOL_GROUPS.find((group) => group.test(key))?.title ?? "交互与编排";
+}
+
+/** 列表搜索：对名称/说明等字段做包含匹配，忽略大小写；空关键词视为全部命中。 */
+function matchesQuery(query: string, ...fields: string[]): boolean {
+  const keyword = query.trim().toLowerCase();
+  if (!keyword) return true;
+  return fields.some((field) => (field ?? "").toLowerCase().includes(keyword));
+}
+
 function draftFromSettings(settings: IndexSettings): IndexNumberDraft {
   return {
     chunkSize: String(settings.chunkSize),
@@ -216,6 +252,8 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
   const [indexProgress, setIndexProgress] = useState("");
   const [rules, setRules] = useState<AgentRule[]>([]);
   const [skills, setSkills] = useState<AgentSkill[]>([]);
+  const [skillQuery, setSkillQuery] = useState("");
+  const [toolQuery, setToolQuery] = useState("");
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
   const [availableModels, setAvailableModels] = useState<Model[]>([]);
   const [permissions, setPermissions] = useState<Record<string, ToolPermissionMode>>({});
@@ -1103,30 +1141,51 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
               </Pressable>
             ))}
           </View>
-          {TOOL_CATALOG.map((tool) => {
-            const current = permissions[tool.key] ?? "ask";
+          <TextInput
+            value={toolQuery}
+            onChangeText={setToolQuery}
+            placeholder={`搜索工具名称（共 ${TOOL_CATALOG.length} 项）`}
+            placeholderTextColor={colors.textMuted}
+            style={styles.searchInput}
+            autoCorrect={false}
+          />
+          {TOOL_GROUPS.map((group) => {
+            const items = TOOL_CATALOG.filter((tool) => toolGroupTitle(tool.key) === group.title
+              && matchesQuery(toolQuery, tool.name, tool.key));
+            if (!items.length) return null;
             return (
-              <View key={tool.key} style={styles.permissionCard}>
-                <View style={styles.manageText}>
-                  <Text style={styles.settingLabel}>{tool.name}</Text>
-                  <Text style={styles.settingValue}>{tool.readonly ? "只读" : "可写入"}</Text>
-                </View>
-                <View style={styles.modeChoices}>
-                  {PERMISSION_MODES.map((mode) => (
-                    <Pressable
-                      key={mode.id}
-                      onPress={() => void setPermission(tool.key, mode.id)}
-                      style={[styles.modeChip, current === mode.id && (mode.id === "deny" ? styles.modeChipDeny : styles.modeChipActive)]}
-                    >
-                      <Text style={[styles.modeChipText, current === mode.id && (mode.id === "deny" ? styles.modeChipTextDeny : styles.modeChipTextActive)]}>
-                        {mode.label}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
+              <View key={group.title}>
+                <Text style={styles.groupTitle}>{group.title}<Text style={styles.groupCount}> · {items.length}</Text></Text>
+                {items.map((tool) => {
+                  const current = permissions[tool.key] ?? "ask";
+                  return (
+                    <View key={tool.key} style={styles.permissionCard}>
+                      <View style={styles.manageText}>
+                        <Text style={styles.settingLabel}>{tool.name}</Text>
+                        <Text style={styles.settingValue}>{tool.readonly ? "只读" : "可写入"}</Text>
+                      </View>
+                      <View style={styles.modeChoices}>
+                        {PERMISSION_MODES.map((mode) => (
+                          <Pressable
+                            key={mode.id}
+                            onPress={() => void setPermission(tool.key, mode.id)}
+                            style={[styles.modeChip, current === mode.id && (mode.id === "deny" ? styles.modeChipDeny : styles.modeChipActive)]}
+                          >
+                            <Text style={[styles.modeChipText, current === mode.id && (mode.id === "deny" ? styles.modeChipTextDeny : styles.modeChipTextActive)]}>
+                              {mode.label}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </View>
+                  );
+                })}
               </View>
             );
           })}
+          {TOOL_CATALOG.every((tool) => !matchesQuery(toolQuery, tool.name, tool.key)) ? (
+            <Text style={styles.sectionHint}>没有匹配的工具。</Text>
+          ) : null}
         </View>
       ) : null}
       {category === "rules" ? (
@@ -1175,36 +1234,62 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       {category === "skills" ? (
         <View style={styles.section}>
           <Text style={styles.sectionHint}>技能是可按需启用的写作方法，助手会在合适的环节调用它，例如改写口吻或处理对话。</Text>
-          {skills.map((skill) => (
-            <View key={skill.id} style={styles.manageRow}>
-              <View style={styles.manageText}>
-                <Text style={styles.settingLabel}>{skill.name}</Text>
-                <Text numberOfLines={2} style={styles.settingValue}>{skill.description || skill.instructions}</Text>
-                <Text style={styles.modelHint}>
-                  {skill.source === "builtin" ? "Storyloom 基础包" : skill.source === "plugin" ? "Lorn 文风插件" : skill.source === "remote" ? "oh-story 更新技能" : "自定义技能"} · 按需激活
-                </Text>
+          <TextInput
+            value={skillQuery}
+            onChangeText={setSkillQuery}
+            placeholder={`搜索技能名称或说明（共 ${skills.length} 项）`}
+            placeholderTextColor={colors.textMuted}
+            style={styles.searchInput}
+            autoCorrect={false}
+          />
+          {(() => {
+            const order = [...SKILL_GROUPS.map((group) => group.title), SKILL_GROUP_OTHER];
+            const grouped = new Map<string, AgentSkill[]>();
+            for (const skill of skills) {
+              if (!matchesQuery(skillQuery, skill.name, skill.description, skill.instructions)) continue;
+              const title = skillGroupTitle(skill.name);
+              const bucket = grouped.get(title);
+              if (bucket) bucket.push(skill);
+              else grouped.set(title, [skill]);
+            }
+            const sections = order.filter((title) => grouped.has(title));
+            if (!sections.length) return <Text style={styles.sectionHint}>没有匹配的技能。</Text>;
+            return sections.map((title) => (
+              <View key={title}>
+                <Text style={styles.groupTitle}>{title}<Text style={styles.groupCount}> · {grouped.get(title)!.length}</Text></Text>
+                {grouped.get(title)!.map((skill) => (
+                  <View key={skill.id} style={styles.manageRow}>
+                    <View style={styles.manageText}>
+                      <Text style={styles.settingLabel}>{skill.name}</Text>
+                      <Text numberOfLines={2} style={styles.settingValue}>{skill.description || skill.instructions}</Text>
+                      <Text style={styles.modelHint}>
+                        {skill.source === "builtin" ? "Storyloom 基础包" : skill.source === "plugin" ? "Lorn 文风插件" : skill.source === "remote" ? "oh-story 更新技能" : "自定义技能"} · 按需激活
+                      </Text>
+                    </View>
+                    <Switch value={skill.enabled} onValueChange={(enabled) => {
+                      const next = skills.map((item) => item.id === skill.id ? { ...item, enabled } : item);
+                      void persistManagedState(next, saveAgentSkills, setSkills);
+                    }} trackColor={{ false: colors.border, true: colors.primary }} />
+                    {skill.source === "custom" ? (
+                      <>
+                        <Pressable accessibilityLabel="编辑技能" onPress={() => startEditSkill(skill)} style={styles.iconButton}>
+                          <Ionicons name="create-outline" size={19} color={colors.textMuted} />
+                        </Pressable>
+                        <Pressable accessibilityLabel="删除技能" onPress={() => confirmDelete(
+                        "删除技能",
+                        `删除「${skill.name}」？删除后无法恢复。`,
+                        () => {
+                          const next = skills.filter((item) => item.id !== skill.id);
+                          void persistManagedState(next, saveAgentSkills, setSkills);
+                        },
+                      )} style={styles.iconButton}><Ionicons name="trash-outline" size={19} color={colors.textMuted} /></Pressable>
+                      </>
+                    ) : <View style={styles.iconButton}><Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} /></View>}
+                  </View>
+                ))}
               </View>
-              <Switch value={skill.enabled} onValueChange={(enabled) => {
-                const next = skills.map((item) => item.id === skill.id ? { ...item, enabled } : item);
-                void persistManagedState(next, saveAgentSkills, setSkills);
-              }} trackColor={{ false: colors.border, true: colors.primary }} />
-              {skill.source === "custom" ? (
-                <>
-                  <Pressable accessibilityLabel="编辑技能" onPress={() => startEditSkill(skill)} style={styles.iconButton}>
-                    <Ionicons name="create-outline" size={19} color={colors.textMuted} />
-                  </Pressable>
-                  <Pressable accessibilityLabel="删除技能" onPress={() => confirmDelete(
-                  "删除技能",
-                  `删除「${skill.name}」？删除后无法恢复。`,
-                  () => {
-                    const next = skills.filter((item) => item.id !== skill.id);
-                    void persistManagedState(next, saveAgentSkills, setSkills);
-                  },
-                )} style={styles.iconButton}><Ionicons name="trash-outline" size={19} color={colors.textMuted} /></Pressable>
-                </>
-              ) : <View style={styles.iconButton}><Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} /></View>}
-            </View>
-          ))}
+            ));
+          })()}
           <Text style={styles.subsectionTitle}>{editingSkillId ? "编辑技能" : "添加技能"}</Text>
           <Text style={styles.sectionHint}>名称用于区分用途；指令写明何时使用、按什么步骤处理。可先载入示例，再按需要修改。</Text>
           {!editingSkillId ? (
@@ -1226,38 +1311,47 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       {category === "agents" ? (
         <View style={styles.section}>
           <Text style={styles.sectionHint}>智能体决定写作的分工与流程：由谁执笔、按什么步骤产出。当前启用的主智能体负责接收你的请求。</Text>
-          {agents.map((agent) => (
-            <View key={agent.id} style={[styles.manageRow, activeAgentId === agent.id && styles.activeRow]}>
-              <View style={styles.manageText}>
-                <Text style={styles.settingLabel}>{agent.name}</Text>
-                <Text numberOfLines={2} style={styles.settingValue}>{agent.description || agent.systemPrompt}</Text>
-                <Text style={styles.modelHint}>
-                  {agent.source === "builtin" ? "Storyloom 基础包" : agent.source === "remote" ? "oh-story 更新" : "自定义"} · {agent.kind === "primary" ? "主智能体" : "子智能体"} · {agent.skillIds.length} 个技能
-                </Text>
-                {agent.modelId ? <Text style={styles.modelHint}>{availableModels.find((model) => model.id === agent.modelId)?.name ?? "模型已删除"}</Text> : null}
+          {(["primary", "subagent"] as const).map((kind) => {
+            const items = agents.filter((agent) => agent.kind === kind);
+            if (!items.length) return null;
+            return (
+              <View key={kind}>
+                <Text style={styles.groupTitle}>{kind === "primary" ? "主智能体" : "子智能体"}<Text style={styles.groupCount}> · {items.length}</Text></Text>
+                {items.map((agent) => (
+                  <View key={agent.id} style={[styles.manageRow, activeAgentId === agent.id && styles.activeRow]}>
+                    <View style={styles.manageText}>
+                      <Text style={styles.settingLabel}>{agent.name}</Text>
+                      <Text numberOfLines={2} style={styles.settingValue}>{agent.description || agent.systemPrompt}</Text>
+                      <Text style={styles.modelHint}>
+                        {agent.source === "builtin" ? "Storyloom 基础包" : agent.source === "remote" ? "oh-story 更新" : "自定义"} · {agent.skillIds.length} 个技能
+                      </Text>
+                      {agent.modelId ? <Text style={styles.modelHint}>{availableModels.find((model) => model.id === agent.modelId)?.name ?? "模型已删除"}</Text> : null}
+                    </View>
+                    <Switch value={agent.enabled} onValueChange={(enabled) => void toggleAgent(agent.id, enabled)} trackColor={{ false: colors.border, true: colors.primary }} />
+                    {agent.kind === "primary" ? (
+                      <Pressable accessibilityLabel={`选择 ${agent.name} 主智能体`} disabled={!agent.enabled} onPress={() => void selectAgent(agent)} style={styles.iconButton}>
+                        <Ionicons name={activeAgentId === agent.id ? "radio-button-on" : "radio-button-off"} size={21} color={activeAgentId === agent.id ? colors.primary : colors.textMuted} />
+                      </Pressable>
+                    ) : <View style={styles.iconButton}><Ionicons name="git-branch-outline" size={20} color={colors.textMuted} /></View>}
+                    {agent.source === "custom" ? (
+                      <>
+                        <Pressable accessibilityLabel="编辑智能体" onPress={() => startEditAgent(agent)} style={styles.iconButton}>
+                          <Ionicons name="create-outline" size={19} color={colors.textMuted} />
+                        </Pressable>
+                        <Pressable accessibilityLabel="删除智能体" onPress={() => confirmDelete(
+                        "删除智能体",
+                        `删除「${agent.name}」？它的系统提示词会一起丢失，无法恢复。`,
+                        () => void removeAgent(agent.id),
+                      )} style={styles.iconButton}>
+                        <Ionicons name="trash-outline" size={19} color={colors.textMuted} />
+                      </Pressable>
+                      </>
+                    ) : <View style={styles.iconButton}><Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} /></View>}
+                  </View>
+                ))}
               </View>
-              <Switch value={agent.enabled} onValueChange={(enabled) => void toggleAgent(agent.id, enabled)} trackColor={{ false: colors.border, true: colors.primary }} />
-              {agent.kind === "primary" ? (
-                <Pressable accessibilityLabel={`选择 ${agent.name} 主智能体`} disabled={!agent.enabled} onPress={() => void selectAgent(agent)} style={styles.iconButton}>
-                  <Ionicons name={activeAgentId === agent.id ? "radio-button-on" : "radio-button-off"} size={21} color={activeAgentId === agent.id ? colors.primary : colors.textMuted} />
-                </Pressable>
-              ) : <View style={styles.iconButton}><Ionicons name="git-branch-outline" size={20} color={colors.textMuted} /></View>}
-              {agent.source === "custom" ? (
-                <>
-                  <Pressable accessibilityLabel="编辑智能体" onPress={() => startEditAgent(agent)} style={styles.iconButton}>
-                    <Ionicons name="create-outline" size={19} color={colors.textMuted} />
-                  </Pressable>
-                  <Pressable accessibilityLabel="删除智能体" onPress={() => confirmDelete(
-                  "删除智能体",
-                  `删除「${agent.name}」？它的系统提示词会一起丢失，无法恢复。`,
-                  () => void removeAgent(agent.id),
-                )} style={styles.iconButton}>
-                  <Ionicons name="trash-outline" size={19} color={colors.textMuted} />
-                </Pressable>
-                </>
-              ) : <View style={styles.iconButton}><Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} /></View>}
-            </View>
-          ))}
+            );
+          })}
           <Text style={styles.subsectionTitle}>{editingAgentId ? "编辑智能体" : "添加智能体"}</Text>
           <Text style={styles.sectionHint}>
             名称用于区分用途；系统提示词写明该智能体的分工、执行步骤与输出要求。可先载入示例，再按需要修改。
@@ -1458,6 +1552,9 @@ const styles = StyleSheet.create({
   warnText: { color: colors.accent, fontSize: 13, lineHeight: 18 },
   section: { gap: spacing.md, padding: spacing.lg },
   subsectionTitle: { color: colors.text, fontSize: 17, fontWeight: "700" },
+  searchInput: { minHeight: 42, marginBottom: spacing.sm, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, color: colors.text, fontSize: 14 },
+  groupTitle: { marginTop: spacing.lg, marginBottom: spacing.xs, color: colors.text, fontSize: 14, fontWeight: "700" },
+  groupCount: { color: colors.textMuted, fontSize: 12, fontWeight: "400" },
   subsectionDivider: { height: StyleSheet.hairlineWidth, marginVertical: spacing.sm, backgroundColor: colors.border },
   sectionHint: { color: colors.textMuted, fontSize: 13, lineHeight: 19 },
   settingRow: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
