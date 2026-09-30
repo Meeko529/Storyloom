@@ -91,6 +91,60 @@ function formatForExtension(extension: string): StyleSourceFormat {
   throw new Error("仅支持 TXT、Markdown、EPUB 和 Word（.docx）文件");
 }
 
+const FORMAT_BY_MIME: Record<string, StyleSourceFormat> = {
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  "application/epub+zip": "epub",
+  "text/plain": "txt",
+  "text/markdown": "markdown",
+};
+
+/** zip 容器特征判断：docx 与 epub 都是 zip，用内部条目区分。 */
+function sniffZipFormat(bytes: Uint8Array): StyleSourceFormat | null {
+  if (bytes[0] !== 0x50 || bytes[1] !== 0x4b) return null;
+  try {
+    const entries = unzipSync(bytes, {
+      filter: (file) => file.name === "word/document.xml" || file.name === "META-INF/container.xml",
+    });
+    if (entries["word/document.xml"]) return "docx";
+    if (entries["META-INF/container.xml"]) return "epub";
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/**
+ * 判定导入文件格式：扩展名 → MIME → 内容特征，三级兜底。
+ * 部分文件管理器回传的 name 可能不含扩展名、mimeType 可能是通用类型，
+ * 逐级兜底可避免把受支持的文件误判为「不支持的格式」。
+ */
+function resolveStyleFormat(
+  fileName: string | undefined,
+  mimeType: string | undefined,
+  bytes: Uint8Array,
+): StyleSourceFormat {
+  const extension = extensionOf(fileName ?? "");
+  if (extension) {
+    try {
+      return formatForExtension(extension);
+    } catch {
+      // 扩展名不认识时继续往下兜底
+    }
+  }
+  const byMime = mimeType ? FORMAT_BY_MIME[mimeType.toLowerCase()] : undefined;
+  if (byMime) return byMime;
+  const sniffed = sniffZipFormat(bytes);
+  if (sniffed) return sniffed;
+  throw new Error(
+    `无法识别文件格式：${fileName || "（文件名为空）"}（扩展名：${extension || "无"}，类型：${mimeType || "未知"}）。支持 TXT、Markdown、EPUB 与 Word（.docx）`,
+  );
+}
+
+/** 落盘时用的扩展名，按已判定的格式取，不依赖文件名。 */
+function extensionForFormat(format: StyleSourceFormat): string {
+  return format === "markdown" ? "md" : format;
+}
+
 function decodeText(bytes: Uint8Array): string {
   const buffer = Buffer.from(bytes);
   if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) return iconv.decode(buffer.subarray(3), "utf8");
@@ -255,14 +309,14 @@ export async function importStyleSource(): Promise<StyleSource | null> {
   });
   if (result.canceled) return null;
   const asset = result.assets[0];
-  const format = formatForExtension(extensionOf(asset.name));
   const inputFile = new File(asset.uri);
   const sizeBytes = asset.size ?? inputFile.size;
   if (!sizeBytes || sizeBytes > MAX_IMPORT_BYTES) throw new Error("参考书文件必须小于 50 MB");
+  const bytes = await inputFile.bytes();
+  const format = resolveStyleFormat(asset.name, asset.mimeType, bytes);
   const contentHash = await sha256File(inputFile);
   const duplicate = await findStyleSourceByHash(contentHash);
   if (duplicate) throw new Error(`《${duplicate.title}》已在参考书库中`);
-  const bytes = await inputFile.bytes();
   const extracted = format === "epub"
     ? extractEpub(bytes)
     : format === "docx"
@@ -271,7 +325,7 @@ export async function importStyleSource(): Promise<StyleSource | null> {
   if (!extracted.text) throw new Error("文件中没有可读取的正文");
   if (extracted.text.length > MAX_EXTRACTED_CHARACTERS) throw new Error("正文超过 800 万字符限制");
   const id = createId();
-  const originalFile = new File(libraryDirectory(), `${id}.${extensionOf(asset.name)}`);
+  const originalFile = new File(libraryDirectory(), `${id}.${extensionForFormat(format)}`);
   const normalizedFile = contentFile(id);
   try {
     originalFile.create({ overwrite: true });

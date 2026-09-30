@@ -44,9 +44,17 @@ function normalizeAttachmentText(raw: string): { text: string; truncated: boolea
     : { text, truncated: false };
 }
 
-async function readFileAsText(asset: { uri: string; name: string }): Promise<string> {
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+/** 文件名没扩展名时用 MIME 兜底：部分文件管理器回传的 name 可能不含扩展名。 */
+function isDocxAsset(asset: { name?: string; mimeType?: string }): boolean {
+  if (extensionOf(asset.name ?? "") === DOCX_EXTENSION) return true;
+  return (asset.mimeType ?? "").toLowerCase() === DOCX_MIME;
+}
+
+async function readFileAsText(asset: { uri: string; name: string; mimeType?: string }): Promise<string> {
   const file = new File(asset.uri);
-  if (extensionOf(asset.name) === DOCX_EXTENSION) {
+  if (isDocxAsset(asset)) {
     return readDocxText(await file.bytes());
   }
   return await file.text();
@@ -71,7 +79,7 @@ export async function pickTextAttachment(): Promise<TextAttachment | null> {
   if (extension && !SUPPORTED_EXTENSIONS.includes(extension)) {
     throw new Error(`暂不支持 .${extension} 文件，请选择 ${SUPPORTED_EXTENSIONS.join(" / ")}`);
   }
-  const raw = await readFileAsText({ uri: asset.uri, name });
+  const raw = await readFileAsText({ uri: asset.uri, name, mimeType: asset.mimeType });
   const { text, truncated } = normalizeAttachmentText(raw);
   return { name, text, characters: text.length, truncated };
 }
