@@ -7,7 +7,9 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -15,7 +17,7 @@ import {
   View,
 } from "react-native";
 
-import { Button, ErrorNotice, Field, Header, Screen } from "@/components/ui";
+import { Button, ErrorNotice, Field, Header, Screen, SheetBackdrop } from "@/components/ui";
 import {
   getSetting,
   listModels,
@@ -254,6 +256,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
   const [skills, setSkills] = useState<AgentSkill[]>([]);
   const [skillQuery, setSkillQuery] = useState("");
   const [toolQuery, setToolQuery] = useState("");
+  const [detailSkill, setDetailSkill] = useState<AgentSkill | null>(null);
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
   const [availableModels, setAvailableModels] = useState<Model[]>([]);
   const [permissions, setPermissions] = useState<Record<string, ToolPermissionMode>>({});
@@ -775,6 +778,19 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
     setEditingSkillId(skill.id);
   };
 
+  /** 把内置/在线技能复制成一份可编辑的自定义技能——内置内容不落库，直接改存不住。 */
+  const copySkillAsCustom = (skill: AgentSkill) => {
+    const copy: AgentSkill = {
+      ...skill,
+      id: createId(),
+      name: `${skill.name}（副本）`,
+      enabled: true,
+      source: "custom",
+    };
+    void persistManagedState([...skills, copy], saveAgentSkills, setSkills);
+    setDetailSkill(null);
+  };
+
   const cancelEditSkill = () => {
     setEditingSkillId(null);
     setSkillName("");
@@ -1259,13 +1275,13 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
                 <Text style={styles.groupTitle}>{title}<Text style={styles.groupCount}> · {grouped.get(title)!.length}</Text></Text>
                 {grouped.get(title)!.map((skill) => (
                   <View key={skill.id} style={styles.manageRow}>
-                    <View style={styles.manageText}>
+                    <Pressable accessibilityLabel={`查看技能 ${skill.name}`} onPress={() => setDetailSkill(skill)} style={styles.manageText}>
                       <Text style={styles.settingLabel}>{skill.name}</Text>
                       <Text numberOfLines={2} style={styles.settingValue}>{skill.description || skill.instructions}</Text>
                       <Text style={styles.modelHint}>
-                        {skill.source === "builtin" ? "Storyloom 基础包" : skill.source === "plugin" ? "Lorn 文风插件" : skill.source === "remote" ? "oh-story 更新技能" : "自定义技能"} · 按需激活
+                        {skill.source === "builtin" ? "Storyloom 基础包" : skill.source === "plugin" ? "Lorn 文风插件" : skill.source === "remote" ? "oh-story 更新技能" : "自定义技能"} · 点开查看全文
                       </Text>
-                    </View>
+                    </Pressable>
                     <Switch value={skill.enabled} onValueChange={(enabled) => {
                       const next = skills.map((item) => item.id === skill.id ? { ...item, enabled } : item);
                       void persistManagedState(next, saveAgentSkills, setSkills);
@@ -1310,7 +1326,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       ) : null}
       {category === "agents" ? (
         <View style={styles.section}>
-          <Text style={styles.sectionHint}>智能体决定写作的分工与流程：由谁执笔、按什么步骤产出。当前启用的主智能体负责接收你的请求。</Text>
+          <Text style={styles.sectionHint}>智能体决定写作的分工与流程：由谁执笔、按什么步骤产出。当前启用的主智能体负责接收你的请求。带锁图标的是内置或在线更新的智能体，只能开关；用下方「添加智能体」自建的，随时可以查看、编辑与删除。</Text>
           {(["primary", "subagent"] as const).map((kind) => {
             const items = agents.filter((agent) => agent.kind === kind);
             if (!items.length) return null;
@@ -1540,6 +1556,35 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
           }} disabled={!projectId} />
         </View>
       ) : null}
+
+      {/* 技能详情：点技能行进来，只读看完整指令；内置的可复制成自己的副本再改。 */}
+      <Modal visible={Boolean(detailSkill)} transparent animationType="slide" onRequestClose={() => setDetailSkill(null)}>
+        <SheetBackdrop onPress={() => setDetailSkill(null)}>
+          <View style={styles.skillSheet}>
+            <View style={styles.skillSheetHeader}>
+              <View style={styles.skillSheetTitleWrap}>
+                <Text style={styles.skillSheetTitle}>{detailSkill?.name ?? ""}</Text>
+                <Text style={styles.skillSheetSubtitle}>
+                  {detailSkill?.source === "custom" ? "自定义技能" : detailSkill?.source === "plugin" ? "Lorn 文风插件" : detailSkill?.source === "remote" ? "oh-story 更新技能" : "Storyloom 基础包"} · {detailSkill?.instructions.length ?? 0} 字
+                </Text>
+              </View>
+              <Pressable accessibilityLabel="关闭技能详情" onPress={() => setDetailSkill(null)} style={styles.iconButton}>
+                <Ionicons name="close" size={24} color={colors.textMuted} />
+              </Pressable>
+            </View>
+            <ScrollView style={styles.skillSheetScroll} contentContainerStyle={styles.skillSheetScrollContent}>
+              <Text style={styles.skillSheetBody}>{detailSkill?.instructions ?? ""}</Text>
+            </ScrollView>
+            {detailSkill ? (
+              detailSkill.source === "custom" ? (
+                <Button label="编辑这条技能" onPress={() => { startEditSkill(detailSkill); setDetailSkill(null); }} />
+              ) : (
+                <Button label="复制为我的技能" onPress={() => copySkillAsCustom(detailSkill)} />
+              )
+            ) : null}
+          </View>
+        </SheetBackdrop>
+      </Modal>
     </Screen>
   );
 }
@@ -1553,6 +1598,14 @@ const styles = StyleSheet.create({
   section: { gap: spacing.md, padding: spacing.lg },
   subsectionTitle: { color: colors.text, fontSize: 17, fontWeight: "700" },
   searchInput: { minHeight: 42, marginBottom: spacing.sm, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, color: colors.text, fontSize: 14 },
+  skillSheet: { maxHeight: "82%", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, backgroundColor: colors.background },
+  skillSheetHeader: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  skillSheetTitleWrap: { flex: 1, minWidth: 0 },
+  skillSheetTitle: { color: colors.text, fontSize: 18, fontWeight: "700" },
+  skillSheetSubtitle: { marginTop: 2, color: colors.textMuted, fontSize: 12 },
+  skillSheetScroll: { alignSelf: "stretch" },
+  skillSheetScrollContent: { paddingVertical: spacing.sm },
+  skillSheetBody: { color: colors.text, fontSize: 13, lineHeight: 21 },
   groupTitle: { marginTop: spacing.lg, marginBottom: spacing.xs, color: colors.text, fontSize: 14, fontWeight: "700" },
   groupCount: { color: colors.textMuted, fontSize: 12, fontWeight: "400" },
   subsectionDivider: { height: StyleSheet.hairlineWidth, marginVertical: spacing.sm, backgroundColor: colors.border },
