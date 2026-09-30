@@ -919,7 +919,7 @@ export function AssistantScreen() {
               }}
               style={styles.iconButton}
             >
-              <Ionicons name="book-outline" size={20} color={colors.primary} />
+              <Ionicons name="swap-horizontal-outline" size={20} color={colors.primary} />
             </Pressable>
             <Pressable
               accessibilityLabel="查看上下文占用"
@@ -941,18 +941,13 @@ export function AssistantScreen() {
         }
       />
       <View style={styles.contextBar}>
-        <Pressable
-          accessibilityLabel="切换模型"
-          disabled={!models.length || sending}
-          onPress={() => setModelPickerVisible(true)}
-          style={({ pressed }) => [styles.projectContext, pressed && { opacity: 0.7 }]}
-        >
-          <Ionicons name="hardware-chip-outline" size={19} color={colors.primary} />
+        <View style={styles.projectContext}>
+          <Ionicons name="book-outline" size={19} color={colors.primary} />
           <View style={styles.projectCopy}>
-            <Text style={styles.projectTitle} numberOfLines={1}>{selection?.model.name ?? "选择模型"}</Text>
-            <Text style={styles.agentLabel} numberOfLines={1}>{activeAgentName} 主智能体 · 点此切换模型</Text>
+            <Text style={styles.projectTitle} numberOfLines={1}>{project?.title ?? "当前作品"}</Text>
+            <Text style={styles.agentLabel} numberOfLines={1}>{activeAgentName} 主智能体</Text>
           </View>
-        </Pressable>
+        </View>
 
       </View>
       <Pressable

@@ -577,7 +577,7 @@ export function WritingScreen() {
               }}
               style={styles.iconButton}
             >
-              <Ionicons name="book-outline" size={22} color={colors.primary} />
+              <Ionicons name="swap-horizontal-outline" size={22} color={colors.primary} />
             </Pressable>
             <Pressable accessibilityLabel="导出作品" onPress={() => setExportPickerVisible(true)} style={styles.iconButton}>
               <Ionicons name="share-outline" size={22} color={colors.primary} />
