@@ -794,6 +794,11 @@ export async function runAgent(input: {
   onTrace?: TraceListener;
 }): Promise<AgentRunResult> {
   const consistencyKey = `agent.pendingConsistency.${input.project.id}`;
+  const convOverrideRaw = await getSetting(`context.override.${input.selection.model.id}`).catch(() => null);
+  let convOverride: { historyLimit?: number; windowTokens?: number; compress?: boolean } | null = null;
+  if (convOverrideRaw) {
+    try { const parsed = JSON.parse(convOverrideRaw); if (parsed && typeof parsed === "object") convOverride = parsed; } catch {}
+  }
   const [rules, skills, agents, permissions, activeAgentId, historyLimitValue, compressValue, pendingConsistency, styleSelection, availableStyleProfiles, notes] = await Promise.all([
     getAgentRules(),
     getAgentSkills(),
@@ -813,10 +818,12 @@ export async function runAgent(input: {
     skills,
     agents,
     permissions,
-    historyLimit: Number.isInteger(parsedHistoryLimit) && parsedHistoryLimit >= 4 && parsedHistoryLimit <= 100
-      ? parsedHistoryLimit
-      : 30,
-    compressSystemPrompts: compressValue === "true",
+    historyLimit: convOverride?.historyLimit && convOverride.historyLimit >= 4 && convOverride.historyLimit <= 100
+      ? convOverride.historyLimit
+      : Number.isInteger(parsedHistoryLimit) && parsedHistoryLimit >= 4 && parsedHistoryLimit <= 100
+        ? parsedHistoryLimit
+        : 30,
+    compressSystemPrompts: convOverride?.compress !== undefined ? Boolean(convOverride.compress) : compressValue === "true",
     styleSelectionConfigured: styleSelection.configured,
     activeStyleProfile: styleSelection.profile,
     availableStyleProfiles,

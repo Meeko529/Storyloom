@@ -99,13 +99,12 @@ import { colors, radius, spacing } from "@/theme";
 import type { Model } from "@/types";
 
 export type SettingsCategory =
-  | "general"
   | "editor"
-  | "connections"
   | "models"
   | "free-models"
+  | "model-capabilities"
+  | "conv-advanced"
   | "index"
-  | "context"
   | "style"
   | "agent-tools"
   | "rules"
@@ -114,12 +113,11 @@ export type SettingsCategory =
   | "advanced";
 
 const TITLES: Record<Exclude<SettingsCategory, "models">, string> = {
-  general: "通用",
   editor: "编辑器",
-  connections: "连接",
   "free-models": "免费模型",
+  "model-capabilities": "模型能力",
+  "conv-advanced": "连接与高级",
   index: "索引",
-  context: "上下文",
   style: "作者文风",
   "agent-tools": "工具权限",
   rules: "规则",
@@ -178,7 +176,7 @@ const OPTIONAL_RESOURCE_DESCRIPTIONS: Array<{
   },
 ];
 
-function SettingRow({ label, value, onPress, destructive = false }: {
+export function SettingRow({ label, value, onPress, destructive = false }: {
   label: string;
   value?: string;
   onPress?: () => void;
@@ -982,21 +980,14 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       <Header title={TITLES[category]} onBack={onBack} />
       {error ? <View style={styles.errorWrap}><ErrorNotice message={error} onRetry={() => void load()} /></View> : null}
       {notice ? <View style={styles.noticeWrap}><Text style={styles.noticeText}>{notice}</Text></View> : null}
-      {category === "general" ? (
-        <View style={styles.section}>
-          <Field label="自动保存延迟（毫秒）" value={autoSaveDelay} onChangeText={setAutoSaveDelay} onBlur={() => void savePreference("general.autoSaveDelay", autoSaveDelay, setAutoSaveDelay)} keyboardType="number-pad" />
-          <Text style={styles.sectionHint}>可填 250 ~ 10000。数值越大写入频率越低，数值越小保存越及时。</Text>
-          <SettingRow label="数据位置" value="本机 SQLite · API Key 使用 SecureStore" />
-          <ToggleRow label="吉祥物挂件（助手输入框）" value={mascotEnabled} onChange={(value) => { setMascotEnabled(value); void savePreference("general.mascotEnabled", value ? "true" : "false", (v) => setMascotEnabled(v === "true")); }} />
-          <Text style={styles.sectionHint}>助手输入框角落的小猫挂件；可在助手页长按拖到任意位置。</Text>
-          <Button label="恢复默认" variant="secondary" onPress={() => restoreDefaults("通用", [
-            { key: "general.autoSaveDelay", value: "1000" },
-          ])} />
-        </View>
-      ) : null}
       {category === "editor" ? (
         <View style={styles.section}>
           <Text style={styles.subsectionTitle}>写作时</Text>
+          <Field label="自动保存延迟（毫秒）" value={autoSaveDelay} onChangeText={setAutoSaveDelay} onBlur={() => void savePreference("general.autoSaveDelay", autoSaveDelay, setAutoSaveDelay)} keyboardType="number-pad" />
+          <Text style={[styles.settingLabel, { fontWeight: "400", fontSize: 11 }]}>可填 250 ~ 10000。数值越大写入频率越低，数值越小保存越及时。</Text>
+          <Button label="恢复默认（自动保存延迟）" variant="secondary" onPress={() => restoreDefaults("编辑器", [
+            { key: "general.autoSaveDelay", value: "1000" },
+          ])} />
           <Field
             label={`正文字号（可填 ${MIN_EDITOR_FONT_SIZE} ~ ${MAX_EDITOR_FONT_SIZE}）`}
             value={editorFontSize}
@@ -1057,21 +1048,11 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
                 <Text style={styles.modelChoiceText}>{option.label}</Text>
               </Pressable>
             ))}
-          </View>
+                    <ToggleRow label="吉祥物挂件（助手输入框）" value={mascotEnabled} onChange={(value) => { setMascotEnabled(value); void savePreference("general.mascotEnabled", value ? "true" : "false", (v) => setMascotEnabled(v === "true")); }} />
+</View>
           <Text style={[styles.previewSample, { fontSize: chatFontSizeValue, fontFamily: editorFontFamily(chatFontId) }]}>
             这一章可以收在误会发生的当晚，把解释留到下一章。
           </Text>
-        </View>
-      ) : null}
-      {category === "connections" ? (
-        <View style={styles.section}>
-          <Field label="模型请求超时（毫秒）" value={requestTimeout} onChangeText={setRequestTimeout} onBlur={() => void savePreference("connections.requestTimeout", requestTimeout, setRequestTimeout)} keyboardType="number-pad" />
-          <Text style={styles.sectionHint}>请求超过这个时间仍未返回即判定失败。</Text>
-          <SettingRow label="供应商和模型" value="在“模型”分类中管理" />
-          <SettingRow label="网络边界" value="只有调用用户配置的模型 API 时联网；作品数据保存在本机" />
-          <Button label="恢复默认" variant="secondary" onPress={() => restoreDefaults("连接", [
-            { key: "connections.requestTimeout", value: "120000" },
-          ])} />
         </View>
       ) : null}
       {category === "index" ? (
@@ -1105,32 +1086,6 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
               );
             }}
           />
-        </View>
-      ) : null}
-      {category === "context" ? (
-        <View style={styles.section}>
-          <Field label="保留最近消息数" value={historyLimit} onChangeText={setHistoryLimit} onBlur={() => void savePreference("context.historyLimit", historyLimit, setHistoryLimit)} keyboardType="number-pad" />
-          <Text style={styles.sectionHint}>决定多少条历史消息参与后续对话，数量越大上下文越长。</Text>
-          <Field
-            label="模型上下文窗口（Token）"
-            value={contextWindow}
-            onChangeText={setContextWindow}
-            onBlur={() => {
-              const normalized = normalizeContextWindow(contextWindow);
-              setContextWindow(String(normalized));
-              void savePreference(CONTEXT_WINDOW_KEY, String(normalized));
-            }}
-            keyboardType="number-pad"
-          />
-          <Text style={styles.sectionHint}>用于助手页的上下文占用估算；按所用模型的窗口大小填写。</Text>
-          <ToggleRow label="压缩系统提示词" value={compression} onChange={(value) => {
-            setCompression(value);
-            void savePreference("context.compressSystemPrompts", String(value), (stored) => setCompression(stored === "true"));
-          }} />
-          <Button label="恢复默认" variant="secondary" onPress={() => restoreDefaults("上下文", [
-            { key: "context.historyLimit", value: "30" },
-            { key: "context.compressSystemPrompts", value: "false" },
-          ])} />
         </View>
       ) : null}
       {category === "style" ? (
@@ -1353,6 +1308,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       ) : null}
       {category === "advanced" ? (
         <View style={styles.section}>
+          <SettingRow label="数据位置" value="本机 SQLite · API Key 使用 SecureStore" />
           <Text style={styles.subsectionTitle}>应用版本</Text>
           <SettingRow label="当前版本" value={CURRENT_APP_VERSION} />
           <SettingRow

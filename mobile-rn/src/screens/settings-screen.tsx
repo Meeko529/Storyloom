@@ -17,6 +17,7 @@ import {
   saveModel,
   saveProvider,
   setSetting,
+  dedupeProvidersAndModels,
 } from "@/data/repositories";
 import { fetchProviderModels, type RemoteModel } from "@/llm/model-catalog";
 import { DEFAULT_MAX_OUTPUT_TOKENS, MAX_CONFIGURED_OUTPUT_TOKENS } from "@/llm/limits";
@@ -28,8 +29,9 @@ import {
   type ProviderAdvanced,
 } from "@/llm/provider-advanced";
 import type { RootStackParamList } from "@/navigation/types";
-import { SettingsCategoryScreen, ToggleRow, type SettingsCategory } from "@/screens/settings-category-screen";
+import { SettingsCategoryScreen, SettingRow, ToggleRow, type SettingsCategory } from "@/screens/settings-category-screen";
 import { guessModelCapabilities } from "@/settings/model-capabilities";
+import { CONTEXT_WINDOW_KEY } from "@/agent/context-usage";
 import { useAppStore } from "@/store/app-store";
 import { colors, radius, spacing } from "@/theme";
 import type { Model, Provider, ProviderType } from "@/types";
@@ -79,16 +81,16 @@ const settingsGroups: Array<{
   {
     title: "基础",
     items: [
-      { id: "general", label: "通用", icon: "options-outline" },
       { id: "editor", label: "编辑器", icon: "text-outline" },
     ],
   },
   {
     title: "连接与模型",
     items: [
-      { id: "connections", label: "连接", icon: "link-outline" },
+      { id: "models", label: "模型", icon: "hardware-chip-outline" },
       { id: "free-models", label: "免费模型", icon: "gift-outline" },
-      { id: "models", label: "模型与供应商", icon: "hardware-chip-outline" },
+      { id: "model-capabilities", label: "模型能力", icon: "speedometer-outline" },
+      { id: "conv-advanced", label: "连接与高级", icon: "link-outline" },
     ],
   },
   {
@@ -105,7 +107,6 @@ const settingsGroups: Array<{
     title: "知识",
     items: [
       { id: "index", label: "索引", icon: "layers-outline" },
-      { id: "context", label: "上下文", icon: "document-text-outline" },
     ],
   },
   {
@@ -194,6 +195,16 @@ export function SettingsScreen() {
   const [saving, setSaving] = useState(false);
   const [savingModel, setSavingModel] = useState(false);
   const [fetchingProviderId, setFetchingProviderId] = useState<string | null>(null);
+  const [modelsView, setModelsView] = useState<"home" | "addProvider">("home");
+  const [addStep, setAddStep] = useState(1);
+  const [convSheetModel, setConvSheetModel] = useState<Model | null>(null);
+  const [convScope, setConvScope] = useState<"model" | "global">("model");
+  const [convHistory, setConvHistory] = useState("30");
+  const [convWindow, setConvWindow] = useState("32768");
+  const [convCompress, setConvCompress] = useState(false);
+  const [capExpandedId, setCapExpandedId] = useState<string | null>(null);
+  const [capDraft, setCapDraft] = useState({ temperature: "0.8", maxTokens: "4096", supportsTools: true, supportsVision: false });
+  const [requestTimeout, setRequestTimeout] = useState("60000");
   const [modelPickerProvider, setModelPickerProvider] = useState<Provider | null>(null);
   const [remoteModels, setRemoteModels] = useState<RemoteModel[]>([]);
   const [modelFilter, setModelFilter] = useState("");
@@ -235,6 +246,9 @@ export function SettingsScreen() {
     provider.id,
     models.filter((model) => model.providerId === provider.id),
   ])), [providers, models]);
+
+  const provNameOf = (id: string) => providers.find((p) => p.id === id)?.name ?? "?";
+  const toastSafe = (msg: string) => Alert.alert(msg);
 
   const chooseType = (type: ProviderType) => {
     setProviderType(type);
@@ -358,6 +372,37 @@ export function SettingsScreen() {
     }
   };
 
+  const openConvSheet = async (model: Model) => {
+    setConvSheetModel(model);
+    setConvScope("model");
+    try {
+      const overrideRaw = await getSetting(`context.override.${model.id}`);
+      let historyValue = "";
+      let windowValue = "";
+      let compressValue = false;
+      if (overrideRaw) {
+        try {
+          const parsed = JSON.parse(overrideRaw) as { historyLimit?: number; windowTokens?: number };
+          if (parsed?.historyLimit) historyValue = String(parsed.historyLimit);
+          if (parsed?.windowTokens) windowValue = String(parsed.windowTokens);
+        } catch {}
+      }
+      const [globalHistory, globalWindow, globalCompress] = await Promise.all([
+        getSetting("context.historyLimit"),
+        getSetting(CONTEXT_WINDOW_KEY),
+        getSetting("context.compressSystemPrompts"),
+      ]);
+      if (!historyValue) historyValue = globalHistory ?? "30";
+      if (!windowValue) windowValue = globalWindow ?? "32768";
+      compressValue = globalCompress === "true";
+      setConvHistory(historyValue);
+      setConvWindow(windowValue);
+      setConvCompress(compressValue);
+    } catch {
+      setConvHistory("30"); setConvWindow("32768"); setConvCompress(false);
+    }
+  };
+
   const selectModel = async (model: Model) => {
     try {
       await setSetting("activeModelId", model.id);
@@ -426,6 +471,83 @@ export function SettingsScreen() {
     return <FreeModelsScreen onBack={() => setActiveCategory(null)} />;
   }
 
+  if (activeCategory === "model-capabilities") {
+    return (
+      <Screen scroll>
+        <Header title="模型能力" onBack={() => setActiveCategory(null)} />
+        {models.map((model) => (
+          <View key={model.id} style={styles.providerBlock}>
+            <Pressable onPress={() => {
+              if (capExpandedId === model.id) { setCapExpandedId(null); return; }
+              setCapExpandedId(model.id);
+              setCapDraft({ temperature: String(model.temperature), maxTokens: String(model.maxTokens), supportsTools: model.supportsTools, supportsVision: model.supportsVision });
+            }} style={styles.providerHeader}>
+              <View style={styles.providerInfo}>
+                <Text style={styles.providerName}>{model.name}</Text>
+                <Text style={styles.providerUrl}>{provNameOf(model.providerId)} · {model.modelId}</Text>
+              </View>
+              <Ionicons name={capExpandedId === model.id ? "chevron-down" : "chevron-forward"} size={18} color={colors.textMuted} />
+            </Pressable>
+            {capExpandedId === model.id ? (
+              <View>
+                <Field label="温度（0 ~ 2，越大越发散；小说创作建议 0.7 ~ 0.9）" value={capDraft.temperature} onChangeText={(v) => setCapDraft({ ...capDraft, temperature: v })} keyboardType="decimal-pad" />
+                <Field label={`最大输出 Token 数（1 ~ ${MAX_CONFIGURED_OUTPUT_TOKENS}）`} value={capDraft.maxTokens} onChangeText={(v) => setCapDraft({ ...capDraft, maxTokens: v })} keyboardType="number-pad" />
+                <Text style={styles.fieldHint}>单次回复长度，不是上下文窗口；1M 上下文模型保持 {DEFAULT_MAX_OUTPUT_TOKENS} 或按需填写。</Text>
+                <ToggleRow label="支持工具调用" value={capDraft.supportsTools} onChange={(value) => setCapDraft({ ...capDraft, supportsTools: value })} />
+                <Text style={styles.fieldHint}>关闭后助手只能对话，无法读取或写入作品内容。</Text>
+                <ToggleRow label="支持图片输入" value={capDraft.supportsVision} onChange={(value) => setCapDraft({ ...capDraft, supportsVision: value })} />
+                <Text style={styles.fieldHint}>当前判断依据：{guessModelCapabilities(model.modelId).reason}</Text>
+                <Button label="按模型名重新推测" variant="secondary" onPress={() => {
+                  const guess = guessModelCapabilities(model.modelId);
+                  setCapDraft({ ...capDraft, supportsTools: guess.supportsTools, supportsVision: guess.supportsVision });
+                }} />
+                <Button label="保存" onPress={() => {
+                  const parsedTemperature = Number(capDraft.temperature);
+                  const parsedMaxTokens = Number(capDraft.maxTokens);
+                  if (!Number.isFinite(parsedTemperature) || parsedTemperature < 0 || parsedTemperature > 2) { setError("温度必须在 0 到 2 之间"); return; }
+                  if (!Number.isInteger(parsedMaxTokens) || parsedMaxTokens < 1 || parsedMaxTokens > MAX_CONFIGURED_OUTPUT_TOKENS) { setError(`最大输出 Token 数必须在 1 到 ${MAX_CONFIGURED_OUTPUT_TOKENS} 之间`); return; }
+                  void saveModel({ ...model, temperature: parsedTemperature, maxTokens: parsedMaxTokens, supportsTools: capDraft.supportsTools, supportsVision: capDraft.supportsVision })
+                    .then(() => { refreshData(); toastSafe("已保存「" + model.name + "」"); })
+                    .catch((saveError) => setError(saveError instanceof Error ? saveError.message : String(saveError)));
+                }} loading={savingModel} />
+              </View>
+            ) : null}
+          </View>
+        ))}
+        {error ? <View style={styles.errorWrap}><ErrorNotice message={error} onRetry={() => void load()} /></View> : null}
+        <View style={{ height: spacing.md }} />
+      </Screen>
+    );
+  }
+
+  if (activeCategory === "conv-advanced") {
+    return (
+      <Screen scroll>
+        <Header title="连接与高级" onBack={() => setActiveCategory(null)} />
+        <View style={styles.section}>
+          <Field label="模型请求超时（毫秒）" value={requestTimeout} onChangeText={setRequestTimeout} onBlur={() => void setSetting("connections.requestTimeout", requestTimeout)} keyboardType="number-pad" />
+          <Text style={styles.fieldHint}>请求超过这个时间仍未返回即判定失败。</Text>
+        </View>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>各供应商高级设置</Text>
+          <Text style={styles.fieldHint}>自定义请求头、鉴权头名与前缀、关闭 function calling、替换 max_tokens 参数名——用于中转站 / 自建网关。</Text>
+          {providers.map((provider) => (
+            <Pressable key={provider.id} onPress={() => void openAdvancedEditor(provider)} style={styles.modelRow}>
+              <View style={styles.providerInfo}>
+                <Text style={styles.providerName}>{provider.name}</Text>
+                <Text style={styles.providerUrl} numberOfLines={1}>{provider.baseUrl}</Text>
+              </View>
+              <Ionicons name={advancedFlags[provider.id] ? "options" : "options-outline"} size={18} color={advancedFlags[provider.id] ? colors.primary : colors.textMuted} />
+            </Pressable>
+          ))}
+        </View>
+        {error ? <View style={styles.errorWrap}><ErrorNotice message={error} onRetry={() => void load()} /></View> : null}
+        <View style={{ height: spacing.md }} />
+      </Screen>
+    );
+  }
+
+  const defaultModel = models.find((m) => m.id === activeModelId) ?? null;
   if (activeCategory && activeCategory !== "models") {
     return <SettingsCategoryScreen category={activeCategory} onBack={() => setActiveCategory(null)} />;
   }
@@ -466,129 +588,230 @@ export function SettingsScreen() {
 
   return (
     <Screen scroll>
-      <Header title="模型与供应商" onBack={() => setActiveCategory(null)} />
-      {error ? <View style={styles.errorWrap}><ErrorNotice message={error} onRetry={() => void load()} /></View> : null}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>供应商</Text>
-        <Text style={styles.fieldHint}>选择常用服务商可自动填入接口地址。带「免费」标记的平台注册后即可免费用，不必先充值。</Text>
-        <View style={styles.presetRow}>
-          {PROVIDER_PRESETS.map((preset) => (
+      <Header
+        title="模型"
+        onBack={() => setActiveCategory(null)}
+        action={
+          <View style={styles.providerActions}>
             <Pressable
-              key={preset.id}
-              onPress={() => applyPreset(preset)}
-              style={[styles.presetChip, presetId === preset.id && styles.presetChipActive]}
-            >
-              <Text style={[styles.presetChipText, presetId === preset.id && styles.presetChipTextActive]}>
-                {preset.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        <Text style={styles.sectionTitle}>或者手动填</Text>
-        <View style={styles.segmented}>
-          {(["openai-compatible", "google-genai", "anthropic"] as ProviderType[]).map((type) => (
-            <Pressable key={type} onPress={() => chooseType(type)} style={[styles.segment, providerType === type && styles.segmentActive]}>
-              <Text style={[styles.segmentText, providerType === type && styles.segmentTextActive]}>
-                {type === "openai-compatible" ? "OpenAI" : type === "google-genai" ? "Gemini" : "Anthropic"}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        <Text style={styles.fieldHint}>OpenAI 为通用接口格式，国内多数厂商与中转服务均兼容此格式，并非特指 OpenAI 官方服务。</Text>
-        <Field label="显示名称" value={providerName} onChangeText={setProviderName} />
-        <Field label="Base URL" value={baseUrl} onChangeText={setBaseUrl} autoCapitalize="none" keyboardType="url" />
-        <Text style={styles.fieldHint}>接口地址填写至 /v1 或 /v4 层级即可，对话路径由程序自动拼接。</Text>
-        <Field label="API Key" value={apiKey} onChangeText={setApiKey} autoCapitalize="none" secureTextEntry />
-        <Text style={styles.fieldHint}>密钥仅存于系统安全存储，不会写入数据库。</Text>
-        <Button label="保存供应商" onPress={() => void addProvider()} disabled={!providerName.trim() || !baseUrl.trim() || !apiKey.trim()} loading={saving} />
-        {providerType === "openai-compatible" ? (
-          <>
-            <Pressable onPress={() => setShowNewAdvanced((current) => !current)} style={styles.advancedToggle}>
-              <Ionicons name={showNewAdvanced ? "chevron-down" : "chevron-forward"} size={17} color={colors.primary} />
-              <Text style={styles.advancedToggleText}>高级设置（中转站 / 自建网关）</Text>
-            </Pressable>
-            {showNewAdvanced ? <AdvancedFields value={newAdvanced} onChange={setNewAdvanced} /> : null}
-          </>
-        ) : null}
-      </View>
-
-      {providers.map((provider) => (
-        <View key={provider.id} style={styles.providerBlock}>
-          <View style={styles.providerHeader}>
-            <View style={styles.providerInfo}>
-              <Text style={styles.providerName}>{provider.name}</Text>
-              <Text style={styles.providerUrl} numberOfLines={1}>{provider.baseUrl}</Text>
-            </View>
-            <View style={styles.providerActions}>
-              <Pressable
-                accessibilityLabel="获取模型列表"
-                disabled={fetchingProviderId !== null}
-                onPress={() => void fetchRemoteModels(provider)}
-                style={styles.fetchButton}
-              >
-                {fetchingProviderId === provider.id
-                  ? <ActivityIndicator size="small" color={colors.primary} />
-                  : <Ionicons name="cloud-download-outline" size={18} color={colors.primary} />}
-                <Text style={styles.fetchButtonText}>获取模型</Text>
-              </Pressable>
-              <Pressable
-                accessibilityLabel="高级设置"
-                onPress={() => void openAdvancedEditor(provider)}
-                style={styles.iconButton}
-              >
-                <Ionicons
-                  name={advancedFlags[provider.id] ? "options" : "options-outline"}
-                  size={18}
-                  color={advancedFlags[provider.id] ? colors.primary : colors.textMuted}
-                />
-              </Pressable>
-              <Pressable accessibilityLabel="删除供应商" onPress={() => {
-                Alert.alert("删除供应商", `删除 ${provider.name} 及其全部模型？`, [
+              accessibilityLabel="清理重复"
+              onPress={() => {
+                Alert.alert("清理重复", "合并同名供应商并删除重复模型（优先保留有 API Key 的）。", [
                   { text: "取消", style: "cancel" },
-                  { text: "删除", style: "destructive", onPress: () => void removeProvider(provider) },
+                  { text: "清理", style: "destructive", onPress: () => {
+                    void dedupeProvidersAndModels()
+                      .then((r) => { refreshData(); Alert.alert("清理完成", `合并供应商 ${r.mergedProviders} 个，删除重复模型 ${r.removedModels} 个`); })
+                      .catch((cleanError) => setError(cleanError instanceof Error ? cleanError.message : String(cleanError)));
+                  } },
                 ]);
-              }} style={styles.iconButton}><Ionicons name="trash-outline" size={20} color={colors.danger} /></Pressable>
+              }}
+              style={styles.fetchButton}
+            >
+              <Text style={{ color: colors.primary, fontSize: 13, fontWeight: "600" }}>清理重复</Text>
+            </Pressable>
+            <Pressable accessibilityLabel="添加供应商" onPress={() => { setModelsView("addProvider"); setAddStep(1); }} style={styles.iconButton}>
+              <Ionicons name="add" size={24} color={colors.primary} />
+            </Pressable>
+          </View>
+        }
+      />
+      {error ? <View style={styles.errorWrap}><ErrorNotice message={error} onRetry={() => void load()} /></View> : null}
+      {modelsView === "addProvider" ? (
+        <View>
+          <View style={styles.segmented}>
+            {[1, 2, 3].map((step) => (
+              <Pressable key={step} onPress={() => setAddStep(step)} style={[styles.segment, addStep === step && styles.segmentActive]}>
+                <Text style={[styles.segmentText, addStep === step && styles.segmentTextActive]}>
+                  {step === 1 ? "① 供应商" : step === 2 ? "② 高级设置" : "③ 确认"}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          {addStep === 1 ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>常用服务商</Text>
+              <Text style={styles.fieldHint}>选择常用服务商可自动填入接口地址。</Text>
+              <View style={styles.presetRow}>
+                {PROVIDER_PRESETS.map((preset) => (
+                  <Pressable key={preset.id} onPress={() => applyPreset(preset)} style={[styles.presetChip, presetId === preset.id && styles.presetChipActive]}>
+                    <Text style={[styles.presetChipText, presetId === preset.id && styles.presetChipTextActive]}>{preset.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Text style={styles.sectionTitle}>或者手动填</Text>
+              <View style={styles.segmented}>
+                {(["openai-compatible", "google-genai", "anthropic"] as ProviderType[]).map((type) => (
+                  <Pressable key={type} onPress={() => chooseType(type)} style={[styles.segment, providerType === type && styles.segmentActive]}>
+                    <Text style={[styles.segmentText, providerType === type && styles.segmentTextActive]}>
+                      {type === "openai-compatible" ? "OpenAI" : type === "google-genai" ? "Gemini" : "Anthropic"}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Text style={styles.fieldHint}>OpenAI 为通用接口格式，国内多数厂商与中转服务均兼容此格式，并非特指 OpenAI 官方服务。</Text>
+              <Field label="显示名称" value={providerName} onChangeText={setProviderName} />
+              <Field label="Base URL" value={baseUrl} onChangeText={setBaseUrl} autoCapitalize="none" keyboardType="url" />
+              <Text style={styles.fieldHint}>接口地址填写至 /v1 或 /v4 层级即可，对话路径由程序自动拼接。</Text>
+              <Field label="API Key" value={apiKey} onChangeText={setApiKey} autoCapitalize="none" secureTextEntry />
+              <Text style={styles.fieldHint}>密钥仅存于系统安全存储，不会写入数据库。</Text>
+            </View>
+          ) : null}
+          {addStep === 2 ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>高级设置（中转站 / 自建网关，可跳过）</Text>
+              <AdvancedFields value={newAdvanced} onChange={setNewAdvanced} />
+              <Button label="跳过，用默认值" variant="secondary" onPress={() => setAddStep(3)} />
+            </View>
+          ) : null}
+          {addStep === 3 ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>确认</Text>
+              <SettingRow label="显示名称" value={providerName} />
+              <SettingRow label="Base URL" value={baseUrl} />
+              <SettingRow label="API Key" value={apiKey ? "● 已填写" : "○ 未填写"} />
+              <Button label="保存供应商" onPress={() => void addProvider()} disabled={!providerName.trim() || !baseUrl.trim() || !apiKey.trim()} loading={saving} />
+              <Text style={styles.fieldHint}>保存后回到模型页，用该供应商行的「获取模型」拉取并勾选要用的模型。</Text>
+            </View>
+          ) : null}
+          <View style={{ height: spacing.md }} />
+        </View>
+      ) : (
+        <View>
+          <View style={styles.defaultCard}>
+            <Text style={styles.defaultCardLabel}>当前默认模型</Text>
+            <Text style={styles.defaultCardName}>{defaultModel ? defaultModel.name : "未选择"}</Text>
+            <Text style={styles.defaultCardPro}>{defaultModel ? provNameOf(defaultModel.providerId) + " · 支持 function calling" : "点下方模型行选择默认模型"}</Text>
+          </View>
+          {providers.map((provider) => (
+            <View key={provider.id} style={styles.providerBlock}>
+              <View style={styles.providerHeader}>
+                <View style={styles.providerInfo}>
+                  <Text style={styles.providerName}>{provider.name}</Text>
+                  <Text style={styles.providerUrl} numberOfLines={1}>{provider.baseUrl}</Text>
+                </View>
+                <View style={styles.providerActions}>
+                  <Pressable
+                    accessibilityLabel="获取模型"
+                    disabled={fetchingProviderId !== null}
+                    onPress={() => void fetchRemoteModels(provider)}
+                    style={styles.fetchButton}
+                  >
+                    {fetchingProviderId === provider.id
+                      ? <ActivityIndicator size="small" color={colors.primary} />
+                      : <Ionicons name="cloud-download-outline" size={18} color={colors.primary} />}
+                    <Text style={styles.fetchButtonText}>获取模型</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityLabel="高级设置"
+                    onPress={() => void openAdvancedEditor(provider)}
+                    style={styles.iconButton}
+                  >
+                    <Ionicons
+                      name={advancedFlags[provider.id] ? "options" : "options-outline"}
+                      size={18}
+                      color={advancedFlags[provider.id] ? colors.primary : colors.textMuted}
+                    />
+                  </Pressable>
+                  <Pressable accessibilityLabel="删除供应商" onPress={() => {
+                    Alert.alert("删除供应商", `删除 ${provider.name} 及其全部模型？`, [
+                      { text: "取消", style: "cancel" },
+                      { text: "删除", style: "destructive", onPress: () => void removeProvider(provider) },
+                    ]);
+                  }} style={styles.iconButton}><Ionicons name="trash-outline" size={20} color={colors.danger} /></Pressable>
+                </View>
+              </View>
+              {(modelsByProvider.get(provider.id) ?? []).map((model) => (
+                <Pressable
+                  key={model.id}
+                  onPress={() => void selectModel(model)}
+                  onLongPress={() => void openConvSheet(model)}
+                  style={styles.modelRow}
+                >
+                  <Ionicons name={activeModelId === model.id ? "radio-button-on" : "radio-button-off"} size={20} color={activeModelId === model.id ? colors.primary : colors.textMuted} />
+                  <View style={styles.modelText}>
+                    <Text style={styles.modelName}>{model.name}</Text>
+                    <Text style={styles.modelId}>长按设置该模型的对话参数</Text>
+                  </View>
+                </Pressable>
+              ))}
+              <Pressable accessibilityLabel={`为${provider.name}添加模型`} onPress={() => { setSelectedProviderId(provider.id); setModelPickerProvider(provider); }} style={styles.addModelRow}>
+                <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
+                <Text style={{ color: colors.primary, fontSize: 12.5, fontWeight: "600" }}>添加模型（获取列表勾选或手动输入）</Text>
+              </Pressable>
+            </View>
+          ))}
+          <View style={{ height: spacing.md }} />
+        </View>
+      )}
+      <Modal
+        visible={convSheetModel !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setConvSheetModel(null)}
+      >
+        <SheetBackdrop onPress={() => setConvSheetModel(null)}>
+          <View style={styles.modelSheet}>
+            <View style={styles.sheetHeader}>
+              <View style={styles.providerInfo}>
+                <Text style={styles.sectionTitle}>对话设置</Text>
+                <Text style={styles.providerUrl}>{convSheetModel ? convSheetModel.name : ""}</Text>
+              </View>
+              <Pressable accessibilityLabel="关闭对话设置" onPress={() => setConvSheetModel(null)} style={styles.iconButton}>
+                <Ionicons name="close" size={24} color={colors.textMuted} />
+              </Pressable>
+            </View>
+            <View style={styles.segmented}>
+              <Pressable onPress={() => setConvScope("model")} style={[styles.segment, convScope === "model" && styles.segmentActive]}>
+                <Text style={[styles.segmentText, convScope === "model" && styles.segmentTextActive]}>仅此模型</Text>
+              </Pressable>
+              <Pressable onPress={() => setConvScope("global")} style={[styles.segment, convScope === "global" && styles.segmentActive]}>
+                <Text style={[styles.segmentText, convScope === "global" && styles.segmentTextActive]}>全局默认</Text>
+              </Pressable>
+            </View>
+            <Field label="保留最近消息数（4 ~ 100）" value={convHistory} onChangeText={setConvHistory} keyboardType="number-pad" />
+            <Field label="模型上下文窗口（Token，按所用模型填写）" value={convWindow} onChangeText={setConvWindow} keyboardType="number-pad" />
+            {convScope === "global" ? (
+              <ToggleRow label="压缩系统提示词（全局）" value={convCompress} onChange={(value) => { setConvCompress(value); void setSetting("context.compressSystemPrompts", value ? "true" : "false"); }} />
+            ) : (
+              <Text style={styles.fieldHint}>压缩系统提示词为全局设置；切到「全局默认」可修改。</Text>
+            )}
+            <View style={styles.btnrow}>
+              {convScope === "model" ? (
+                <Button label="恢复默认" variant="secondary" onPress={() => {
+                  if (!convSheetModel) return;
+                  void setSetting(`context.override.${convSheetModel.id}`, "").then(() => {
+                    toastSafe("已恢复跟随全局默认");
+                    setConvSheetModel(null);
+                  });
+                }} />
+              ) : null}
+              <Button label="保存" onPress={() => {
+                const parsedHistory = Number(convHistory);
+                const parsedWindow = Number(convWindow);
+                if (!convSheetModel) return;
+                if (convScope === "model") {
+                  const override = {
+                    historyLimit: Number.isInteger(parsedHistory) && parsedHistory >= 4 && parsedHistory <= 100 ? parsedHistory : null,
+                    windowTokens: Number.isInteger(parsedWindow) && parsedWindow > 0 ? parsedWindow : null,
+                  };
+                  void setSetting(`context.override.${convSheetModel.id}`, JSON.stringify(override)).then(() => {
+                    toastSafe("已保存（仅此模型生效）");
+                    setConvSheetModel(null);
+                  });
+                } else {
+                  void Promise.all([
+                    setSetting("context.historyLimit", String(Number.isInteger(parsedHistory) && parsedHistory >= 4 ? parsedHistory : 30)),
+                    setSetting(CONTEXT_WINDOW_KEY, String(Number.isInteger(parsedWindow) && parsedWindow > 0 ? parsedWindow : 32768)),
+                  ]).then(() => {
+                    toastSafe("已保存（全局默认）");
+                    setConvSheetModel(null);
+                  });
+                }
+              }} />
             </View>
           </View>
-          {(modelsByProvider.get(provider.id) ?? []).map((model) => (
-            <Pressable key={model.id} onPress={() => void selectModel(model)} style={styles.modelRow}>
-              <Ionicons name={activeModelId === model.id ? "radio-button-on" : "radio-button-off"} size={20} color={activeModelId === model.id ? colors.primary : colors.textMuted} />
-              <View style={styles.modelText}>
-                <Text style={styles.modelName}>{model.name}</Text>
-                <Text style={styles.modelId}>{model.modelId}</Text>
-              </View>
-            </Pressable>
-          ))}
-        </View>
-      ))}
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>添加模型</Text>
-        <View style={styles.providerChoices}>
-          {providers.map((provider) => (
-            <Pressable key={provider.id} onPress={() => setSelectedProviderId(provider.id)} style={[styles.choice, selectedProviderId === provider.id && styles.choiceActive]}>
-              <Text style={[styles.choiceText, selectedProviderId === provider.id && styles.choiceTextActive]}>{provider.name}</Text>
-            </Pressable>
-          ))}
-        </View>
-        <Field label="模型名称（显示用）" value={modelName} onChangeText={setModelName} placeholder="Gemini 2.5 Pro" />
-        <Field label="模型 ID（服务商提供的标识）" value={modelId} onChangeText={handleModelIdChange} autoCapitalize="none" placeholder={activePreset?.modelHint || "gemini-2.5-pro"} />
-        <Text style={styles.fieldHint}>
-          需与服务商提供的模型标识完全一致{activePreset?.modelHint ? `，例如 ${activePreset.label} 可填 ${activePreset.modelHint}` : ""}；也可通过上方「获取模型」自动载入。
-        </Text>
-        <Field label="温度" value={temperature} onChangeText={setTemperature} keyboardType="decimal-pad" />
-        <Text style={styles.fieldHint}>取值范围 0 ~ 2，数值越大生成结果越发散；小说创作建议 0.7 ~ 0.9。</Text>
-        <Field label="最大输出 Token 数" value={maxTokens} onChangeText={setMaxTokens} keyboardType="number-pad" />
-        <Text style={styles.fieldHint}>单次回复长度，不是上下文窗口；1M 上下文模型保持 {DEFAULT_MAX_OUTPUT_TOKENS} 或按需填写，最高 {MAX_CONFIGURED_OUTPUT_TOKENS}。</Text>
-        <Text style={styles.sectionTitle}>模型能力</Text>
-        <ToggleRow label="支持工具调用" value={supportsTools} onChange={(value) => { setSupportsTools(value); setCapabilityTouched(true); }} />
-        <Text style={styles.fieldHint}>关闭后助手只能对话，无法读取或写入作品内容。</Text>
-        <ToggleRow label="支持图片输入" value={supportsVision} onChange={(value) => { setSupportsVision(value); setCapabilityTouched(true); }} />
-        <Text style={styles.fieldHint}>决定能否给助手发送图片；纯文本模型请关闭。</Text>
-        <Text style={styles.fieldHint}>当前判断依据：{capabilityGuess.reason}</Text>        <Button label="按模型名重新推测" variant="secondary" onPress={() => applyCapabilityGuess(modelId)} />
-        <Button label="添加模型" onPress={() => void addModel()} disabled={!selectedProviderId || !modelName.trim() || !modelId.trim()} loading={savingModel} />
-      </View>
-
+        </SheetBackdrop>
+      </Modal>
       <Modal
         visible={modelPickerProvider !== null}
         transparent
@@ -706,6 +929,12 @@ const styles = StyleSheet.create({
   toggleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md },
   toggleRowOn: { borderColor: colors.primary, backgroundColor: "#E6F3EF" },
   toggleText: { flex: 1, color: colors.text, fontSize: 13, lineHeight: 18 },
+  defaultCard: { margin: spacing.md, marginBottom: spacing.sm, backgroundColor: colors.primary, borderRadius: radius.lg, padding: spacing.lg },
+  defaultCardLabel: { color: "rgba(255,255,255,0.75)", fontSize: 10, letterSpacing: 1, marginBottom: 4 },
+  defaultCardName: { color: "#FFFFFF", fontSize: 19, fontWeight: "800" },
+  defaultCardPro: { color: "rgba(255,255,255,0.85)", fontSize: 11, marginTop: 3 },
+  addModelRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.sm, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  btnrow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm },
   providerBlock: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   providerHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   providerActions: { flexDirection: "row", alignItems: "center", gap: spacing.xs },

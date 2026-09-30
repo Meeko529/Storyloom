@@ -442,8 +442,21 @@ export function AssistantScreen() {
         getSetting(CONTEXT_WINDOW_KEY),
         getSetting("context.historyLimit"),
       ]);
-      setContextWindow(normalizeContextWindow(windowValue));
-      setHistoryLimit(Math.max(1, Number(limitValue) || 30));
+      let effectiveWindow = normalizeContextWindow(windowValue);
+      let effectiveLimit = Math.max(1, Number(limitValue) || 30);
+      const effectiveModelId = activeSession?.modelId ?? selection?.model?.id;
+      if (effectiveModelId) {
+        const overrideRaw = await getSetting(`context.override.${effectiveModelId}`).catch(() => null);
+        if (overrideRaw) {
+          try {
+            const parsed = JSON.parse(overrideRaw) as { historyLimit?: number; windowTokens?: number };
+            if (parsed?.historyLimit) effectiveLimit = parsed.historyLimit;
+            if (parsed?.windowTokens) effectiveWindow = normalizeContextWindow(String(parsed.windowTokens));
+          } catch {}
+        }
+      }
+      setContextWindow(effectiveWindow);
+      setHistoryLimit(effectiveLimit);
       setMascotEnabled((await getSetting("general.mascotEnabled")) !== "false");
       const mascotRaw = await getSetting("assistant.mascotOffset");
       if (mascotRaw) {
