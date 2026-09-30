@@ -3,6 +3,7 @@
 import appConfig from "../../app.json";
 
 import { getSetting, setSetting } from "@/data/repositories";
+import { downloadUpdateApk, installApkFile } from "@/settings/app-installer";
 
 const REPOSITORY = "Meekoriela/Storyloom";
 const RELEASE_API = `https://api.github.com/repos/${REPOSITORY}/releases/latest`;
@@ -86,6 +87,23 @@ export async function getLastAppUpdateCheck(): Promise<AppUpdateInfo | null> {
     hasUpdate,
     notes: hasUpdate ? stored.notes : "",
   };
+}
+
+/** 下载更新包并调起系统安装界面（更新弹窗与设置页共用）。 */
+export async function downloadAndInstallUpdate(
+  apkUrl: string,
+  onProgress?: (message: string) => void,
+): Promise<void> {
+  onProgress?.("准备下载…");
+  const file = await downloadUpdateApk(apkUrl, ({ bytesWritten, totalBytes, source }) => {
+    const mb = (bytesWritten / 1048576).toFixed(1);
+    onProgress?.(totalBytes > 0
+      ? `${source} · ${Math.round((bytesWritten / totalBytes) * 100)}%（${mb} MB）`
+      : `${source} · 已下载 ${mb} MB`);
+  });
+  onProgress?.("下载完成，正在打开系统安装界面…");
+  await installApkFile(file);
+  onProgress?.("请在系统安装界面完成安装");
 }
 
 export async function checkAppUpdate(): Promise<AppUpdateInfo> {

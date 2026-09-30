@@ -2,14 +2,13 @@
 // 改动说明见仓库根目录 docs/上游来源与改动清单.md
 import { Ionicons } from "@expo/vector-icons";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { Alert } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { appendBreadcrumb } from "@/lib/crash-log";
-import { checkAppUpdate } from "@/settings/app-update";
+import { checkAppUpdate, downloadAndInstallUpdate, type AppUpdateInfo } from "@/settings/app-update";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -155,6 +154,7 @@ function RuntimeResourceGate() {
   }
 
   return (
+    <>
     <NavigationContainer
       onStateChange={(state) => {
         try {
@@ -172,10 +172,22 @@ function RuntimeResourceGate() {
         <Stack.Screen name="StyleLibrary" component={StyleLibraryScreen} />
       </Stack.Navigator>
     </NavigationContainer>
+    <AppUpdatePopup />
+    </>
   );
 }
 
 const styles = StyleSheet.create({
+  updateBackdrop: { flex: 1, backgroundColor: "rgba(20,21,19,0.45)", alignItems: "center", justifyContent: "center", padding: 28 },
+  updateCard: { alignSelf: "stretch", backgroundColor: "#FFFFFF", borderRadius: 16, padding: 18 },
+  updateTitle: { fontSize: 17, fontWeight: "700", color: "#20211F" },
+  updateHint: { marginTop: 8, fontSize: 13, color: "#696B66", lineHeight: 19 },
+  updateActions: { flexDirection: "row", gap: 10, marginTop: 16 },
+  updateLater: { flex: 1, alignItems: "center", paddingVertical: 11, borderRadius: 12, backgroundColor: "#EFEFEC" },
+  updateLaterText: { color: "#20211F", fontSize: 14, fontWeight: "600" },
+  updateNow: { flex: 1, alignItems: "center", paddingVertical: 11, borderRadius: 12, backgroundColor: "#176B57" },
+  updateNowBusy: { opacity: 0.6 },
+  updateNowText: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
   resourceGate: { flex: 1, justifyContent: "center", padding: 28, backgroundColor: colors.background },
   resourceLoading: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16, backgroundColor: colors.background },
   resourceTitle: { color: colors.text, fontSize: 28, fontWeight: "800" },
@@ -193,3 +205,70 @@ const styles = StyleSheet.create({
   retryResourceButton: { minHeight: 44, alignItems: "center", justifyContent: "center", marginTop: 8 },
   retryResourceText: { color: colors.primary, fontSize: 14, fontWeight: "700" },
 });
+
+/** 启动自动检查更新的提示弹窗：10 秒自动关闭，可直接下载并安装。 */
+function AppUpdatePopup() {
+  const [info, setInfo] = useState<AppUpdateInfo | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState("");
+  const [countdown, setCountdown] = useState(10);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const result = await checkAppUpdate();
+        if (result?.hasUpdate) { setInfo(result); setCountdown(10); }
+      } catch {}
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!info || busy) return;
+    const timer = setInterval(() => setCountdown((value) => value - 1), 1000);
+    return () => clearInterval(timer);
+  }, [info, busy]);
+
+  useEffect(() => {
+    if (info && !busy && countdown <= 0) setInfo(null);
+  }, [info, busy, countdown]);
+
+  if (!info) return null;
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={() => { if (!busy) setInfo(null); }}>
+      <View style={styles.updateBackdrop}>
+        <View style={styles.updateCard}>
+          <Text style={styles.updateTitle}>发现新版本 {info.latestVersion}</Text>
+          <Text style={styles.updateHint}>
+            {busy ? (progress || "正在下载…") : `${10 - Math.max(0, countdown)} / 10 秒后自动关闭，也可直接点「立即更新」。`}
+          </Text>
+          <View style={styles.updateActions}>
+            <Pressable disabled={busy} onPress={() => setInfo(null)} style={styles.updateLater}>
+              <Text style={styles.updateLaterText}>稍后</Text>
+            </Pressable>
+            <Pressable
+              disabled={busy || !info.apkUrl}
+              onPress={() => {
+                void (async () => {
+                  if (!info.apkUrl) return;
+                  setBusy(true);
+                  try {
+                    await downloadAndInstallUpdate(info.apkUrl, setProgress);
+                    setInfo(null);
+                  } catch (updateError) {
+                    setProgress(updateError instanceof Error ? updateError.message : String(updateError));
+                  } finally {
+                    setBusy(false);
+                  }
+                })();
+              }}
+              style={[styles.updateNow, busy && styles.updateNowBusy]}
+            >
+              <Text style={styles.updateNowText}>{busy ? "更新中…" : "立即更新"}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
