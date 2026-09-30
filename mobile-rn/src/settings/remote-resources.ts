@@ -326,21 +326,32 @@ export async function getLornDistillationInstructions(): Promise<string> {
  * 解析打包在 APK 内的基础内容包。内容与远端固定提交一致，
  * 因此这里只做结构校验，不做任何网络请求。
  */
-function readBuiltinCatalog(): OpenFicMCatalog | null {
-  try {
-    const catalog = catalogSchema.parse(builtinAgentCatalogJson) as OpenFicMCatalog;
-    // 合并 Storyloom 扩展预设（按创作类型分的智能体 + 去 AI 味技能）。
-    // 之所以在这里合并而不是直接改内置 JSON：内置包与上游固定提交的 SHA-256 对齐，
-    // 改动它会破坏内容来源校验。按 id 去重，避免与上游同名项冲突。
-    const mergedSkills = [
+/**
+ * 合并 Storyloom 扩展预设（按创作类型分的智能体 + 去 AI 味等技能）。
+ *
+ * 之所以不直接改内置 JSON：内置包与上游固定提交的 SHA-256 对齐，改动它会破坏内容来源校验。
+ * 按 id 去重，避免与上游同名项冲突。
+ *
+ * ⚠️ 内置路径与「本地已落库」路径**都必须过这一步** —— 落库内容同样来自上游原始包，
+ * 漏掉合并会让扩展技能（如「去 AI 味」）与三个预设智能体在设置页里消失。
+ */
+function mergeStoryloomPresets(catalog: OpenFicMCatalog): OpenFicMCatalog {
+  return {
+    ...catalog,
+    skills: [
       ...catalog.skills,
       ...STORYLOOM_SKILLS.filter((extra) => !catalog.skills.some((item) => item.id === extra.id)),
-    ];
-    const mergedAgents = [
+    ],
+    agents: [
       ...catalog.agents,
       ...STORYLOOM_AGENTS.filter((extra) => !catalog.agents.some((item) => item.id === extra.id)),
-    ];
-    return { ...catalog, skills: mergedSkills, agents: mergedAgents };
+    ],
+  };
+}
+
+function readBuiltinCatalog(): OpenFicMCatalog | null {
+  try {
+    return mergeStoryloomPresets(catalogSchema.parse(builtinAgentCatalogJson) as OpenFicMCatalog);
   } catch {
     return null;
   }
@@ -366,7 +377,8 @@ async function persistBuiltinCatalog(catalog: OpenFicMCatalog): Promise<void> {
 export async function getInstalledOpenFicMCatalog(): Promise<OpenFicMCatalog | null> {
   const parsed = openFicMCatalogPackageSchema.safeParse(await readStoredJson(OPENFICM_CATALOG_KEY));
   if (parsed.success && parsed.data.sha256 === OPENFICM_CATALOG_SHA256) {
-    return parsed.data.catalog as OpenFicMCatalog;
+    // 落库内容来自上游原始包，同样需要合并扩展预设
+    return mergeStoryloomPresets(parsed.data.catalog as OpenFicMCatalog);
   }
   const builtin = readBuiltinCatalog();
   if (!builtin) return null;
