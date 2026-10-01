@@ -8,7 +8,7 @@ Important changes to this project. Format based on [Keep a Changelog](https://ke
 
 ---
 
-## [0.1.25] — 2026-10-01
+## [0.1.26] — 2026-10-01
 
 ### Added
 
