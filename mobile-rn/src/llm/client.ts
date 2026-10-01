@@ -1,5 +1,6 @@
 // 本文件基于 OpenFicM（Apache-2.0）修改
 // 改动说明见仓库根目录 docs/上游来源与改动清单.md
+import { appendBreadcrumb } from "@/lib/crash-log";
 import type { ModelSelection } from "@/types";
 import { getSetting } from "@/data/repositories";
 
@@ -74,13 +75,24 @@ function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+/** 把请求失败归成四类，写进操作轨迹供诊断报告取证。 */
+function describeRequestFailure(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  if (text.includes("模型请求超时")) return "超时被中止（timeout/abort）";
+  if (text.includes("fetch failed")) return text.includes("SocketException") ? "连接层被重置（SocketException）" : "连接层失败（fetch failed）";
+  if (text.startsWith("HTTP ")) return `服务端返回错误（${text.slice(0, 120)}）`;
+  return text.slice(0, 140);
+}
+
 async function requestJson(url: string, init: RequestInit): Promise<Record<string, any>> {
   const configuredTimeout = Number(await getSetting("connections.requestTimeout"));
   const requestTimeout = Number.isInteger(configuredTimeout) && configuredTimeout >= 10_000 && configuredTimeout <= 300_000
     ? configuredTimeout
     : REQUEST_TIMEOUT_MS;
   let lastError: unknown;
+  const host = new URL(url).host;
   for (let attempt = 0; attempt < MAX_REQUEST_ATTEMPTS; attempt += 1) {
+    const attemptStartedAt = Date.now();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), requestTimeout);
     try {
@@ -119,6 +131,8 @@ async function requestJson(url: string, init: RequestInit): Promise<Record<strin
       } else {
         lastError = error;
       }
+      // 取证：每一次失败的尝试都留一条轨迹（分类 + 耗时 + 目标主机），不改重试行为。
+      appendBreadcrumb(`模型请求（${host}）：第 ${attempt + 1}/${MAX_REQUEST_ATTEMPTS} 次尝试失败，${Math.round((Date.now() - attemptStartedAt) / 1000)}s —— ${describeRequestFailure(lastError)}`);
       if (attempt + 1 >= MAX_REQUEST_ATTEMPTS || !(error instanceof TypeError || (isRecord(error) && error.name === "AbortError"))) {
         throw lastError;
       }

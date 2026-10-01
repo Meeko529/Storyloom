@@ -1,5 +1,6 @@
 import { callModel } from "@/llm/client";
 import type { AgentMessage } from "@/llm/types";
+import { appendBreadcrumb, appendCrashLog } from "@/lib/crash-log";
 import { getSetting, setSetting } from "@/data/repositories";
 import type { ModelSelection, StyleProfile } from "@/types";
 import {
@@ -346,15 +347,26 @@ export async function distillReferenceStyle(input: {
     total: batches.length,
     label: memos.length ? `从断点继续，已完成 ${memos.length} 批` : `准备分析 ${batches.length} 批样本`,
   });
+  appendBreadcrumb(`蒸馏开始：第 ${round} 轮 · ${plan.windowLabel} · ${plan.passageCount} 个样本 / ${batches.length} 批 · 方法论 ${instructions.length} 字`);
   for (let index = memos.length; index < batches.length; index += 1) {
     const batch = batches[index];
-    const memo = await callStyleModel(
-      input.selection,
-      distillationBatchPrompt(source.title, batch.label, batch.text),
-      instructions,
-      "只输出要求的中文文风证据备忘录，不要输出最终指南。",
-      STYLE_MEMO_OUTPUT_TOKENS,
-    );
+    const batchStartedAt = Date.now();
+    let memo: string;
+    try {
+      memo = await callStyleModel(
+        input.selection,
+        distillationBatchPrompt(source.title, batch.label, batch.text),
+        instructions,
+        "只输出要求的中文文风证据备忘录，不要输出最终指南。",
+        STYLE_MEMO_OUTPUT_TOKENS,
+      );
+    } catch (batchError) {
+      // 取证：批次号、样本量、方法论体积与完整错误写进诊断报告，供定位「连接被重置 / 超时被中止」。
+      appendCrashLog(`蒸馏参考书（第 ${index + 1}/${batches.length} 批 · ${batch.label} · 样本 ${batch.text.length} 字 · 方法论 ${instructions.length} 字）`, batchError);
+      appendBreadcrumb(`蒸馏：第 ${index + 1}/${batches.length} 批失败，耗时 ${Math.round((Date.now() - batchStartedAt) / 1000)}s`);
+      throw batchError;
+    }
+    appendBreadcrumb(`蒸馏：第 ${index + 1}/${batches.length} 批完成，耗时 ${Math.round((Date.now() - batchStartedAt) / 1000)}s`);
     memos.push(memo.trim().slice(0, MAX_DISTILLATION_MEMO_CHARACTERS));
     await saveStyleDistillationCheckpoint({
       version: 1,
@@ -380,22 +392,32 @@ export async function distillReferenceStyle(input: {
     total: 1,
     label: currentGuide ? `正在把第 ${round} 轮证据并入文风指南` : "正在汇总文风指南",
   });
-  const guide = await callStyleModel(
-    input.selection,
-    currentGuide
-      ? distillationContinuationPrompt({
-        sourceTitle: source.title,
-        currentGuide,
-        memos,
-        windowLabel: plan.windowLabel,
-        coveredUntil: nextCoveredUntil,
-        totalUnits: plan.totalUnits,
-        unitName,
-        round,
-      })
-      : distillationSynthesisPrompt(source.title, memos),
-    instructions,
-  );
+  const synthesisStartedAt = Date.now();
+  let guide: string;
+  try {
+    guide = await callStyleModel(
+      input.selection,
+      currentGuide
+        ? distillationContinuationPrompt({
+          sourceTitle: source.title,
+          currentGuide,
+          memos,
+          windowLabel: plan.windowLabel,
+          coveredUntil: nextCoveredUntil,
+          totalUnits: plan.totalUnits,
+          unitName,
+          round,
+        })
+        : distillationSynthesisPrompt(source.title, memos),
+      instructions,
+    );
+  } catch (synthesisError) {
+    // 取证：汇总阶段失败（此时各批次已成功，问题集中在最后一次大请求）。
+    appendCrashLog(`蒸馏参考书（汇总指南 · 已完成 ${memos.length}/${batches.length} 批 · 方法论 ${instructions.length} 字）`, synthesisError);
+    appendBreadcrumb(`蒸馏：汇总指南失败，耗时 ${Math.round((Date.now() - synthesisStartedAt) / 1000)}s`);
+    throw synthesisError;
+  }
+  appendBreadcrumb(`蒸馏：汇总指南完成，耗时 ${Math.round((Date.now() - synthesisStartedAt) / 1000)}s`);
 
   input.onProgress?.({ stage: "saving", completed: 0, total: 1, label: "正在保存参考文风版本" });
   const profile = await createStyleProfileVersion({
