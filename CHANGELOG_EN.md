@@ -8,6 +8,30 @@ Important changes to this project. Format based on [Keep a Changelog](https://ke
 
 ---
 
+## [0.1.32] — 2026-10-01
+
+### Added
+
+- **Confirmation and questions inline in the chat**: write confirmation and tool questions now appear as cards inside the conversation (in the same place as the live timeline); the bottom-sheet form is gone
+- **Chapter title moved to the top of the writing screen**: volume name / chapter name / word count / "Edit" sit directly under the header, so the order is "chapter title → style → prose" and the text area starts with the prose itself; "Project contents" moved into the "⋯ menu"
+- **Unified sheet behaviour**: bottom sheets now slide in (previously faded), carry a drag handle, use a common 28dp top radius, and scroll internally when content overflows
+
+### Fixed
+
+- **Live tool execution was never shown**: `onTrace` was an empty implementation, so the live trace stayed null — tool-execution events now appear in order on the live timeline
+- The run process is folded into the timeline instead of being drawn as a separate card (the red error outline goes with it)
+- **Write-confirmation line stats**: long chapters always showed "+0 / −0" when the edit fell beyond the first 600 characters — before/after were only compared within that prefix; the same truncation also made undo replace the whole chapter with those 600 characters
+- After a failed send the input box stays empty; the original text remains in the conversation and resend uses "Retry" under that message
+- Removed the session bar on the assistant screen that duplicated "Manage conversations"
+- The shelf plank image carried 140px of transparent pixels on its right edge, making the two sides uneven (re-cropped to the opaque bounding box)
+- Opening shelf sorting left the shelf menu open, stacking two white panels
+- The empty-state text on a new conversation was mirrored (Android's inverted list flips both axes; only Y had been compensated)
+- Left/right padding for the "New conversation" button in the manage-conversations sheet and for style-version cards on the style library list
+- The "switch project" icon on the assistant screen now matches the writing screen
+- Free-model cards share one height: title limited to one line, note to two
+
+---
+
 ## [0.1.31] — 2026-10-01
 
 ### Added
