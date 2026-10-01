@@ -476,7 +476,7 @@ export function StyleLibraryScreen() {
                 <Text style={styles.helperText}>每轮抽取连续 24 {coverageUnitName}、分 4 批分析后并入文风指南，不会上传整本小说。反复点击“继续蒸馏”会向后随机推进，逐步覆盖全书。</Text>
               )}
               <Text style={styles.helperText}>
-                蒸馏使用“设置 → 模型与供应商”里的默认模型：{distillationModelName ?? "尚未选择默认模型"}
+                蒸馏使用当前默认模型：{distillationModelName ?? "尚未选择默认模型"}
               </Text>
               <Text style={styles.sheetSectionTitle}>参考文风版本</Text>
               {sourceProfiles.length ? sourceProfiles.map((profile) => (

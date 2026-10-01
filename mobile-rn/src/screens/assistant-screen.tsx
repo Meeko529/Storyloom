@@ -1131,7 +1131,7 @@ export function AssistantScreen() {
           <View style={styles.capabilityNotice}>
             <Ionicons name="alert-circle-outline" size={16} color={colors.danger} />
             <Text style={styles.capabilityNoticeText}>
-              当前模型已标注为不支持工具调用，助手只能对话、无法读写作品内容。若该模型实际支持，可在「设置 → 模型与供应商」中改回。
+              当前模型已标注为不支持工具调用，助手只能对话、无法读写作品内容。若该模型实际支持，可在模型设置中改回。
             </Text>
           </View>
         ) : null}

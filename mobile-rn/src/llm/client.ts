@@ -211,7 +211,7 @@ async function callOpenAi(
   // 不做静默降级，否则调用方只会看到"内容为空"，无法判断该调高上限。
   if (!content.trim() && !toolCalls.length) {
     if (finishReason === "length") {
-      throw new Error(`模型在返回正文前就用完了 ${maxOutputTokens} 个输出 Token（finish_reason=length）。思考型模型的推理过程也计入这个上限，请在“设置 → 模型与供应商”调高最大输出 Token 数，或换用非思考模型。`);
+      throw new Error(`模型在返回正文前就用完了 ${maxOutputTokens} 个输出 Token（finish_reason=length）。思考型模型的推理过程也计入这个上限，请在模型设置中调高最大输出 Token 数，或换用非思考模型。`);
     }
     if (finishReason && finishReason !== "stop") {
       throw new Error(`模型没有返回内容，finish_reason=${finishReason}`);
@@ -311,7 +311,7 @@ async function callGemini(
   const finishReason = String(data.candidates?.[0]?.finishReason ?? "");
   if (!parts.length) {
     if (finishReason === "MAX_TOKENS") {
-      throw new Error(`模型在返回正文前就用完了 ${maxOutputTokens} 个输出 Token（finishReason=MAX_TOKENS）。思考型模型的推理过程也计入这个上限，请在“设置 → 模型与供应商”调高最大输出 Token 数。`);
+      throw new Error(`模型在返回正文前就用完了 ${maxOutputTokens} 个输出 Token（finishReason=MAX_TOKENS）。思考型模型的推理过程也计入这个上限，请在模型设置中调高最大输出 Token 数。`);
     }
     const reason = data.promptFeedback?.blockReason ?? finishReason ?? "模型没有返回内容";
     throw new Error(`Gemini 请求未完成: ${reason}`);
@@ -395,7 +395,7 @@ async function callAnthropic(
     id: String(block.id), name: String(block.name), arguments: block.input ?? {},
   }));
   if (!content.trim() && !toolCalls.length && data.stop_reason === "max_tokens") {
-    throw new Error(`模型在返回正文前就用完了 ${maxOutputTokens} 个输出 Token（stop_reason=max_tokens）。请在“设置 → 模型与供应商”调高最大输出 Token 数。`);
+    throw new Error(`模型在返回正文前就用完了 ${maxOutputTokens} 个输出 Token（stop_reason=max_tokens）。请在模型设置中调高最大输出 Token 数。`);
   }
   return { content, toolCalls, ...(anthropicReasoning ? { reasoning: anthropicReasoning } : {}) };
 }
