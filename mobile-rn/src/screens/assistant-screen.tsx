@@ -278,6 +278,10 @@ export function AssistantScreen() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSession, setActiveSession] = useState<ChatSession | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  /** 打开或切换对话后跳到最新一条（一次性；发送期间的滚动另有逻辑）。 */
+  const scrollToEndOnce = () => {
+    requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false }));
+  };
   const [models, setModels] = useState<Model[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [defaultModelId, setDefaultModelId] = useState<string | null>(null);
@@ -401,6 +405,7 @@ export function AssistantScreen() {
       setSessions(nextSessions);
       setActiveSession(nextSession);
       setMessages(nextMessages);
+      scrollToEndOnce();
       const lastFailed = [...nextMessages].reverse().find((message) => message.role === "assistant" && (message.metadata?.taskStatus === "failed" || message.metadata?.agentTrace?.status === "error"));
       setRetryRequest(lastFailed ? retryRequestForMessage(lastFailed, nextMessages, nextSession, nextSelection, activeAgent?.id ?? null) : null);
       setModels(nextModels);
@@ -560,6 +565,7 @@ export function AssistantScreen() {
       await setSetting(activeSessionSettingKey(effectiveProjectId), session.id);
       setActiveSession(session);
       setMessages(nextMessages);
+      scrollToEndOnce();
       const lastFailed = [...nextMessages].reverse().find((message) => message.role === "assistant" && (message.metadata?.taskStatus === "failed" || message.metadata?.agentTrace?.status === "error"));
       setRetryRequest(lastFailed ? retryRequestForMessage(lastFailed, nextMessages, session, nextSelection, activeAgentId) : null);
       setSelection(nextSelection);
@@ -662,6 +668,7 @@ export function AssistantScreen() {
       const nextMessages = await listMessages(replacement.id);
       setActiveSession(replacement);
       setMessages(nextMessages);
+      scrollToEndOnce();
       setRetryRequest(null);
       try {
         setSelection(await resolveSelection(effectiveModelId, models, providers));
@@ -1063,11 +1070,7 @@ export function AssistantScreen() {
                 </View>
               ) : null}
               {item.metadata?.agentTrace ? (
-                <AgentTraceView
-                  trace={item.metadata.agentTrace}
-                  onRetry={failed && messageRetry ? () => void send(messageRetry) : undefined}
-                  retryDisabled={sending}
-                />
+                <AgentTraceView trace={item.metadata.agentTrace} />
               ) : failed ? (
                 <View style={styles.failureCard}>
                   <Text style={styles.failureTitle}>执行失败</Text>

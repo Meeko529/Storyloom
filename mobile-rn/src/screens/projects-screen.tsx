@@ -7,7 +7,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, Image, ImageBackground, Modal, Pressable, ScrollView, StyleSheet, TextInput, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Dimensions, FlatList, Image, ImageBackground, Modal, Pressable, ScrollView, StyleSheet, TextInput, Text, View } from "react-native";
 import { appendBreadcrumb } from "@/lib/crash-log";
 import { importProjectFromFile } from "@/lib/doc-import";
 import { downsampleToFile } from "@/lib/media-downsample";
@@ -37,6 +37,8 @@ export function ProjectsScreen() {
   const [menuProject, setMenuProject] = useState<Project | null>(null);
   const [shelfMenuVisible, setShelfMenuVisible] = useState(false);
   const [importing, setImporting] = useState(false);
+  /** 书架一行的可用宽度（onLayout 实测；初值用屏宽兜底）。 */
+  const [shelfInnerWidth, setShelfInnerWidth] = useState(() => Dimensions.get("window").width);
   /** 分类与排序 */
   const [categories, setCategories] = useState<Category[]>([]);
   const [shelfSort, setShelfSort] = useState<"recent" | "created" | "words">("recent");
@@ -528,13 +530,25 @@ function coverColor(title: string): string {
         renderItem={({ item }) => {
           if (viewMode === "grid") {
             const row = item.kind === "row" ? item.row : [];
+            // 书架几何：格子定宽 → 本行书有多少本，架板就多长；书压在架板上（书在前，架子在下）。
+            const cellWidth = Math.max(60, Math.floor((shelfInnerWidth - 28 - 12 - 3 * 10) / 4));
+            const groupWidth = row.length * cellWidth + (row.length - 1) * 10 + 12;
+            const plankHeight = Math.round(groupWidth / (3462 / 383));
+            const plankOverlap = 8;
             return (
-              <View style={styles.shelfRow}>
-                <View style={styles.shelfBooks}>
+              <View
+                style={styles.shelfRow}
+                onLayout={(event) => {
+                  const width = event.nativeEvent.layout.width;
+                  if (Math.abs(width - shelfInnerWidth) > 1) setShelfInnerWidth(width);
+                }}
+              >
+                <View style={[styles.shelfGroup, { width: groupWidth }]}>
+                <View style={[styles.shelfBooks, { zIndex: 2, marginBottom: -plankOverlap }]}>
                   {row.map((project) => {
                     const lines = bookTitleLines(project.title);
                     return (
-                      <Pressable key={project.id} onPress={() => openProject(project)} onLongPress={() => openProjectMenu(project)} style={({ pressed }) => [styles.shelfCell, pressed && styles.rowPressed]}>
+                      <Pressable key={project.id} onPress={() => openProject(project)} onLongPress={() => openProjectMenu(project)} style={({ pressed }) => [styles.shelfCell, { width: cellWidth }, pressed && styles.rowPressed]}>
                         <Image source={BOOK_SHADOW} style={styles.bookShadowImage} resizeMode="stretch" />
                         <View style={[styles.bookObject, { backgroundColor: coverColor(project.title) }]}>
                           <View style={styles.bookSpine} />
@@ -552,18 +566,19 @@ function coverColor(title: string): string {
                     );
                   })}
                 </View>
-                <ImageBackground source={PLANK_IMAGE} style={styles.shelfPlankImage} resizeMode="stretch" />
-                <View style={styles.shelfLabels}>
+                <ImageBackground source={PLANK_IMAGE} style={[styles.shelfPlankImage, { zIndex: 1, height: plankHeight }]} resizeMode="stretch" />
+                <View style={[styles.shelfLabels, { marginTop: 6 }]}>
                   {row.map((project) => {
                     const st = stats[project.id];
                     const statsLine = st ? `${st.volumes} 卷 · ${st.chapters} 章 · ${(st.characters / 10000).toFixed(1)} 万字` : "…";
                     return (
-                      <View key={project.id} style={styles.shelfLabelCell}>
+                      <View key={project.id} style={[styles.shelfLabelCell, { width: cellWidth }]}>
                         <Text style={styles.gridName} numberOfLines={1}>{project.title}</Text>
                         <Text style={styles.gridStats} numberOfLines={1}>{statsLine}</Text>
                       </View>
                     );
                   })}
+                </View>
                 </View>
               </View>
             );
@@ -797,8 +812,9 @@ const styles = StyleSheet.create({
   statsText: { flex: 1, color: colors.textMuted, fontSize: 10.5 },
   headerActions: { flexDirection: "row", alignItems: "center" },
   shelfRow: { paddingHorizontal: 14, marginBottom: 2 },
-  shelfBooks: { flexDirection: "row", alignItems: "flex-end", gap: 10, marginBottom: -4, paddingHorizontal: 6 },
-  shelfCell: { flex: 1, alignItems: "center" },
+  shelfBooks: { flexDirection: "row", alignItems: "flex-end", gap: 10, paddingHorizontal: 6 },
+  shelfCell: { alignItems: "center" },
+  shelfGroup: { alignSelf: "flex-start", maxWidth: "100%" },
   bookObject: { width: "100%", aspectRatio: 3 / 4, borderRadius: 10, overflow: "hidden", justifyContent: "center" },
   bookShadowImage: { position: "absolute", left: 4, top: 0, width: "100%", height: "100%", borderRadius: 10 },
   bookSpine: { position: "absolute", left: 0, top: 0, bottom: 0, width: "9%", backgroundColor: "#EDE6D8", borderRightWidth: 1, borderRightColor: "rgba(0,0,0,0.10)" },
@@ -807,7 +823,7 @@ const styles = StyleSheet.create({
   bookCoverLineLead: { fontSize: 20 },
   shelfPlankImage: { alignSelf: "stretch", aspectRatio: 3462 / 383 },
   shelfLabels: { flexDirection: "row", gap: 10, marginTop: 8 },
-  shelfLabelCell: { flex: 1, alignItems: "center" },
+  shelfLabelCell: { alignItems: "center" },
   gridCover: { width: "100%", aspectRatio: 3 / 4, borderRadius: 10, alignItems: "flex-end", justifyContent: "center", overflow: "hidden" },
   gridCoverImage: { width: "100%", height: "100%" },
   gridCoverText: { color: "rgba(255,255,255,0.85)", fontSize: 40, fontWeight: "800", lineHeight: 46, marginBottom: 2 },

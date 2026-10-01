@@ -66,7 +66,7 @@ const PROVIDER_PRESETS: Array<{
 ];
 
 /**
- * 设置分组：13 个入口按职能分成 5 组，避免平铺一长串。
+ * 设置分组：14 个入口按职能分成 5 组，避免平铺一长串。
  * 入口只显示名称，不写说明——说明统一放在二级页顶部，保持列表一致与清爽。
  */
 const settingsGroups: Array<{
@@ -108,6 +108,7 @@ const settingsGroups: Array<{
     title: "知识",
     items: [
       { id: "index", label: "索引", icon: "layers-outline" },
+      { id: "resources", label: "可选内容", icon: "cloud-download-outline" },
     ],
   },
   {
