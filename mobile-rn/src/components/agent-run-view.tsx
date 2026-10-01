@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useState, type ComponentProps } from "react";
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -205,8 +204,7 @@ export function AgentQuestionSheet({
   };
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onCancel}>
-      <View style={styles.questionBackdrop}>
+    <View style={styles.questionBackdrop}>
         <View style={styles.questionSheet}>
           <View style={styles.questionHeader}>
             <View style={styles.questionHeaderIcon}>
@@ -295,8 +293,7 @@ export function AgentQuestionSheet({
             <Button label="提交回答" disabled={!canSubmit} onPress={submit} />
           </View>
         </View>
-      </View>
-    </Modal>
+    </View>
   );
 }
 
@@ -364,12 +361,14 @@ const styles = StyleSheet.create({
   payload: { gap: spacing.xs, padding: spacing.xs, borderRadius: radius.sm, backgroundColor: colors.surfaceMuted },
   payloadLabel: { color: colors.textMuted, fontSize: 11, fontWeight: "700" },
   payloadText: { color: colors.text, fontSize: 12, lineHeight: 18 },
-  questionBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay },
+  questionBackdrop: { width: "100%" },
   questionSheet: {
-    maxHeight: "92%",
-    borderTopLeftRadius: radius.md,
-    borderTopRightRadius: radius.md,
-    backgroundColor: colors.background,
+    maxHeight: 460,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    overflow: "hidden",
   },
   questionHeader: {
     minHeight: 56,

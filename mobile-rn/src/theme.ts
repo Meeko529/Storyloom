@@ -13,7 +13,7 @@ export const colors = {
 } as const;
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
-export const radius = { sm: 10, md: 14, lg: 20 } as const;
+export const radius = { sm: 10, md: 14, lg: 20, /** 底部弹层顶角，Material 3 规范值 */ sheet: 28 } as const;
 
 /** 卡片阴影：Android 走 elevation，iOS 走四件套。只用于可点卡片与浮层，标题栏/tab 栏保持扁平。 */
 export const shadow = {

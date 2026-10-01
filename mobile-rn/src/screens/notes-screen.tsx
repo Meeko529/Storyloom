@@ -397,7 +397,7 @@ export function NotesScreen() {
           </View>
         </SheetBackdrop>
       </Modal>
-          <Modal visible={formatPickerVisible} transparent animationType="fade" onRequestClose={() => setFormatPickerVisible(false)}>
+          <Modal visible={formatPickerVisible} transparent animationType="slide" onRequestClose={() => setFormatPickerVisible(false)}>
         <SheetBackdrop onPress={() => setFormatPickerVisible(false)}>
           <View style={styles.sheet}>
             <View style={styles.sheetHeader}>
@@ -456,7 +456,7 @@ const styles = StyleSheet.create({
   noteMeta: { color: colors.textMuted, fontSize: 12, lineHeight: 17 },
   noteAction: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  sheet: { maxHeight: "88%", borderTopLeftRadius: radius.md, borderTopRightRadius: radius.md, backgroundColor: colors.background },
+  sheet: { maxHeight: "88%", borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, backgroundColor: colors.background },
   sheetScroll: { flexShrink: 1 },
   sheetHeader: { minHeight: 70, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingLeft: spacing.lg, paddingRight: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   sheetTitleWrap: { flex: 1, minWidth: 0 },

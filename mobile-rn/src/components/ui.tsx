@@ -125,6 +125,8 @@ export function SheetBackdrop({ onPress, children }: PropsWithChildren<{ onPress
   return (
     <View style={styles.sheetBackdrop}>
       <Pressable accessibilityLabel="关闭弹层" style={StyleSheet.absoluteFill} onPress={onPress} />
+      {/* 顶部把手：负下边距让它压进弹层上沿，zIndex 保证画在弹层之上。 */}
+      <View pointerEvents="none" style={styles.sheetHandle} />
       {children}
     </View>
   );
@@ -132,6 +134,7 @@ export function SheetBackdrop({ onPress, children }: PropsWithChildren<{ onPress
 
 const styles = StyleSheet.create({
   sheetBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay },
+  sheetHandle: { alignSelf: "center", width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(20,20,20,0.16)", marginBottom: -14, zIndex: 2 },
   screen: { flex: 1, backgroundColor: colors.background },
   scroll: { paddingBottom: 40 },
   header: {

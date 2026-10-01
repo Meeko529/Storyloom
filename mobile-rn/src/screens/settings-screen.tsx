@@ -740,7 +740,7 @@ export function SettingsScreen() {
       <Modal
         visible={convSheetModel !== null}
         transparent
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setConvSheetModel(null)}
       >
         <SheetBackdrop onPress={() => setConvSheetModel(null)}>
@@ -949,7 +949,7 @@ const styles = StyleSheet.create({
   choiceActive: { borderColor: colors.primary, backgroundColor: "#E6F3EF" },
   choiceText: { color: colors.textMuted, fontSize: 13 },
   choiceTextActive: { color: colors.primary, fontWeight: "700" },
-  modelSheet: { maxHeight: "78%", paddingHorizontal: spacing.md, gap: spacing.sm, paddingBottom: spacing.lg, borderTopLeftRadius: radius.md, borderTopRightRadius: radius.md, backgroundColor: colors.background },
+  modelSheet: { maxHeight: "78%", paddingHorizontal: spacing.md, paddingTop: spacing.md, gap: spacing.sm, paddingBottom: spacing.lg, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, backgroundColor: colors.background },
   modelFilterWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   modelFilterEmpty: { padding: spacing.lg, color: colors.textMuted, fontSize: 14, lineHeight: 20 },
   sheetHeader: { minHeight: 64, flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.lg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },

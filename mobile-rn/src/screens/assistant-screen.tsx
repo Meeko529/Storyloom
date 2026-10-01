@@ -1014,7 +1014,7 @@ export function AssistantScreen() {
           inverted
           maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 120 }}
           contentContainerStyle={messages.length ? styles.messages : styles.emptyMessages}
-          ListHeaderComponent={sending || liveTrace || writeCard ? (
+          ListHeaderComponent={sending || liveTrace || writeCard || pendingQuestion ? (
             <View style={styles.liveTimeline}>
               {sending || liveTrace ? (
                 <>
@@ -1074,6 +1074,11 @@ export function AssistantScreen() {
                   </View>
                 </View>
               ) : null}
+              <AgentQuestionSheet
+                request={pendingQuestion}
+                onSubmit={(answers) => finishQuestion({ answers, cancelled: false })}
+                onCancel={() => finishQuestion({ answers: [], cancelled: true })}
+              />
             </View>
           ) : null}
           ListEmptyComponent={models.length ? (
@@ -1286,7 +1291,7 @@ export function AssistantScreen() {
         </SheetBackdrop>
       </Modal>
 
-      <Modal visible={projectPickerVisible} transparent animationType="fade" onRequestClose={() => setProjectPickerVisible(false)}>
+      <Modal visible={projectPickerVisible} transparent animationType="slide" onRequestClose={() => setProjectPickerVisible(false)}>
         <SheetBackdrop onPress={() => setProjectPickerVisible(false)}>
           <View style={styles.sheet}>
             <View style={styles.sheetHeader}>
@@ -1322,7 +1327,7 @@ export function AssistantScreen() {
         </SheetBackdrop>
       </Modal>
 
-      <Modal visible={renaming !== null} transparent animationType="fade" onRequestClose={() => setRenaming(null)}>
+      <Modal visible={renaming !== null} transparent animationType="slide" onRequestClose={() => setRenaming(null)}>
         <SheetBackdrop onPress={() => setRenaming(null)}>
           <View style={styles.sheet}>
             <View style={styles.sheetHeader}>
@@ -1468,11 +1473,6 @@ export function AssistantScreen() {
           </View>
         </SheetBackdrop>
       </Modal>
-      <AgentQuestionSheet
-        request={pendingQuestion}
-        onSubmit={(answers) => finishQuestion({ answers, cancelled: false })}
-        onCancel={() => finishQuestion({ answers: [], cancelled: true })}
-      />
     </Screen>
   );
 }
@@ -1599,8 +1599,8 @@ const styles = StyleSheet.create({
   sheet: {
     maxHeight: "80%",
     paddingBottom: spacing.xl,
-    borderTopLeftRadius: radius.md,
-    borderTopRightRadius: radius.md,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
     backgroundColor: colors.background,
   },
   sheetHeader: {

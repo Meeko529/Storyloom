@@ -1693,7 +1693,7 @@ const styles = StyleSheet.create({
   mascotLabel: { color: colors.text, fontSize: 12 },
   groupHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 7, paddingHorizontal: spacing.sm, marginTop: 0, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   searchInput: { minHeight: 42, marginBottom: spacing.sm, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, color: colors.text, fontSize: 14 },
-  skillSheet: { maxHeight: "82%", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, backgroundColor: colors.background },
+  skillSheet: { maxHeight: "82%", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.lg, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, backgroundColor: colors.background },
   skillSheetHeader: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: spacing.sm },
   skillSheetTitleWrap: { flex: 1, minWidth: 0 },
   skillSheetTitle: { color: colors.text, fontSize: 18, fontWeight: "700" },

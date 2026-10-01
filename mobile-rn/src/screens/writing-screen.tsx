@@ -823,7 +823,7 @@ export function WritingScreen() {
         )}
       </KeyboardAvoidingView>
 
-      <Modal visible={projectPickerVisible} transparent animationType="fade" onRequestClose={() => setProjectPickerVisible(false)}>
+      <Modal visible={projectPickerVisible} transparent animationType="slide" onRequestClose={() => setProjectPickerVisible(false)}>
         <SheetBackdrop onPress={() => setProjectPickerVisible(false)}>
           <View style={styles.directorySheet}>
             <View style={styles.sheetHeader}>
@@ -1053,7 +1053,7 @@ export function WritingScreen() {
         </SheetBackdrop>
       </Modal>
 
-      <Modal visible={exportPickerVisible} transparent animationType="fade" onRequestClose={() => setExportPickerVisible(false)}>
+      <Modal visible={exportPickerVisible} transparent animationType="slide" onRequestClose={() => setExportPickerVisible(false)}>
         <SheetBackdrop onPress={() => setExportPickerVisible(false)}>
           <View style={styles.actionSheet}>
             <View style={styles.exportHeader}>
@@ -1119,7 +1119,7 @@ export function WritingScreen() {
           </View>
         </SheetBackdrop>
       </Modal>
-      <Modal visible={Boolean(directoryTarget)} transparent animationType="fade" onRequestClose={() => setDirectoryTarget(null)}>
+      <Modal visible={Boolean(directoryTarget)} transparent animationType="slide" onRequestClose={() => setDirectoryTarget(null)}>
         <SheetBackdrop onPress={() => setDirectoryTarget(null)}>
           <View style={styles.actionSheet}>
             <Text numberOfLines={2} style={styles.actionTitle}>
@@ -1252,9 +1252,10 @@ const styles = StyleSheet.create({
   directorySheet: {
     maxHeight: "82%",
     minHeight: "46%",
+    paddingTop: spacing.md,
     paddingBottom: spacing.lg,
-    borderTopLeftRadius: radius.md,
-    borderTopRightRadius: radius.md,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
     backgroundColor: colors.background,
   },
   sheetHeader: {
@@ -1307,11 +1308,12 @@ const styles = StyleSheet.create({
   chapterRowTextActive: { color: colors.primary, fontWeight: "700" },
   rowAction: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   actionSheet: {
+    maxHeight: "80%",
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
     paddingBottom: spacing.xl,
-    borderTopLeftRadius: radius.md,
-    borderTopRightRadius: radius.md,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
     backgroundColor: colors.background,
   },
   exportHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingLeft: spacing.sm },

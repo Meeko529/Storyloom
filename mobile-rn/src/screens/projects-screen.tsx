@@ -842,7 +842,7 @@ const styles = StyleSheet.create({
   sheetScroll: { maxHeight: 460 },
   sheetScrollContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg, gap: spacing.sm },
   sheetSectionTitle: { marginTop: spacing.xs, color: colors.textMuted, fontSize: 12, fontWeight: "700" },
-  menuSheet: { paddingVertical: spacing.sm, paddingBottom: spacing.xl, borderTopLeftRadius: radius.md, borderTopRightRadius: radius.md, backgroundColor: colors.background },
+  menuSheet: { maxHeight: "80%", paddingVertical: spacing.sm, paddingTop: spacing.md, paddingBottom: spacing.xl, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, backgroundColor: colors.background },
   menuTitle: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xs, color: colors.textMuted, fontSize: 13 },
   menuRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 52, paddingHorizontal: spacing.lg },
   menuRowPressed: { backgroundColor: colors.surfaceMuted },
