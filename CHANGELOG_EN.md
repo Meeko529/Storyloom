@@ -8,6 +8,22 @@ Important changes to this project. Format based on [Keep a Changelog](https://ke
 
 ---
 
+## [0.1.29] — 2026-10-01
+
+### Added
+
+- **Distillation & request forensics**: every failed attempt and each distillation stage records its classification (connection reset / timeout abort / server error), duration, batch index and sample size into the diagnostics report
+- The oh-story content pack moved under Settings → Knowledge → Optional content
+
+### Fixed
+
+- Opening or switching an assistant chat now jumps to the latest message
+- Removed the duplicate "Retry" button inside the execution card (the copy / retry row under the message remains)
+- Bookshelf rewritten the way shelf apps do it: the plank texture is the row's background layer (full width, bottom anchored) with fixed-width book cells bottom-aligned on it — fixes the lone-book giant cover and the plank/books disconnect
+- Restored the missing "Optional content" settings entry
+
+---
+
 ## [0.1.28] — 2026-10-01
 
 ### Added
