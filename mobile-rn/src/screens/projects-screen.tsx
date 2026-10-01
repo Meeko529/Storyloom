@@ -530,11 +530,12 @@ function coverColor(title: string): string {
         renderItem={({ item }) => {
           if (viewMode === "grid") {
             const row = item.kind === "row" ? item.row : [];
-            // 书架几何：格子定宽 → 本行书有多少本，架板就多长；书压在架板上（书在前，架子在下）。
+            // 书架 = 一行的背景层（照书架类应用的画法）：层板贴图铺在行底部、全宽贯通，
+            // 书格底对齐站在板上；与本书数无关——1 本书板也贯通。
             const cellWidth = Math.max(60, Math.floor((shelfInnerWidth - 28 - 12 - 3 * 10) / 4));
-            const groupWidth = row.length * cellWidth + (row.length - 1) * 10 + 12 + 28;
-            const plankHeight = Math.round(groupWidth / (3462 / 383));
-            const plankOverlap = Math.max(8, Math.round(plankHeight * 0.3));
+            const plankStrip = Math.round((shelfInnerWidth - 28) / (3462 / 383));
+            const plankBelow = Math.round(plankStrip * 0.62);
+            const rowHeight = Math.round((cellWidth * 4) / 3) + plankBelow;
             return (
               <View
                 style={styles.shelfRow}
@@ -543,8 +544,13 @@ function coverColor(title: string): string {
                   if (Math.abs(width - shelfInnerWidth) > 1) setShelfInnerWidth(width);
                 }}
               >
-                <View style={[styles.shelfGroup, { width: groupWidth }]}>
-                <View style={[styles.shelfBooks, { zIndex: 2, marginBottom: -plankOverlap }]}>
+                <View style={{ height: rowHeight, justifyContent: "flex-end" }}>
+                <ImageBackground
+                  source={PLANK_IMAGE}
+                  resizeMode="stretch"
+                  style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: plankStrip }}
+                />
+                <View style={[styles.shelfBooks, { paddingBottom: plankBelow }]}>
                   {row.map((project) => {
                     const lines = bookTitleLines(project.title);
                     return (
@@ -566,8 +572,8 @@ function coverColor(title: string): string {
                     );
                   })}
                 </View>
-                <ImageBackground source={PLANK_IMAGE} style={[styles.shelfPlankImage, { zIndex: 1, height: plankHeight }]} resizeMode="stretch" />
-                <View style={[styles.shelfLabels, { marginTop: 6 }]}>
+                </View>
+                <View style={styles.shelfLabels}>
                   {row.map((project) => {
                     const st = stats[project.id];
                     const statsLine = st ? `${st.volumes} 卷 · ${st.chapters} 章 · ${(st.characters / 10000).toFixed(1)} 万字` : "…";
@@ -578,7 +584,6 @@ function coverColor(title: string): string {
                       </View>
                     );
                   })}
-                </View>
                 </View>
               </View>
             );
@@ -814,14 +819,12 @@ const styles = StyleSheet.create({
   shelfRow: { paddingHorizontal: 14, marginBottom: 2 },
   shelfBooks: { flexDirection: "row", alignItems: "flex-end", gap: 10, paddingHorizontal: 6 },
   shelfCell: { alignItems: "center" },
-  shelfGroup: { alignSelf: "flex-start", maxWidth: "100%" },
   bookObject: { width: "100%", aspectRatio: 3 / 4, borderRadius: 10, overflow: "hidden", justifyContent: "center" },
   bookShadowImage: { position: "absolute", left: 4, top: 0, width: "100%", height: "100%", borderRadius: 10 },
   bookSpine: { position: "absolute", left: 0, top: 0, bottom: 0, width: "9%", backgroundColor: "#EDE6D8", borderRightWidth: 1, borderRightColor: "rgba(0,0,0,0.10)" },
   bookCoverTextWrap: { alignSelf: "stretch", alignItems: "center", gap: 2, paddingHorizontal: 18 },
   bookCoverLine: { color: "rgba(255,255,255,0.95)", fontSize: 16, fontWeight: "800", letterSpacing: 1 },
   bookCoverLineLead: { fontSize: 20 },
-  shelfPlankImage: { alignSelf: "stretch", aspectRatio: 3462 / 383 },
   shelfLabels: { flexDirection: "row", gap: 10, marginTop: 8 },
   shelfLabelCell: { alignItems: "center" },
   gridCover: { width: "100%", aspectRatio: 3 / 4, borderRadius: 10, alignItems: "flex-end", justifyContent: "center", overflow: "hidden" },
