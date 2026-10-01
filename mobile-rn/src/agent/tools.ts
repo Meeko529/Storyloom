@@ -139,7 +139,7 @@ export const agentTools: AgentToolDefinition[] = [
   },
   {
     name: "list_world_entries",
-    description: "列出当前项目中启用的世界书条目",
+    description: "列出当前项目中启用的世界书条目（含触发关键词）。当对话或正文出现与某条目关键词匹配的词语时，先用 read_world_entry 读取该条目再使用其内容。",
     parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
   },
   {
@@ -541,10 +541,11 @@ export async function executeAgentTool(
     const entries = await listWorldInfoEntries(worldInfo.id);
     return {
       world_info: { id: worldInfo.id, name: worldInfo.name, description: worldInfo.description },
-      entries: entries.filter((entry) => entry.isEnabled).map(({ id, uid, name, tokenCount, updatedAt }) => ({
+      entries: entries.filter((entry) => entry.isEnabled).map(({ id, uid, name, keywords, tokenCount, updatedAt }) => ({
         id,
         uid,
         name,
+        keywords,
         token_count: tokenCount,
         updated_at: updatedAt,
       })),

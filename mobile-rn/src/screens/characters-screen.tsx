@@ -22,6 +22,7 @@ import { Button, EmptyState, ErrorNotice, Field, Header, Screen } from "@/compon
 import { downsampleToFile } from "@/lib/media-downsample";
 import { deleteCharacter, getProject, listCharacters, saveCharacter } from "@/data/repositories";
 import { exportCharacters, type LibraryExportFormat } from "@/lib/export";
+import { logImportBreadcrumb, parseCharacterCard, pickSillyTavernFile } from "@/lib/sillytavern";
 import { createId } from "@/lib/id";
 import type { RootStackParamList } from "@/navigation/types";
 import { useAppStore } from "@/store/app-store";
@@ -33,6 +34,7 @@ export function CharactersScreen() {
   const projectId = useAppStore((state) => state.currentProjectId);
   const [project, setProject] = useState<Project | null>(null);
   const [characters, setCharacters] = useState<Character[]>([]);
+  const [importingSt, setImportingSt] = useState(false);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -77,6 +79,26 @@ export function CharactersScreen() {
     setImagePath(character?.imagePath ?? "");
     setIsFavorited(character?.isFavorited ?? false);
     setEditorVisible(true);
+  };
+
+  /** 导入 SillyTavern 角色卡：JSON（V1/V2/V3）或带内嵌卡的 PNG；性格 / 场景 / 开场白折进设定描述。 */
+  const importStCharacter = async () => {
+    if (!projectId || importingSt) return;
+    setImportingSt(true);
+    setError(null);
+    try {
+      const picked = await pickSillyTavernFile();
+      if (!picked) return;
+      const card = parseCharacterCard(picked.bytes);
+      const saved = await saveCharacter({ projectId, name: card.name, description: card.description });
+      setCharacters((current) => [saved, ...current]);
+      logImportBreadcrumb("角色卡", picked.fileName, card.name);
+      Alert.alert("已导入", card.name);
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : String(importError));
+    } finally {
+      setImportingSt(false);
+    }
   };
 
   /** 从相册选一张图，复制到应用私有目录后作为角色头像（卸载应用会一起清除）。 */
@@ -193,6 +215,9 @@ export function CharactersScreen() {
         onBack={() => navigation.goBack()}
         action={(
           <View style={styles.headerActions}>
+            <Pressable accessibilityLabel="导入 SillyTavern 角色卡" disabled={importingSt} onPress={() => void importStCharacter()} style={styles.iconButton}>
+              {importingSt ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="cloud-download-outline" size={22} color={colors.primary} />}
+            </Pressable>
             <Pressable accessibilityLabel="批量导出角色" disabled={exporting} onPress={chooseBulkExport} style={styles.iconButton}>
               {exporting ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="download-outline" size={22} color={colors.primary} />}
             </Pressable>

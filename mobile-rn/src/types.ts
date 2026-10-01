@@ -239,6 +239,8 @@ export interface WorldInfoEntry {
   order: number;
   content: string;
   tokenCount: number;
+  /** 触发关键词：导入 SillyTavern 世界书时保留原 key[]；写作与对话时供模型按需检索。 */
+  keywords: string[];
   isEnabled: boolean;
   createdAt: string;
   updatedAt: string;

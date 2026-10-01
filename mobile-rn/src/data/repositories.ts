@@ -121,6 +121,7 @@ type WorldInfoEntryRow = {
   entry_order: number;
   content: string;
   token_count: number;
+  keywords_json?: string | null;
   is_enabled: number;
   created_at: string;
   updated_at: string;
@@ -191,18 +192,30 @@ const mapWorldInfo = (row: WorldInfoRow): WorldInfo => ({
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
-const mapWorldInfoEntry = (row: WorldInfoEntryRow): WorldInfoEntry => ({
-  id: row.id,
-  worldInfoId: row.world_info_id,
-  uid: row.uid,
-  name: row.name,
-  order: row.entry_order,
-  content: row.content,
-  tokenCount: row.token_count,
-  isEnabled: row.is_enabled === 1,
-  createdAt: row.created_at,
-  updatedAt: row.updated_at,
-});
+const mapWorldInfoEntry = (row: WorldInfoEntryRow): WorldInfoEntry => {
+  let keywords: string[] = [];
+  if (row.keywords_json) {
+    try {
+      const parsed: unknown = JSON.parse(row.keywords_json);
+      if (Array.isArray(parsed)) keywords = parsed.filter((item): item is string => typeof item === "string");
+    } catch {
+      keywords = [];
+    }
+  }
+  return {
+    id: row.id,
+    worldInfoId: row.world_info_id,
+    uid: row.uid,
+    name: row.name,
+    order: row.entry_order,
+    content: row.content,
+    tokenCount: row.token_count,
+    keywords,
+    isEnabled: row.is_enabled === 1,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+};
 
 function requiredText(value: string, label: string): string {
   const normalized = value.trim();
@@ -1100,6 +1113,7 @@ export async function saveWorldInfoEntry(input: {
   worldInfoId: string;
   name: string;
   content?: string;
+  keywords?: string[];
   isEnabled?: boolean;
 }): Promise<WorldInfoEntry> {
   const db = await getDatabase();
@@ -1107,6 +1121,7 @@ export async function saveWorldInfoEntry(input: {
   const name = requiredText(input.name, "世界书条目名称");
   const content = input.content?.trim() ?? "";
   validateChapterContent(content);
+  const keywordsJson = input.keywords?.length ? JSON.stringify(input.keywords) : null;
   const now = new Date().toISOString();
   const existing = await db.getFirstAsync<WorldInfoEntryRow>("SELECT * FROM world_info_entries WHERE id = ?", id);
   let uid = existing?.uid;
@@ -1120,11 +1135,12 @@ export async function saveWorldInfoEntry(input: {
     order = uid;
   }
   await db.runAsync(`
-    INSERT INTO world_info_entries(id, world_info_id, uid, name, entry_order, content, token_count, is_enabled, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO world_info_entries(id, world_info_id, uid, name, entry_order, content, token_count, keywords_json, is_enabled, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, content = excluded.content,
-      token_count = excluded.token_count, is_enabled = excluded.is_enabled, updated_at = excluded.updated_at
-  `, id, input.worldInfoId, uid, name, order, content, content.length, input.isEnabled === false ? 0 : 1, existing?.created_at ?? now, now);
+      token_count = excluded.token_count, keywords_json = excluded.keywords_json,
+      is_enabled = excluded.is_enabled, updated_at = excluded.updated_at
+  `, id, input.worldInfoId, uid, name, order, content, content.length, keywordsJson, input.isEnabled === false ? 0 : 1, existing?.created_at ?? now, now);
   return {
     id,
     worldInfoId: input.worldInfoId,
@@ -1133,6 +1149,7 @@ export async function saveWorldInfoEntry(input: {
     order,
     content,
     tokenCount: content.length,
+    keywords: input.keywords?.length ? [...input.keywords] : [],
     isEnabled: input.isEnabled !== false,
     createdAt: existing?.created_at ?? now,
     updatedAt: now,

@@ -25,6 +25,7 @@ import {
   saveWorldInfoEntry,
 } from "@/data/repositories";
 import { exportWorldInfo, type LibraryExportFormat } from "@/lib/export";
+import { logImportBreadcrumb, parseSillyTavernWorldInfo, pickSillyTavernFile } from "@/lib/sillytavern";
 import type { RootStackParamList } from "@/navigation/types";
 import { useAppStore } from "@/store/app-store";
 import { colors, radius, spacing } from "@/theme";
@@ -46,7 +47,9 @@ export function WorldInfoScreen() {
   const [editingEntry, setEditingEntry] = useState<WorldInfoEntry | null>(null);
   const [entryName, setEntryName] = useState("");
   const [entryContent, setEntryContent] = useState("");
+  const [entryKeywords, setEntryKeywords] = useState("");
   const [entryEnabled, setEntryEnabled] = useState(true);
+  const [importingSt, setImportingSt] = useState(false);
 
   const load = useCallback(async () => {
     if (!projectId) {
@@ -94,8 +97,38 @@ export function WorldInfoScreen() {
     setEditingEntry(entry ?? null);
     setEntryName(entry?.name ?? "");
     setEntryContent(entry?.content ?? "");
+    setEntryKeywords(entry?.keywords.join(", ") ?? "");
     setEntryEnabled(entry?.isEnabled ?? true);
     setEntryEditorVisible(true);
+  };
+
+  /** 导入 SillyTavern 世界书 JSON：key[] → keywords，comment/key[0] → 条目名。 */
+  const importStWorldInfo = async () => {
+    if (!worldInfo || importingSt) return;
+    setImportingSt(true);
+    setError(null);
+    try {
+      const picked = await pickSillyTavernFile();
+      if (!picked) return;
+      const parsed = parseSillyTavernWorldInfo(new TextDecoder().decode(picked.bytes));
+      const saved: WorldInfoEntry[] = [];
+      for (const entry of parsed) {
+        saved.push(await saveWorldInfoEntry({
+          worldInfoId: worldInfo.id,
+          name: entry.name,
+          content: entry.content,
+          keywords: entry.keywords,
+          isEnabled: entry.isEnabled,
+        }));
+      }
+      setEntries((current) => [...saved, ...current].sort((left, right) => left.order - right.order));
+      logImportBreadcrumb("世界书", picked.fileName, `${parsed.length} 个条目（关键词 ${parsed.filter((entry) => entry.keywords.length).length} 条）`);
+      Alert.alert("已导入", `${saved.length} 个条目`);
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : String(importError));
+    } finally {
+      setImportingSt(false);
+    }
   };
 
   const saveEntry = async () => {
@@ -108,6 +141,7 @@ export function WorldInfoScreen() {
         worldInfoId: worldInfo.id,
         name: entryName,
         content: entryContent,
+        keywords: entryKeywords.split(/[,，、]/).map((part) => part.trim()).filter(Boolean),
         isEnabled: entryEnabled,
       });
       setEntries((current) => [saved, ...current.filter((item) => item.id !== saved.id)].sort((left, right) => left.order - right.order));
@@ -164,6 +198,9 @@ export function WorldInfoScreen() {
         onBack={() => navigation.goBack()}
         action={(
           <View style={styles.headerActions}>
+            <Pressable accessibilityLabel="导入 SillyTavern 世界书" disabled={importingSt} onPress={() => void importStWorldInfo()} style={styles.iconButton}>
+              {importingSt ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="cloud-download-outline" size={22} color={colors.primary} />}
+            </Pressable>
             <Pressable accessibilityLabel="批量导出世界书" disabled={exporting || !entries.length} onPress={() => chooseExport(entries, "导出全部世界书条目")} style={styles.iconButton}>
               {exporting ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="download-outline" size={22} color={entries.length ? colors.primary : colors.textMuted} />}
             </Pressable>
@@ -235,6 +272,7 @@ export function WorldInfoScreen() {
               contentContainerStyle={styles.form}
             >
               <Field label="条目名称" value={entryName} onChangeText={setEntryName} autoFocus={!editingEntry} />
+              <Field label="触发关键词（用逗号分隔，可选）" value={entryKeywords} onChangeText={setEntryKeywords} placeholder="对话中出现这些词时，写作助手会优先读取本条目" />
               <Field label="条目内容" value={entryContent} onChangeText={setEntryContent} multiline textAlignVertical="top" style={styles.entryInput} placeholder="人物关系、地点规则、时代背景等" />
               <View style={styles.switchRow}>
                 <Text style={styles.switchLabel}>启用条目</Text>

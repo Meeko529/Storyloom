@@ -320,6 +320,15 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
   await migrateModelCapabilities(database);
   await migrateProjectCover(database);
   await migrateCategories(database);
+  await migrateWorldInfoKeywords(database);
+}
+
+/** 世界书条目触发关键词：JSON 字符串数组，SillyTavern 导入时保留原 key[]。 */
+async function migrateWorldInfoKeywords(database: SQLite.SQLiteDatabase): Promise<void> {
+  const columns = await database.getAllAsync<{ name: string }>("PRAGMA table_info(world_info_entries)");
+  if (!columns.some((column) => column.name === "keywords_json")) {
+    await database.execAsync("ALTER TABLE world_info_entries ADD COLUMN keywords_json TEXT;");
+  }
 }
 
 /** 作品分类：分类表 + 作品表补 category_id（可空，空 = 未分类）。 */
