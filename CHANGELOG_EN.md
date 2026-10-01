@@ -8,6 +8,26 @@ Important changes to this project. Format based on [Keep a Changelog](https://ke
 
 ---
 
+## [0.1.33] — 2026-10-02
+
+### Added
+
+- **Question card restyled**: background now matches the run card (light green-grey), width trimmed to 88% so it follows the message, tighter option radius, header collapsed to one line
+- **Reasoning folded into the timeline**: the reasoning block is now a row on the same timeline as the execution events instead of a separate card; one reply shows "reasoning + run finished" according to the actual rounds
+- **Write-confirmation card trimmed**: same palette as the other cards in the chat, 88% wide, capped height with a scrollable middle section (header and buttons stay put)
+- **Two new skills**: "Serial pacing quota & anti-resolution" (three gears, A/B/C quota ceiling, anti-resolution brake, three-line pre-write check) and "Chapter beat-sheet writing" (list beats → expand one by one → stitch); plus additions to Outline building, Beta reader and Long-form continuity audit
+
+### Fixed
+
+- Update dialog lost its contents after tapping "Update now": the changelog stays visible and the download progress moved to its own line
+- Divider lines between run-card event rows
+- The question card could not be scrolled when its content overflowed
+- Free-model cards still truncated their note after expanding (the line limit is lifted when expanded)
+- A failed send only showed a message and never reached the diagnostics report: the message and the raw error are now recorded
+- Cards inside the chat are no longer large blocks of pure white
+
+---
+
 ## [0.1.32] — 2026-10-01
 
 ### Added
