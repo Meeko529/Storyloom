@@ -178,6 +178,8 @@ export interface ChatMessageMetadata {
   agentTrace?: AgentRunTrace;
   /** 思考型模型的推理过程；仅在模型提供时记录 */
   reasoning?: string;
+  /** 本次请求总耗时（秒，含思考与执行）；≥1 才记录 */
+  processingSeconds?: number;
   /** 随该条消息发送的文本附件摘要（正文不落库，只记来源与体量） */
   attachments?: Array<{ name: string; characters: number }>;
   taskStatus?: "completed" | "failed";

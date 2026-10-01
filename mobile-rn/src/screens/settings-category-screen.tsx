@@ -5,6 +5,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Alert,
   Linking,
   Modal,
@@ -18,6 +19,7 @@ import {
 } from "react-native";
 
 import { Button, ErrorNotice, Field, Header, Screen, SheetBackdrop } from "@/components/ui";
+import { MASCOT_OPTIONS, normalizeMascotKind } from "@/settings/mascots";
 import {
   getSetting,
   listModels,
@@ -103,6 +105,7 @@ import type { Model } from "@/types";
 
 export type SettingsCategory =
   | "editor"
+  | "mascot"
   | "models"
   | "free-models"
   | "model-capabilities"
@@ -117,6 +120,7 @@ export type SettingsCategory =
 
 const TITLES: Record<Exclude<SettingsCategory, "models">, string> = {
   editor: "编辑器",
+  mascot: "吉祥物",
   "free-models": "免费模型",
   "model-capabilities": "模型能力",
   "conv-advanced": "连接与高级",
@@ -257,6 +261,8 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
   const [skills, setSkills] = useState<AgentSkill[]>([]);
   const [skillQuery, setSkillQuery] = useState("");
   const [toolQuery, setToolQuery] = useState("");
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const toggleGroup = (key: string) => setCollapsedGroups((current) => ({ ...current, [key]: !current[key] }));
   const [detailSkill, setDetailSkill] = useState<AgentSkill | null>(null);
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
   const [availableModels, setAvailableModels] = useState<Model[]>([]);
@@ -300,6 +306,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
   // 本地捕获的错误记录条数（0 表示无记录）
   const [crashEntryCount, setCrashEntryCount] = useState(0);
   const [mascotEnabled, setMascotEnabled] = useState(true);
+  const [mascotKind, setMascotKind] = useState<string>("cat");
   // 诊断报告导出状态
   const [diagnosticsBusy, setDiagnosticsBusy] = useState(false);
   // 备份 / 恢复状态
@@ -568,6 +575,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       setContextWindow(String(normalizeContextWindow(contextWindowRaw)));
       setCrashEntryCount(crashLogEntryCount());
       setMascotEnabled((await getSetting("general.mascotEnabled")) !== "false");
+      setMascotKind(normalizeMascotKind(await getSetting("general.mascot")));
       setCompression(compress === "true");
       setAutoSaveDelay(autoSave ?? "1000");
       setEditorFontSize(String(normalizeEditorFontSize(fontSize)));
@@ -1107,7 +1115,30 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
           <Text style={[styles.previewSample, { fontSize: chatFontSizeValue, fontFamily: editorFontFamily(chatFontId) }]}>
             这一章可以收在误会发生的当晚，把解释留到下一章。
           </Text>
-          <ToggleRow label="吉祥物挂件（助手输入框）" value={mascotEnabled} onChange={(value) => { setMascotEnabled(value); void savePreference("general.mascotEnabled", value ? "true" : "false", (v) => setMascotEnabled(v === "true")); }} />
+        </View>
+      ) : null}
+      {category === "mascot" ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionHint}>吉祥物坐在助手输入框上沿，颜色跟随主题色；关掉开关即隐藏。</Text>
+          <ToggleRow label="显示吉祥物" value={mascotEnabled} onChange={(value) => { setMascotEnabled(value); void savePreference("general.mascotEnabled", value ? "true" : "false", (v) => setMascotEnabled(v === "true")); }} />
+          <Text style={styles.subsectionTitle}>形象</Text>
+          <View style={styles.mascotGrid}>
+            {MASCOT_OPTIONS.map((option) => {
+              const selected = mascotKind === option.id;
+              return (
+                <Pressable
+                  key={option.id}
+                  accessibilityLabel={`选择吉祥物 ${option.label}`}
+                  onPress={() => { setMascotKind(option.id); void savePreference("general.mascot", option.id, (v) => setMascotKind(normalizeMascotKind(v))); }}
+                  style={[styles.mascotCell, selected && styles.mascotCellSelected]}
+                >
+                  <Image source={option.source} style={styles.mascotPreview} />
+                  <Text style={styles.mascotLabel}>{option.label}</Text>
+                  {selected ? <Ionicons name="checkmark-circle" size={18} color={colors.primary} /> : null}
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
       ) : null}
       {category === "index" ? (
@@ -1170,10 +1201,15 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
             const items = TOOL_CATALOG.filter((tool) => toolGroupTitle(tool.key) === group.title
               && matchesQuery(toolQuery, tool.name, tool.key));
             if (!items.length) return null;
+            const groupKey = `tools:${group.title}`;
+            const expanded = Boolean(toolQuery) || !collapsedGroups[groupKey];
             return (
               <View key={group.title}>
-                <Text style={styles.groupTitle}>{group.title}<Text style={styles.groupCount}> · {items.length}</Text></Text>
-                {items.map((tool) => {
+                <Pressable accessibilityRole="button" accessibilityLabel={`展开或收起分组 ${group.title}`} onPress={() => toggleGroup(groupKey)} style={styles.groupHeader}>
+                  <Text style={styles.groupTitle}>{group.title}<Text style={styles.groupCount}> · {items.length}</Text></Text>
+                  <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
+                </Pressable>
+                {expanded ? items.map((tool) => {
                   const current = permissions[tool.key] ?? "ask";
                   return (
                     <View key={tool.key} style={styles.permissionCard}>
@@ -1196,7 +1232,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
                       </View>
                     </View>
                   );
-                })}
+                }) : null}
               </View>
             );
           })}
@@ -1263,7 +1299,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
             const order = [...SKILL_GROUPS.map((group) => group.title), SKILL_GROUP_OTHER];
             const grouped = new Map<string, AgentSkill[]>();
             for (const skill of skills) {
-              if (!matchesQuery(skillQuery, skill.name, skill.description, skill.instructions)) continue;
+              if (!matchesQuery(skillQuery, skill.name, skill.description)) continue;
               const title = skillGroupTitle(skill.name);
               const bucket = grouped.get(title);
               if (bucket) bucket.push(skill);
@@ -1271,10 +1307,16 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
             }
             const sections = order.filter((title) => grouped.has(title));
             if (!sections.length) return <Text style={styles.sectionHint}>没有匹配的技能。</Text>;
-            return sections.map((title) => (
+            return sections.map((title) => {
+              const groupKey = `skills:${title}`;
+              const expanded = Boolean(skillQuery) || !collapsedGroups[groupKey];
+              return (
               <View key={title}>
-                <Text style={styles.groupTitle}>{title}<Text style={styles.groupCount}> · {grouped.get(title)!.length}</Text></Text>
-                {grouped.get(title)!.map((skill) => (
+                <Pressable accessibilityRole="button" accessibilityLabel={`展开或收起分组 ${title}`} onPress={() => toggleGroup(groupKey)} style={styles.groupHeader}>
+                  <Text style={styles.groupTitle}>{title}<Text style={styles.groupCount}> · {grouped.get(title)!.length}</Text></Text>
+                  <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
+                </Pressable>
+                {expanded ? grouped.get(title)!.map((skill) => (
                   <View key={skill.id} style={styles.manageRow}>
                     <Pressable accessibilityLabel={`查看技能 ${skill.name}`} onPress={() => setDetailSkill(skill)} style={styles.manageText}>
                       <Text style={styles.settingLabel}>{skill.name}</Text>
@@ -1303,9 +1345,10 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
                       </>
                     ) : <View style={styles.iconButton}><Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} /></View>}
                   </View>
-                ))}
+                )) : null}
               </View>
-            ));
+              );
+            });
           })()}
           <Text style={styles.subsectionTitle}>{editingSkillId ? "编辑技能" : "添加技能"}</Text>
           <Text style={styles.sectionHint}>名称用于区分用途；指令写明何时使用、按什么步骤处理。可先载入示例，再按需要修改。</Text>
@@ -1331,10 +1374,15 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
           {(["primary", "subagent"] as const).map((kind) => {
             const items = agents.filter((agent) => agent.kind === kind);
             if (!items.length) return null;
+            const groupKey = `agents:${kind}`;
+            const expanded = !collapsedGroups[groupKey];
             return (
               <View key={kind}>
-                <Text style={styles.groupTitle}>{kind === "primary" ? "主智能体" : "子智能体"}<Text style={styles.groupCount}> · {items.length}</Text></Text>
-                {items.map((agent) => (
+                <Pressable accessibilityRole="button" accessibilityLabel={`展开或收起${kind === "primary" ? "主智能体" : "子智能体"}分组`} onPress={() => toggleGroup(groupKey)} style={styles.groupHeader}>
+                  <Text style={styles.groupTitle}>{kind === "primary" ? "主智能体" : "子智能体"}<Text style={styles.groupCount}> · {items.length}</Text></Text>
+                  <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
+                </Pressable>
+                {expanded ? items.map((agent) => (
                   <View key={agent.id} style={[styles.manageRow, activeAgentId === agent.id && styles.activeRow]}>
                     <View style={styles.manageText}>
                       <Text style={styles.settingLabel}>{agent.name}</Text>
@@ -1365,7 +1413,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
                       </>
                     ) : <View style={styles.iconButton}><Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} /></View>}
                   </View>
-                ))}
+                )) : null}
               </View>
             );
           })}
@@ -1598,6 +1646,12 @@ const styles = StyleSheet.create({
   warnText: { color: colors.accent, fontSize: 13, lineHeight: 18 },
   section: { gap: spacing.md, padding: spacing.lg },
   subsectionTitle: { color: colors.text, fontSize: 17, fontWeight: "700" },
+  mascotGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 6 },
+  mascotCell: { alignItems: "center", gap: 4, padding: 10, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, minWidth: 96 },
+  mascotCellSelected: { borderColor: colors.primary, borderWidth: 2 },
+  mascotPreview: { width: 56, height: 56, tintColor: colors.primary },
+  mascotLabel: { color: colors.text, fontSize: 12 },
+  groupHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 8, marginTop: 6 },
   searchInput: { minHeight: 42, marginBottom: spacing.sm, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, color: colors.text, fontSize: 14 },
   skillSheet: { maxHeight: "82%", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, backgroundColor: colors.background },
   skillSheetHeader: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: spacing.sm },
@@ -1617,7 +1671,7 @@ const styles = StyleSheet.create({
   permissionRow: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   permissionText: { flex: 1, minWidth: 0 },
   permissionMode: { minWidth: 64, color: colors.primary, fontSize: 13, fontWeight: "700", textAlign: "right" },
-  manageRow: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm, paddingLeft: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm },
+  manageRow: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: spacing.sm, marginVertical: 5, paddingVertical: spacing.sm, paddingLeft: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, backgroundColor: colors.surface },
   activeRow: { borderColor: colors.primary, backgroundColor: "#E6F3EF" },
   manageText: { flex: 1, minWidth: 0, gap: spacing.xs },
   iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
@@ -1628,7 +1682,7 @@ const styles = StyleSheet.create({
   modelHint: { color: colors.primary, fontSize: 12 },
   modelChoices: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   resourceCard: { gap: spacing.sm, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm },
-  permissionCard: { gap: spacing.sm, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm },
+  permissionCard: { gap: spacing.sm, marginVertical: 5, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, backgroundColor: colors.surface },
   presetRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   presetChip: { minHeight: 36, justifyContent: "center", paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: 999 },
   presetChipText: { color: colors.textMuted, fontSize: 13, fontWeight: "600" },

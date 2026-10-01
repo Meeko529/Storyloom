@@ -16,8 +16,10 @@ import {
   Text,
   TextInput,
   View,
+  ScrollView,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { mascotSource, normalizeMascotKind } from "@/settings/mascots";
 
 import { AgentRunError, runAgent } from "@/agent/runtime";
 import { undoLastWrite, undoLabel, type WritePreview } from "@/agent/write-review";
@@ -81,7 +83,7 @@ import type {
 } from "@/types";
 
 /** 思考型模型的推理过程：默认折叠，由用户决定是否展开查看。 */
-function ReasoningBlock({ text }: { text: string }) {
+function ReasoningBlock({ text, seconds }: { text: string; seconds?: number }) {
   const [expanded, setExpanded] = useState(false);
   const characters = text.trim().length;
   return (
@@ -89,7 +91,7 @@ function ReasoningBlock({ text }: { text: string }) {
       <Pressable accessibilityRole="button" accessibilityLabel={expanded ? "收起思考过程" : "展开思考过程"} onPress={() => setExpanded((value) => !value)} style={styles.reasoningHeader}>
         <Ionicons name="bulb-outline" size={16} color={colors.textMuted} />
         <Text style={styles.reasoningTitle}>思考过程</Text>
-        <Text style={styles.reasoningMeta}>{characters} 字</Text>
+        <Text style={styles.reasoningMeta}>{seconds ? `用时 ${seconds}s · ` : ""}{characters} 字</Text>
         <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
       </Pressable>
       {expanded ? <Text selectable style={styles.reasoningText}>{text}</Text> : null}
@@ -111,6 +113,16 @@ type WriteCardRequest = {
 };
 
 /** 红绿行统计：after 有而 before 没有的行计新增，反之计删除。 */
+function formatMessageTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date();
+  const sameDay = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mm = String(date.getMinutes()).padStart(2, "0");
+  return sameDay ? `${hh}:${mm}` : `${date.getMonth() + 1}月${date.getDate()}日 ${hh}:${mm}`;
+}
+
 function diffLineStats(before: string, after: string): { added: number; removed: number } {
   const beforeLines = before.split("\n");
   const afterLines = after.split("\n");
@@ -283,6 +295,7 @@ export function AssistantScreen() {
   const [messageCounts, setMessageCounts] = useState<Record<string, number>>({});
   const [renaming, setRenaming] = useState<ChatSession | null>(null);
   const [mascotEnabled, setMascotEnabled] = useState(true);
+  const [mascotKind, setMascotKind] = useState<string>("cat");
   const [mascotOffset, setMascotOffset] = useState({ x: 0, y: 0 });
   const [projectPickerVisible, setProjectPickerVisible] = useState(false);
   const [projectsForPicker, setProjectsForPicker] = useState<Project[]>([]);
@@ -296,7 +309,8 @@ export function AssistantScreen() {
   // 待随下一条消息发送的文本附件
   const [attachments, setAttachments] = useState<TextAttachment[]>([]);
   const [writeCard, setWriteCard] = useState<WriteCardRequest | null>(null);
-  writeCardSink = (req) => setWriteCard(req);
+  const [writeDiffExpanded, setWriteDiffExpanded] = useState(false);
+  writeCardSink = (req) => { setWriteDiffExpanded(false); setWriteCard(req); };
   const [pendingQuestion, setPendingQuestion] = useState<AgentClarificationRequest | null>(null);
   const [retryRequest, setRetryRequest] = useState<RetryRequest | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -504,6 +518,7 @@ export function AssistantScreen() {
       setContextWindow(effectiveWindow);
       setHistoryLimit(effectiveLimit);
       setMascotEnabled((await getSetting("general.mascotEnabled")) !== "false");
+      setMascotKind(normalizeMascotKind(await getSetting("general.mascot")));
       const mascotRaw = await getSetting("assistant.mascotOffset");
       if (mascotRaw) {
         try {
@@ -837,6 +852,7 @@ export function AssistantScreen() {
           }
         : null;
       const runHistory = attachmentMessage ? [...nextHistory, attachmentMessage] : nextHistory;
+      const requestStartedAt = Date.now();
       const response = await runAgent({
         project,
         selection: runSelection,
@@ -850,9 +866,11 @@ export function AssistantScreen() {
           requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
         },
       });
+      const processingSeconds = Math.max(1, Math.round((Date.now() - requestStartedAt) / 1000));
       const assistantMessage = await addMessage(sessionId, "assistant", response.content, {
         agentTrace: response.trace,
         ...(response.reasoning ? { reasoning: response.reasoning } : {}),
+        processingSeconds,
         taskStatus: "completed",
         retryContext: { userMessageId: userMessage.id, modelId: runSelection.model.id, agentId: retry?.agentId ?? activeAgentId },
       });
@@ -1051,7 +1069,7 @@ export function AssistantScreen() {
                 </View>
               ) : null}
               {item.role === "assistant" && item.metadata?.reasoning ? (
-                <ReasoningBlock text={item.metadata.reasoning} />
+                <ReasoningBlock text={item.metadata.reasoning} seconds={item.metadata.processingSeconds} />
               ) : null}
               {item.role === "user" && item.metadata?.attachments?.length ? (
                 <View style={styles.attachmentRow}>
@@ -1076,8 +1094,9 @@ export function AssistantScreen() {
             </View>
             {item.role === "user" ? (
               <View style={styles.messageEditRowOutside}>
+                <Text style={styles.messageTime}>{formatMessageTime(item.createdAt)}</Text>
                 <Pressable accessibilityLabel="编辑这条消息" disabled={sending} onPress={() => beginEditMessage(item)} style={styles.messageEditButton}>
-                  <Ionicons name="create-outline" size={15} color={colors.primary} />
+                  <Ionicons name="create-outline" size={15} color={colors.textMuted} />
                   <Text style={styles.messageEditText}>编辑</Text>
                 </Pressable>
               </View>
@@ -1110,7 +1129,7 @@ export function AssistantScreen() {
               {...mascotPan.panHandlers}
             >
               <Image
-                source={require("../../assets/images/mascot-cat.png")}
+                source={mascotSource(mascotKind)}
                 style={[styles.mascotImage, { tintColor: colors.primary }]}
               />
             </View>
@@ -1266,24 +1285,38 @@ export function AssistantScreen() {
             </View>
             {writeCard?.before !== undefined && writeCard?.after !== undefined ? (() => {
               const stats = diffLineStats(writeCard.before, writeCard.after);
+              const afterLines = writeCard.after.split("\n").filter((line) => line.trim().length > 0);
+              const beforeLines = writeCard.before.split("\n").filter((line) => line.trim().length > 0);
               return (
-                <View style={styles.writeStats}>
-                  <Text style={styles.writeStatAdd}>+{stats.added} 行</Text>
-                  <Text style={styles.writeStatDel}>−{stats.removed} 行</Text>
-                </View>
+                <>
+                  <View style={styles.writeStats}>
+                    <Text style={styles.writeStatAdd}>+{stats.added} 行</Text>
+                    <Text style={styles.writeStatDel}>−{stats.removed} 行</Text>
+                    <Text style={styles.writeDiffToggleHint}>{writeCard?.target ?? writeCard?.name ?? ""}</Text>
+                  </View>
+                  {writeDiffExpanded ? (
+                    <ScrollView style={styles.writeDiffScroll} nestedScrollEnabled>
+                      {beforeLines.map((line, idx) => (
+                        <Text key={"b" + idx} style={styles.writeDiffDel} numberOfLines={2}>− {line}</Text>
+                      ))}
+                      {afterLines.map((line, idx) => (
+                        <Text key={"a" + idx} style={styles.writeDiffAdd} numberOfLines={2}>+ {line}</Text>
+                      ))}
+                    </ScrollView>
+                  ) : (
+                    <View style={styles.writeDiff}>
+                      {afterLines.slice(0, 3).map((line, idx) => (
+                        <Text key={"a" + idx} style={styles.writeDiffAdd} numberOfLines={1}>+ {line}</Text>
+                      ))}
+                    </View>
+                  )}
+                  <Pressable accessibilityRole="button" accessibilityLabel={writeDiffExpanded ? "收起全部变更" : "展开全部变更"} onPress={() => setWriteDiffExpanded((value) => !value)} style={styles.writeDiffToggle}>
+                    <Text style={styles.writeDiffToggleText}>{writeDiffExpanded ? "收起变更" : `展开全部 ${stats.added + stats.removed} 行变更`}</Text>
+                    <Ionicons name={writeDiffExpanded ? "chevron-up" : "chevron-down"} size={15} color={colors.textMuted} />
+                  </Pressable>
+                </>
               );
-            })() : null}
-            {writeCard?.before !== undefined && writeCard?.after !== undefined ? (
-              <View style={styles.writeDiff}>
-                {writeCard.before.split("\n").slice(0, 8).map((line, idx) => (
-                  <Text key={"b" + idx} style={styles.writeDiffDel} numberOfLines={1}>− {line}</Text>
-                ))}
-                {writeCard.after.split("\n").slice(0, 8).map((line, idx) => (
-                  <Text key={"a" + idx} style={styles.writeDiffAdd} numberOfLines={1}>+ {line}</Text>
-                ))}
-              </View>
-            ) : null}
-            {writeCard?.details ? (
+            })() : writeCard?.details ? (
               <Text style={styles.sheetRowMeta}>{writeCard.details}</Text>
             ) : null}
             <View style={styles.renameActions}>
@@ -1509,10 +1542,11 @@ const styles = StyleSheet.create({
   emptyMessages: { flexGrow: 1 },
   message: { gap: spacing.md, paddingVertical: spacing.md },
   messageHeader: { minHeight: 28, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
-  messageEditRowOutside: { alignSelf: "flex-end", marginTop: 2, paddingRight: 2 },
+  messageEditRowOutside: { alignSelf: "flex-end", flexDirection: "row", alignItems: "center", gap: 10, marginTop: 2, paddingRight: 2 },
   messageEditButton: { minHeight: 32, flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.xs },
-  messageEditText: { color: colors.primary, fontSize: 13, fontWeight: "700" },
-  userMessage: { marginLeft: 42, paddingHorizontal: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceMuted },
+  messageTime: { color: colors.textMuted, fontSize: 12 },
+  messageEditText: { color: colors.textMuted, fontSize: 13, fontWeight: "700" },
+  userMessage: { alignSelf: "flex-start", maxWidth: "88%", marginLeft: 42, paddingHorizontal: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceMuted },
   assistantMessage: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   messageRole: { color: colors.primary, fontSize: 12, fontWeight: "700" },
   messageText: { color: colors.text, fontSize: 16, lineHeight: 24 },
@@ -1531,6 +1565,10 @@ const styles = StyleSheet.create({
   writeStats: { flexDirection: "row", gap: spacing.sm, paddingVertical: 6 },
   writeStatAdd: { color: "#1B7F4D", fontSize: 12, fontWeight: "800" },
   writeStatDel: { color: colors.danger, fontSize: 12, fontWeight: "800" },
+  writeDiffScroll: { maxHeight: 260, marginHorizontal: spacing.md, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceMuted, paddingVertical: spacing.xs },
+  writeDiffToggle: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, paddingVertical: 10 },
+  writeDiffToggleText: { color: colors.textMuted, fontSize: 13 },
+  writeDiffToggleHint: { color: colors.textMuted, fontSize: 12, flexShrink: 1, textAlign: "right" },
   writeDiff: { backgroundColor: colors.surfaceMuted, borderRadius: 10, padding: 8, gap: 2 },
   writeDiffAdd: { color: "#1B7F4D", fontSize: 11 },
   writeDiffDel: { color: colors.danger, fontSize: 11 },

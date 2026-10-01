@@ -12,6 +12,7 @@ import {
   getStyleSource,
 } from "@/data/style-repositories";
 import { createId } from "@/lib/id";
+import { appendBreadcrumb, appendCrashLog } from "@/lib/crash-log";
 import { readDocxText } from "@/lib/docx";
 import { sha256File } from "@/lib/sha256";
 import {
@@ -302,19 +303,39 @@ function sourceTitle(fileName: string): string {
 }
 
 export async function importStyleSource(): Promise<StyleSource | null> {
+  try {
+    return await runStyleSourceImport();
+  } catch (error) {
+    // 业务失败也要留痕：错误记录与操作轨迹各记一条，否则诊断报告里什么都看不到
+    appendCrashLog("导入参考书", error);
+    appendBreadcrumb(`导入参考书失败：${error instanceof Error ? error.message : String(error)}`);
+    throw error;
+  }
+}
+
+async function runStyleSourceImport(): Promise<StyleSource | null> {
   const result = await DocumentPicker.getDocumentAsync({
-    type: "*/*",
+    type: [
+      "text/*",
+      "application/json",
+      "application/x-yaml",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/epub+zip",
+    ],
     copyToCacheDirectory: true,
     multiple: false,
+  }).catch((pickerError: unknown) => {
+    throw new Error(`导入失败（选择文件）：${pickerError instanceof Error ? pickerError.message : String(pickerError)}`);
   });
   if (result.canceled) return null;
   const asset = result.assets[0];
-  const inputFile = new File(asset.uri);
-  const sizeBytes = asset.size ?? inputFile.size;
-  if (!sizeBytes || sizeBytes > MAX_IMPORT_BYTES) throw new Error("参考书文件必须小于 50 MB");
-  const bytes = await inputFile.bytes();
+  const bytes = await inputFileBytes(asset);
+  const sizeBytes = asset.size ?? bytes.length;
+  if (sizeBytes > MAX_IMPORT_BYTES) throw new Error("参考书文件必须小于 50 MB");
   const format = resolveStyleFormat(asset.name, asset.mimeType, bytes);
-  const contentHash = await sha256File(inputFile);
+  const contentHash = await sha256File(new File(asset.uri)).catch((hashError: unknown) => {
+    throw new Error(`导入失败（校验文件）：${hashError instanceof Error ? hashError.message : String(hashError)}`);
+  });
   const duplicate = await findStyleSourceByHash(contentHash);
   if (duplicate) throw new Error(`《${duplicate.title}》已在参考书库中`);
   const extracted = format === "epub"
@@ -345,7 +366,21 @@ export async function importStyleSource(): Promise<StyleSource | null> {
   } catch (error) {
     if (originalFile.exists) originalFile.delete();
     if (normalizedFile.exists) normalizedFile.delete();
-    throw error;
+    throw error instanceof Error
+      ? new Error(`导入失败（保存）：${error.message}`)
+      : new Error(`导入失败（保存）：${String(error)}`);
+  }
+}
+
+/** 读文件内容：读不了（权限 / 缓存复制失败）时给出带阶段的报错，而不是裸抛。 */
+async function inputFileBytes(asset: { uri: string; name?: string }): Promise<Uint8Array> {
+  const file = new File(asset.uri);
+  try {
+    return await file.bytes();
+  } catch (error) {
+    throw new Error(
+      `导入失败（读取文件）：无法读取「${asset.name || "所选文件"}」，${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 }
 

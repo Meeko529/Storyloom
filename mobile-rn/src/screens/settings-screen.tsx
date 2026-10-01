@@ -82,6 +82,7 @@ const settingsGroups: Array<{
     title: "基础",
     items: [
       { id: "editor", label: "编辑器", icon: "text-outline" },
+      { id: "mascot", label: "吉祥物", icon: "paw-outline" },
     ],
   },
   {

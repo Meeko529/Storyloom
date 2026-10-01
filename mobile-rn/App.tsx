@@ -8,7 +8,7 @@ import { checkAppUpdate, downloadAndInstallUpdate, type AppUpdateInfo } from "@/
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -190,6 +190,13 @@ const styles = StyleSheet.create({
   updateCard: { alignSelf: "stretch", backgroundColor: "#FFFFFF", borderRadius: 16, padding: 18 },
   updateTitle: { fontSize: 17, fontWeight: "700", color: "#20211F" },
   updateHint: { marginTop: 8, fontSize: 13, color: "#696B66", lineHeight: 19 },
+  updateNotesScroll: { maxHeight: 260, marginTop: 10 },
+  updateNoteSection: { marginTop: 8, marginBottom: 2, fontSize: 13, fontWeight: "700", color: "#20211F" },
+  updateNoteRow: { flexDirection: "row", gap: 6, marginTop: 4 },
+  updateNoteBullet: { color: "#176B57", fontSize: 13, lineHeight: 20 },
+  updateNoteText: { flex: 1, fontSize: 13, lineHeight: 20, color: "#3B3C3A" },
+  updateDetail: { flex: 1, alignItems: "center", paddingVertical: 11, borderRadius: 12, backgroundColor: "#EFEFEC" },
+  updateDetailText: { color: "#20211F", fontSize: 14, fontWeight: "600" },
   updateActions: { flexDirection: "row", gap: 10, marginTop: 16 },
   updateLater: { flex: 1, alignItems: "center", paddingVertical: 11, borderRadius: 12, backgroundColor: "#EFEFEC" },
   updateLaterText: { color: "#20211F", fontSize: 14, fontWeight: "600" },
@@ -213,6 +220,20 @@ const styles = StyleSheet.create({
   retryResourceButton: { minHeight: 44, alignItems: "center", justifyContent: "center", marginTop: 8 },
   retryResourceText: { color: colors.primary, fontSize: 14, fontWeight: "700" },
 });
+
+/** 把 Release 说明（Markdown）拆成弹窗里的行：标题行与条目行。 */
+const parseUpdateNotes = (notes: string): Array<{ kind: "section" | "item"; text: string }> =>
+  (notes || "")
+    .split("\n")
+    .map((raw) => raw.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => {
+      if (/^#{1,6}\s/.test(line)) return { kind: "section" as const, text: line.replace(/^#{1,6}\s*/, "") };
+      const item = line.replace(/^[-*]\s*/, "").replace(/\*\*/g, "");
+      return item.length ? { kind: "item" as const, text: item } : null;
+    })
+    .filter((entry): entry is { kind: "section" | "item"; text: string } => entry !== null);
+
 
 /** 启动自动检查更新的提示弹窗：10 秒自动关闭，可直接下载并安装。 */
 function AppUpdatePopup() {
@@ -247,12 +268,28 @@ function AppUpdatePopup() {
       <View style={styles.updateBackdrop}>
         <View style={styles.updateCard}>
           <Text style={styles.updateTitle}>发现新版本 {info.latestVersion}</Text>
-          <Text style={styles.updateHint}>
-            {busy ? (progress || "正在下载…") : `${10 - Math.max(0, countdown)} / 10 秒后自动关闭，也可直接点「立即更新」。`}
-          </Text>
+          {busy ? (
+            <Text style={styles.updateHint}>{progress || "正在下载…"}</Text>
+          ) : (
+            <ScrollView style={styles.updateNotesScroll} nestedScrollEnabled>
+              {parseUpdateNotes(info.notes).map((line, index) =>
+                line.kind === "section" ? (
+                  <Text key={index} style={styles.updateNoteSection}>{line.text}</Text>
+                ) : (
+                  <View key={index} style={styles.updateNoteRow}>
+                    <Text style={styles.updateNoteBullet}>·</Text>
+                    <Text style={styles.updateNoteText}>{line.text}</Text>
+                  </View>
+                ),
+              )}
+            </ScrollView>
+          )}
           <View style={styles.updateActions}>
             <Pressable disabled={busy} onPress={() => setInfo(null)} style={styles.updateLater}>
               <Text style={styles.updateLaterText}>稍后</Text>
+            </Pressable>
+            <Pressable disabled={busy} onPress={() => void Linking.openURL(info.releaseUrl)} style={styles.updateDetail}>
+              <Text style={styles.updateDetailText}>查看详情</Text>
             </Pressable>
             <Pressable
               disabled={busy || !info.apkUrl}
