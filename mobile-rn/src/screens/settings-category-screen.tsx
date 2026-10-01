@@ -1225,6 +1225,29 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
             loading={resourceBusyKind === "all"}
           />
           {resourceProgress ? <Text style={styles.progressText}>{resourceProgress}</Text> : null}
+          <View style={styles.subsectionDivider} />
+          <Text style={styles.subsectionTitle}>oh-story 内容包</Text>
+          <SettingRow label="本地版本" value={ohStoryState.installed?.version ?? "未安装"} />
+          <SettingRow label="最近发现" value={ohStoryState.lastCheck ? `${ohStoryState.lastCheck.version} · ${ohStoryState.lastCheck.commitSha.slice(0, 8)}` : "尚未检查"} />
+          {ohStoryState.installed ? (
+            <>
+              <SettingRow
+                label="已安装内容"
+                value={`${ohStoryState.installed.skills.length} 个技能 · ${ohStoryState.installed.agents.length} 个子智能体 · ${ohStoryState.installed.sha256.slice(0, 12)}`}
+              />
+              {ohStoryState.installed.commitSha || ohStoryState.installed.treeSha ? (
+                <SettingRow label="源码修订" value={(ohStoryState.installed.commitSha ?? ohStoryState.installed.treeSha ?? "").slice(0, 12)} />
+              ) : null}
+            </>
+          ) : null}
+          <Button label={ohStoryBusy ? "处理中" : "检查 GitHub Release"} onPress={() => void checkOhStory()} disabled={ohStoryBusy} loading={ohStoryBusy && ohStoryProgress.includes("检查")} />
+          {ohStoryUpdateAvailable && ohStoryState.lastCheck ? (
+            <Button label={`更新到 ${ohStoryState.lastCheck.version}`} onPress={() => confirmOhStoryInstall(ohStoryState.lastCheck as OhStoryRelease)} disabled={ohStoryBusy} />
+          ) : null}
+          {ohStoryState.previous ? (
+            <Button label={`回滚到 ${ohStoryState.previous.version}`} variant="secondary" onPress={confirmOhStoryRollback} disabled={ohStoryBusy} />
+          ) : null}
+          {ohStoryProgress ? <Text style={styles.progressText}>{ohStoryProgress}</Text> : null}
         </View>
       ) : null}
       {category === "style" ? (
@@ -1590,29 +1613,6 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
             备份包含全部作品、章节、笔记、智能体、技能、设置，以及作品封面与角色头像；不包含 API Key（恢复后需重新填写）与可重新下载的内容包资源。恢复会覆盖当前数据。
           </Text>
           {appUpdateError ? <Text style={styles.progressText}>{appUpdateError}</Text> : null}
-          <View style={styles.subsectionDivider} />
-          <Text style={styles.subsectionTitle}>oh-story 内容包</Text>
-          <SettingRow label="本地版本" value={ohStoryState.installed?.version ?? "未安装"} />
-          <SettingRow label="最近发现" value={ohStoryState.lastCheck ? `${ohStoryState.lastCheck.version} · ${ohStoryState.lastCheck.commitSha.slice(0, 8)}` : "尚未检查"} />
-          {ohStoryState.installed ? (
-            <>
-              <SettingRow
-                label="已安装内容"
-                value={`${ohStoryState.installed.skills.length} 个技能 · ${ohStoryState.installed.agents.length} 个子智能体 · ${ohStoryState.installed.sha256.slice(0, 12)}`}
-              />
-              {ohStoryState.installed.commitSha || ohStoryState.installed.treeSha ? (
-                <SettingRow label="源码修订" value={(ohStoryState.installed.commitSha ?? ohStoryState.installed.treeSha ?? "").slice(0, 12)} />
-              ) : null}
-            </>
-          ) : null}
-          <Button label={ohStoryBusy ? "处理中" : "检查 GitHub Release"} onPress={() => void checkOhStory()} disabled={ohStoryBusy} loading={ohStoryBusy && ohStoryProgress.includes("检查")} />
-          {ohStoryUpdateAvailable && ohStoryState.lastCheck ? (
-            <Button label={`更新到 ${ohStoryState.lastCheck.version}`} onPress={() => confirmOhStoryInstall(ohStoryState.lastCheck as OhStoryRelease)} disabled={ohStoryBusy} />
-          ) : null}
-          {ohStoryState.previous ? (
-            <Button label={`回滚到 ${ohStoryState.previous.version}`} variant="secondary" onPress={confirmOhStoryRollback} disabled={ohStoryBusy} />
-          ) : null}
-          {ohStoryProgress ? <Text style={styles.progressText}>{ohStoryProgress}</Text> : null}
           <View style={styles.subsectionDivider} />
           <Button label="清除当前作品索引" variant="secondary" onPress={() => {
             if (!projectId) return;
