@@ -743,6 +743,19 @@ export function WritingScreen() {
       ) : null}
             {/* behavior=height 会按键盘高度设置容器高度；键盘收起后偶发拿到过期高度，导致编辑器整体变矮（footer 悬在页面中部）。padding 型只加内边距，收起即恢复。 */}
       <KeyboardAvoidingView style={styles.flex} behavior="padding" automaticOffset>
+        {activeChapter && !editing ? (
+          <View style={styles.chapterBar}>
+            <View style={styles.previewHeading}>
+              <Text numberOfLines={1} style={styles.previewVolume}>{activeVolume?.title ?? "作品目录"}</Text>
+              <Text style={styles.previewTitle}>{title || "未命名章节"}</Text>
+              <Text style={styles.previewMeta}>{content.replace(/\s/g, "").length + " 字" + (savedAt ? " · " + savedAt + " 已保存" : "")}</Text>
+            </View>
+            <Pressable accessibilityLabel="编辑章节" onPress={() => setEditing(true)} style={styles.editButton}>
+              <Ionicons name="create-outline" size={22} color={colors.primary} />
+              <Text style={styles.editButtonText}>编辑</Text>
+            </Pressable>
+          </View>
+        ) : null}
         <Pressable accessibilityRole="button" onPress={() => setStylePickerVisible(true)} style={styles.styleSelector}>
           <Ionicons name="color-wand-outline" size={17} color={activeStyleProfile ? colors.primary : colors.textMuted} />
           <Text numberOfLines={1} style={[styles.styleSelectorText, activeStyleProfile && styles.styleSelectorTextActive]}>
@@ -782,17 +795,6 @@ export function WritingScreen() {
               </>
             ) : (
               <View style={styles.preview}>
-                <View style={styles.previewHeader}>
-                  <View style={styles.previewHeading}>
-                    <Text numberOfLines={1} style={styles.previewVolume}>{activeVolume?.title ?? "作品目录"}</Text>
-                    <Text style={styles.previewTitle}>{title || "未命名章节"}</Text>
-                    <Text style={styles.previewMeta}>{content.replace(/\s/g, "").length + " 字" + (savedAt ? " · " + savedAt + " 已保存" : "")}</Text>
-                  </View>
-                  <Pressable accessibilityLabel="编辑章节" onPress={() => setEditing(true)} style={styles.editButton}>
-                    <Ionicons name="create-outline" size={22} color={colors.primary} />
-                    <Text style={styles.editButtonText}>编辑</Text>
-                  </Pressable>
-                </View>
                 <ScrollView style={styles.previewScroll} contentContainerStyle={styles.previewContent} showsVerticalScrollIndicator>
                   <Text selectable style={[styles.previewText, editorTextStyle]}>
                     {content || "本章暂无正文，点击右上角编辑开始写作。"}
@@ -1233,7 +1235,7 @@ const styles = StyleSheet.create({
   errorWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   editor: { flex: 1, padding: spacing.lg, gap: spacing.md },
   preview: { flex: 1, gap: spacing.md },
-  previewHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingBottom: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  chapterBar: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   previewHeading: { flex: 1, minWidth: 0, gap: spacing.xs },
   previewVolume: { color: colors.textMuted, fontSize: 12 },
   previewTitle: { color: colors.text, fontSize: 23, fontWeight: "700" },
