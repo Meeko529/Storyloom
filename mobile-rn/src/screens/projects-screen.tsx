@@ -533,7 +533,7 @@ function coverColor(title: string): string {
             // 书架 = 一行的背景层（照书架类应用的画法）：层板贴图铺在行底部、全宽贯通，
             // 书格底对齐站在板上；与本书数无关——1 本书板也贯通。
             const cellWidth = Math.max(60, Math.floor((shelfInnerWidth - 28 - 12 - 3 * 10) / 4));
-            const plankStrip = Math.round(shelfInnerWidth / (3462 / 383));
+            const plankStrip = Math.round(shelfInnerWidth / (3322 / 383));
             const plankBelow = Math.round(plankStrip * 0.62);
             const rowHeight = Math.round((cellWidth * 4) / 3) + plankBelow;
             return (

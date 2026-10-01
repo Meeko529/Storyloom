@@ -854,6 +854,9 @@ export function AssistantScreen() {
           if (delta.reasoning) setLiveReasoning((current) => current + delta.reasoning);
         },
         onTrace: (trace) => {
+          // 实时时间线的数据源：把执行事件流同步到界面，否则只看得见计时。
+          latestTrace = trace;
+          setLiveTrace(trace);
         },
       });
       const processingSeconds = Math.max(1, Math.round((Date.now() - requestStartedAt) / 1000));
@@ -1020,11 +1023,11 @@ export function AssistantScreen() {
                 <Text style={styles.liveHeaderText}>处理中 · 已处理 {thinkingSeconds}s</Text>
               </View>
               {liveReasoning.trim() ? <ReasoningBlock text={liveReasoning} live /> : null}
-              {liveTrace ? <AgentTraceView trace={liveTrace} defaultExpanded /> : null}
+              {liveTrace ? <AgentTraceView trace={liveTrace} defaultExpanded inline /> : null}
             </View>
           ) : null}
           ListEmptyComponent={models.length ? (
-            <View style={[styles.welcomeBox, { transform: [{ scaleY: -1 }] }]}>
+            <View style={styles.welcomeBox}>
               <Text style={styles.welcomeTitle}>聊灵感、记想法</Text>
               <View style={styles.welcomeChipsRow}>
               {["记一个灵感", "梳理一下我的想法", "随便聊聊"].map((suggestion) => (
@@ -1051,7 +1054,7 @@ export function AssistantScreen() {
                 </View>
               ) : null}
               {item.metadata?.agentTrace ? (
-                <AgentTraceView trace={item.metadata.agentTrace} durationSeconds={item.metadata.processingSeconds} />
+                <AgentTraceView trace={item.metadata.agentTrace} durationSeconds={item.metadata.processingSeconds} inline />
               ) : failed ? (
                 <View style={styles.failureCard}>
                   <Text style={styles.failureTitle}>执行失败</Text>

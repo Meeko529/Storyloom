@@ -106,13 +106,14 @@ export function AgentTraceView({
   trace,
   defaultExpanded = false,
   durationSeconds,
-
+  inline = false,
 }: {
   trace: AgentRunTrace;
   defaultExpanded?: boolean;
   /** 本轮总耗时（秒）：完成态在工作摘要后追加“用时 Ns”。 */
   durationSeconds?: number;
-
+  /** 时间线形态：不画卡片外框与底色，状态行与执行事件直接铺在消息/实时时间线里。 */
+  inline?: boolean;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded || trace.status === "running");
   const status = runStatus(trace);
@@ -140,12 +141,12 @@ export function AgentTraceView({
   ].filter(Boolean).join(" · ") || "正在分析任务";
 
   return (
-    <View style={[styles.trace, trace.status === "error" && styles.traceError]}>
+    <View style={[styles.trace, inline && styles.traceInline, !inline && trace.status === "error" && styles.traceError]}>
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded }}
         onPress={() => setExpanded((value) => !value)}
-        style={styles.traceHeader}
+        style={[styles.traceHeader, inline && styles.traceHeaderInline]}
       >
         <View style={styles.traceIcon}>
           <Ionicons name="git-network-outline" size={15} color={status.color} />
@@ -158,7 +159,7 @@ export function AgentTraceView({
         <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={18} color={colors.textMuted} />
       </Pressable>
       {expanded ? (
-        <View style={styles.events}>
+        <View style={[styles.events, inline && styles.eventsInline]}>
           {trace.collaborationRequired ? (
             <View style={styles.collaborationNotice}>
               <Ionicons name="people-outline" size={16} color={colors.primary} />
@@ -311,6 +312,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#EFF3F0",
   },
   traceError: { borderColor: "#E4B4AE" },
+  // 时间线形态：去掉卡片外框、底色与圆角，状态行与事件行直接落在消息/时间线上。
+  traceInline: { borderWidth: 0, borderRadius: 0, backgroundColor: "transparent" },
+  traceHeaderInline: { paddingHorizontal: 0 },
+  eventsInline: { borderTopWidth: 0 },
   traceHeader: {
     minHeight: 42,
     flexDirection: "row",
