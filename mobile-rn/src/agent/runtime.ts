@@ -2,6 +2,7 @@
 // 改动说明见仓库根目录 docs/上游来源与改动清单.md
 import { callModel } from "@/llm/client";
 import type { AgentMessage, AgentToolCall, AgentToolDefinition } from "@/llm/types";
+import { appendBreadcrumb } from "@/lib/crash-log";
 import { createId } from "@/lib/id";
 import {
   getAgentDefinitions,
@@ -393,6 +394,7 @@ function systemPrompt(input: {
 必须依据工具读取到的当前作品数据工作，不得把其他作品的信息混入本作品。
 用户明确给出新的创作决定、角色变化、世界规则或剧情事实时，不要只在聊天中复述：先读取现有角色与世界书，确认属于正式设定后，调用 create/edit 工具同步到作品。若内容仍是脑暴、存在多种解释或是否采用尚不明确，先调用 ask_user 让用户确认，再写入；不得把未确认的备选想法当作正式设定。
 章节新增或修改后，优先根据当前正文判断角色或世界书是否真的发生变化；发现已确认的新事实时调用对应 create/edit 工具同步。不要为了形式上的检查阻塞当前任务，也不要在没有变化时反复读取全部资料。删除角色或世界书条目只响应用户明确要求。所有写工具仍受用户权限审批。
+用户要求写作正文（续写、成稿、重写某章）时，正文必须通过工具落到作品里：目标章节已存在就用 edit_chapter 写入该章节，只有需要新章节时才用 write_chapter；禁止把正文整篇贴在聊天里当作交付。落盘前会弹出用户的写入确认，用户接受后才生效。写完如需说明，用一两句话概述，不要重复贴出全文。
 任务存在会显著影响结果的偏好或歧义时，使用 ask_user 提出一至三个互不依赖的问题；简单问题不要反问。
 技能不能只凭名称假设内容；任务匹配技能说明时，先调用 activate_skill 加载完整指令。工具参数必须严格符合声明。`];
 
@@ -768,10 +770,12 @@ async function runAgentLoop(input: LoopInput): Promise<LoopResult> {
             ? undefined
             : formatTracePayload(result),
         });
+        appendBreadcrumb(`工具调用 ${call.name}：完成（${eventDetail}）`);
         messages.push({ role: "tool", content: JSON.stringify(result), toolCallId: call.id, toolName: call.name });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         input.recorder.update(eventId, { status: "error", detail: message });
+        appendBreadcrumb(`工具调用 ${call.name}：失败 —— ${message}`);
         messages.push({
           role: "tool",
           content: JSON.stringify({ error: message }),

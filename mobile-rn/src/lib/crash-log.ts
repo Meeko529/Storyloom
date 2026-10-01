@@ -38,13 +38,20 @@ function describeError(error: unknown): string {
 }
 
 /** 同步追加一条记录。用同步写入是为了在致命错误导致进程退出前落盘。 */
+/** 本地时间戳：yyyy-MM-dd HH:mm:ss（报告里的时间与用户手机时钟一致）。 */
+function localStamp(): string {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+}
+
 export function appendCrashLog(kind: string, error: unknown): void {
   try {
     const directory = logDirectory();
     directory.create({ intermediates: true, idempotent: true });
     const file = logFile();
     const previous = file.exists ? file.textSync() : "";
-    const entry = `[${new Date().toISOString()}] ${kind}\n${describeError(error)}\n`;
+    const entry = `[${localStamp()}] ${kind}\n${describeError(error)}\n`;
     let next = `${entry}\n---\n${previous}`;
     if (next.length > MAX_FILE_BYTES) next = next.slice(0, MAX_FILE_BYTES);
     // 只保留最近若干条
@@ -84,7 +91,7 @@ export function appendBreadcrumb(line: string): void {
     const directory = logDirectory();
     directory.create({ intermediates: true, idempotent: true });
     const file = new File(directory, BREADCRUMB_FILE_NAME);
-    const stamp = new Date().toISOString().slice(11, 19);
+    const stamp = localStamp();
     const entry = `[${stamp}] ${line}`;
     const previous = file.exists ? file.textSync() : "";
     let chunks = [entry, ...(previous ? previous.split("\n") : [])];
