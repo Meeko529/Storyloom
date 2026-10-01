@@ -1492,12 +1492,6 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
               />
               {apkProgress ? <Text style={styles.progressText}>{apkProgress}</Text> : null}
               <Text style={styles.sectionHint}>下载失败时会自动尝试国内加速镜像；安装时系统会要求授权「安装未知应用」。</Text>
-              {appUpdate.notes ? (
-                <>
-                  <Text style={styles.sectionHint}>本次更新说明</Text>
-                  <Text style={styles.updateNotes} numberOfLines={12}>{appUpdate.notes}</Text>
-                </>
-              ) : null}
               <Button
                 label="改用浏览器下载"
                 variant="secondary"
@@ -1651,7 +1645,7 @@ const styles = StyleSheet.create({
   mascotCellSelected: { borderColor: colors.primary, borderWidth: 2 },
   mascotPreview: { width: 56, height: 56, tintColor: colors.primary },
   mascotLabel: { color: colors.text, fontSize: 12 },
-  groupHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 8, marginTop: 6 },
+  groupHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 7, paddingHorizontal: spacing.sm, marginTop: 0, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   searchInput: { minHeight: 42, marginBottom: spacing.sm, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, color: colors.text, fontSize: 14 },
   skillSheet: { maxHeight: "82%", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, backgroundColor: colors.background },
   skillSheetHeader: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: spacing.sm },

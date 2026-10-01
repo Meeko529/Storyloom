@@ -111,7 +111,7 @@ export async function createStyleSource(input: {
   const now = new Date().toISOString();
   const title = requiredText(input.title, "书名").slice(0, 200);
   const fileName = requiredText(input.fileName, "文件名").slice(0, 500);
-  if (!["txt", "markdown", "epub"].includes(input.format)) throw new Error("不支持的书籍格式");
+  if (!["txt", "markdown", "epub", "docx"].includes(input.format)) throw new Error("不支持的书籍格式");
   if (!Number.isSafeInteger(input.sizeBytes) || input.sizeBytes < 1) throw new Error("书籍文件大小无效");
   if (!Number.isSafeInteger(input.characterCount) || input.characterCount < 1) throw new Error("书籍正文为空");
   await database.runAsync(

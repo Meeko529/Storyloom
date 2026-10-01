@@ -19,6 +19,7 @@ import type { RootStackParamList, RootTabParamList } from "@/navigation/types";
 import { useAppStore } from "@/store/app-store";
 
 const PLANK_IMAGE = require("../../assets/images/shelf-plank.png");
+const BOOK_SHADOW = require("../../assets/images/book-shadow.png");
 import { colors, radius, shadow, spacing } from "@/theme";
 import type { Project } from "@/types";
 
@@ -274,6 +275,49 @@ function coverColor(title: string): string {
           </View>
         }
       />
+      {shelfMenuVisible ? (
+        <>
+          <Pressable accessibilityLabel="关闭书架菜单" onPress={() => setShelfMenuVisible(false)} style={styles.shelfMenuBackdrop} />
+          <View style={styles.shelfMenuCard}>
+            <Pressable
+              accessibilityLabel="本机导入"
+              disabled={importing}
+              onPress={() => void runShelfImport()}
+              style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+            >
+              {importing
+                ? <ActivityIndicator size={20} color={colors.primary} />
+                : <Ionicons name="document-outline" size={20} color={colors.primary} />}
+              <Text style={styles.menuRowText}>本机导入</Text>
+              <Text style={styles.menuRowHint}>TXT · Word · EPUB</Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel={viewMode === "grid" ? "书架样式：切换为列表" : "书架样式：切换为网格"}
+              onPress={() => { toggleViewMode(); setShelfMenuVisible(false); }}
+              style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+            >
+              <Ionicons name={viewMode === "grid" ? "list-outline" : "grid-outline"} size={20} color={colors.primary} />
+              <Text style={styles.menuRowText}>书架样式</Text>
+              <Text style={styles.menuRowHint}>{viewMode === "grid" ? "网格" : "列表"}</Text>
+            </Pressable>
+            <View style={[styles.menuRow, styles.menuRowDisabled]}>
+              <Ionicons name="folder-open-outline" size={20} color={colors.textMuted} />
+              <Text style={styles.menuRowText}>分类管理</Text>
+              <Text style={styles.menuRowHint}>未开放</Text>
+            </View>
+            <View style={[styles.menuRow, styles.menuRowDisabled]}>
+              <Ionicons name="albums-outline" size={20} color={colors.textMuted} />
+              <Text style={styles.menuRowText}>在书架上显示分类</Text>
+              <Text style={styles.menuRowHint}>未开放</Text>
+            </View>
+            <View style={[styles.menuRow, styles.menuRowDisabled]}>
+              <Ionicons name="swap-vertical-outline" size={20} color={colors.textMuted} />
+              <Text style={styles.menuRowText}>书架排序</Text>
+              <Text style={styles.menuRowHint}>未开放</Text>
+            </View>
+          </View>
+        </>
+      ) : null}
       <FlatList
         key={viewMode}
         data={(viewMode === "grid" ? chunkProjects(projects, 4) : projects) as unknown as Project[]}
@@ -329,6 +373,7 @@ function coverColor(title: string): string {
                     const lines = bookTitleLines(project.title);
                     return (
                       <Pressable key={project.id} onPress={() => openProject(project)} onLongPress={() => openProjectMenu(project)} style={({ pressed }) => [styles.shelfCell, pressed && styles.rowPressed]}>
+                        <Image source={BOOK_SHADOW} style={styles.bookShadowImage} resizeMode="stretch" />
                         <View style={[styles.bookObject, { backgroundColor: coverColor(project.title) }]}>
                           <View style={styles.bookSpine} />
                           {project.coverPath ? (
@@ -415,49 +460,6 @@ function coverColor(title: string): string {
         </KeyboardAvoidingView>
       </Modal>
 
-      <Modal visible={shelfMenuVisible} transparent animationType="slide" onRequestClose={() => setShelfMenuVisible(false)}>
-        <Pressable onPress={() => setShelfMenuVisible(false)} style={styles.menuBackdrop}>
-          <View style={styles.menuSheet}>
-            <Text style={styles.menuTitle}>书架</Text>
-            <Pressable
-              accessibilityLabel="本机导入"
-              disabled={importing}
-              onPress={() => void runShelfImport()}
-              style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
-            >
-              {importing
-                ? <ActivityIndicator size={20} color={colors.primary} />
-                : <Ionicons name="document-outline" size={20} color={colors.primary} />}
-              <Text style={styles.menuRowText}>本机导入</Text>
-              <Text style={styles.menuRowHint}>TXT · Markdown · Word · EPUB</Text>
-            </Pressable>
-            <Pressable
-              accessibilityLabel={viewMode === "grid" ? "书架样式：切换为列表" : "书架样式：切换为网格"}
-              onPress={() => { toggleViewMode(); setShelfMenuVisible(false); }}
-              style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
-            >
-              <Ionicons name={viewMode === "grid" ? "list-outline" : "grid-outline"} size={20} color={colors.primary} />
-              <Text style={styles.menuRowText}>书架样式</Text>
-              <Text style={styles.menuRowHint}>{viewMode === "grid" ? "网格" : "列表"}</Text>
-            </Pressable>
-            <View style={[styles.menuRow, styles.menuRowDisabled]}>
-              <Ionicons name="folder-open-outline" size={20} color={colors.textMuted} />
-              <Text style={styles.menuRowText}>分类管理</Text>
-              <Text style={styles.menuRowHint}>未开放</Text>
-            </View>
-            <View style={[styles.menuRow, styles.menuRowDisabled]}>
-              <Ionicons name="albums-outline" size={20} color={colors.textMuted} />
-              <Text style={styles.menuRowText}>在书架上显示分类</Text>
-              <Text style={styles.menuRowHint}>未开放</Text>
-            </View>
-            <View style={[styles.menuRow, styles.menuRowDisabled]}>
-              <Ionicons name="swap-vertical-outline" size={20} color={colors.textMuted} />
-              <Text style={styles.menuRowText}>书架排序</Text>
-              <Text style={styles.menuRowHint}>未开放</Text>
-            </View>
-          </View>
-        </Pressable>
-      </Modal>
       <Modal visible={menuProject !== null} transparent animationType="slide" onRequestClose={() => setMenuProject(null)}>
         <Pressable onPress={() => setMenuProject(null)} style={styles.menuBackdrop}>
           <View style={styles.menuSheet}>
@@ -544,7 +546,8 @@ const styles = StyleSheet.create({
   shelfRow: { paddingHorizontal: 14, marginBottom: 2 },
   shelfBooks: { flexDirection: "row", alignItems: "flex-end", gap: 10, marginBottom: -12, paddingHorizontal: 6 },
   shelfCell: { flex: 1, alignItems: "center" },
-  bookObject: { width: "100%", aspectRatio: 3 / 4, borderRadius: 10, overflow: "hidden", justifyContent: "center", borderWidth: 1, borderColor: "rgba(0,0,0,0.12)", elevation: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.38, shadowRadius: 6 },
+  bookObject: { width: "100%", aspectRatio: 3 / 4, borderRadius: 10, overflow: "hidden", justifyContent: "center" },
+  bookShadowImage: { position: "absolute", left: 4, top: 7, width: "100%", height: "100%", borderRadius: 10 },
   bookSpine: { position: "absolute", left: 0, top: 0, bottom: 0, width: "9%", backgroundColor: "#EDE6D8", borderRightWidth: 1, borderRightColor: "rgba(0,0,0,0.10)" },
   bookCoverTextWrap: { alignSelf: "stretch", alignItems: "center", gap: 2, paddingHorizontal: 18 },
   bookCoverLine: { color: "rgba(255,255,255,0.95)", fontSize: 16, fontWeight: "800", letterSpacing: 1 },
@@ -557,6 +560,8 @@ const styles = StyleSheet.create({
   gridCoverText: { color: "rgba(255,255,255,0.85)", fontSize: 40, fontWeight: "800", lineHeight: 46, marginBottom: 2 },
   gridName: { alignSelf: "stretch", fontSize: 12, fontWeight: "600", textAlign: "center" },
   gridStats: { alignSelf: "stretch", fontSize: 10, color: colors.textMuted, textAlign: "center" },
+  shelfMenuBackdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9 },
+  shelfMenuCard: { position: "absolute", top: 100, right: 18, width: 236, backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, paddingVertical: 4, zIndex: 10, elevation: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 10 },
   menuBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay },
   menuSheet: { paddingVertical: spacing.sm, paddingBottom: spacing.xl, borderTopLeftRadius: radius.md, borderTopRightRadius: radius.md, backgroundColor: colors.background },
   menuTitle: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xs, color: colors.textMuted, fontSize: 13 },

@@ -315,6 +315,8 @@ export function AgentQuestionSheet({
 
 const styles = StyleSheet.create({
   trace: {
+    alignSelf: "flex-start",
+    maxWidth: "92%",
     overflow: "hidden",
     borderWidth: 1,
     borderColor: colors.border,

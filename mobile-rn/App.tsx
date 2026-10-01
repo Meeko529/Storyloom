@@ -70,18 +70,6 @@ function MainTabs() {
 }
 
 export default function App() {
-  // 启动自动检查更新：静默检查一次，有新版才提示
-  useEffect(() => {
-    void (async () => {
-      try {
-        const info = await checkAppUpdate();
-        if (info?.hasUpdate) {
-          Alert.alert("发现新版本", `${info.latestVersion} 已发布，可在「设置 → 高级」中更新。`);
-        }
-      } catch {}
-    })();
-  }, []);
-
   return (
     <SafeAreaProvider>
       <KeyboardProvider preserveEdgeToEdge>
