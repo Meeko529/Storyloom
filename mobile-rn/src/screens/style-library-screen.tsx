@@ -478,7 +478,7 @@ export function StyleLibraryScreen() {
               <Text style={styles.helperText}>
                 蒸馏使用“设置 → 模型与供应商”里的默认模型：{distillationModelName ?? "尚未选择默认模型"}
               </Text>
-              <Text style={styles.sectionTitle}>参考文风版本</Text>
+              <Text style={styles.sheetSectionTitle}>参考文风版本</Text>
               {sourceProfiles.length ? sourceProfiles.map((profile) => (
                 <ProfileRow
                   key={profile.id}
@@ -589,6 +589,7 @@ const styles = StyleSheet.create({
   clearActiveText: { color: colors.primary, fontSize: 13, fontWeight: "700" },
   sectionHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: spacing.xl, paddingBottom: spacing.sm },
   sectionTitle: { color: colors.text, fontSize: 16, fontWeight: "700" },
+  sheetSectionTitle: { marginTop: spacing.sm, color: colors.text, fontSize: 16, fontWeight: "700" },
   sectionMeta: { color: colors.textMuted, fontSize: 12 },
   sourceRow: { minHeight: 84, flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   sourceRowPressed: { backgroundColor: colors.surfaceMuted },
@@ -612,12 +613,12 @@ const styles = StyleSheet.create({
   sheetTitleWrap: { flex: 1, minWidth: 0 },
   sheetTitle: { color: colors.text, fontSize: 19, fontWeight: "700" },
   sheetMeta: { marginTop: 3, color: colors.textMuted, fontSize: 12 },
-  sheetContent: { padding: spacing.lg, paddingBottom: spacing.xxl },
+  sheetContent: { gap: spacing.md, padding: spacing.lg, paddingBottom: spacing.xxl },
   profileContent: { gap: spacing.lg, padding: spacing.lg, paddingBottom: spacing.xxl },
   inlineActions: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: spacing.sm },
   secondaryIconAction: { width: 46, height: 46, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, backgroundColor: colors.surface },
   helperText: { color: colors.textMuted, fontSize: 13, lineHeight: 19 },
-  progressBox: { gap: 6, marginTop: 2 },
+  progressBox: { gap: 6 },
   progressTrack: { height: 6, borderRadius: 3, backgroundColor: colors.surfaceMuted, overflow: "hidden" },
   progressFill: { height: 6, borderRadius: 3, backgroundColor: colors.primary },
   progressText: { color: colors.primary, fontSize: 13, lineHeight: 19, fontWeight: "600" },
