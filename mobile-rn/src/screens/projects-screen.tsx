@@ -532,9 +532,9 @@ function coverColor(title: string): string {
             const row = item.kind === "row" ? item.row : [];
             // 书架几何：格子定宽 → 本行书有多少本，架板就多长；书压在架板上（书在前，架子在下）。
             const cellWidth = Math.max(60, Math.floor((shelfInnerWidth - 28 - 12 - 3 * 10) / 4));
-            const groupWidth = row.length * cellWidth + (row.length - 1) * 10 + 12;
+            const groupWidth = row.length * cellWidth + (row.length - 1) * 10 + 12 + 28;
             const plankHeight = Math.round(groupWidth / (3462 / 383));
-            const plankOverlap = 8;
+            const plankOverlap = Math.max(8, Math.round(plankHeight * 0.3));
             return (
               <View
                 style={styles.shelfRow}
