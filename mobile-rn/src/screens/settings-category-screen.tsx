@@ -1119,7 +1119,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       ) : null}
       {category === "mascot" ? (
         <View style={styles.section}>
-          <Text style={styles.sectionHint}>吉祥物坐在助手输入框上沿，颜色跟随主题色；关掉开关即隐藏。</Text>
+          <Text style={styles.sectionHint}>颜色跟随主题色。</Text>
           <ToggleRow label="显示吉祥物" value={mascotEnabled} onChange={(value) => { setMascotEnabled(value); void savePreference("general.mascotEnabled", value ? "true" : "false", (v) => setMascotEnabled(v === "true")); }} />
           <Text style={styles.subsectionTitle}>形象</Text>
           <View style={styles.mascotGrid}>
