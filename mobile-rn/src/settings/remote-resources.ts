@@ -33,6 +33,56 @@ const MAX_LORN_PACKAGE_BYTES = 500_000;
 const MAX_LORN_RUNTIME_INSTRUCTIONS_CHARACTERS = 36_000;
 const DOWNLOAD_SPACE_RESERVE = 128 * 1024 * 1024;
 
+/** 可选字体包：霞鹜文楷 GB Lite（OFL-1.1，允许嵌入与再分发）。 */
+export const FONT_PACK_INFO = {
+  id: "font-wenkai",
+  label: "正文中文字体：霞鹜文楷 GB Lite",
+  fileName: "LXGWWenKaiGBLite-Regular.ttf",
+  /** 注册给 expo-font 的字族名，写作页按此名渲染。 */
+  family: "StoryloomWenKai",
+  version: "v1.522",
+  bytes: 14_116_284,
+  sha256: "1675c708cce181871d9a8adc987f35a0cabc6ff980685cd99f05d2655ea08c4c",
+  url: "https://github.com/lxgw/LxgwWenkaiGB-Lite/releases/download/v1.522/LXGWWenKaiGBLite-Regular.ttf",
+  mirrors: [
+    "https://gh-proxy.com/https://github.com/lxgw/LxgwWenkaiGB-Lite/releases/download/v1.522/LXGWWenKaiGBLite-Regular.ttf",
+    "https://ghfast.top/https://github.com/lxgw/LxgwWenkaiGB-Lite/releases/download/v1.522/LXGWWenKaiGBLite-Regular.ttf",
+  ],
+  license: "SIL Open Font License 1.1",
+  licenseUrl: "https://github.com/lxgw/LxgwWenkaiGB-Lite/blob/v1.522/OFL.txt",
+  repository: "https://github.com/lxgw/LxgwWenkaiGB-Lite",
+  purpose: "正文可选的楷体/衬线中文字体，比系统自带字体更接近纸书排版；OFL-1.1 允许随应用分发。",
+} as const;
+
+/** 可选技能包：Chinese Novelist（MIT，钉死 commit 取文件）。 */
+export const SKILL_PACK_INFO = {
+  id: "novelist-skill",
+  label: "第三方技能包：中文小说创作（Chinese Novelist）",
+  repository: "PenglongHuang/chinese-novelist-skill",
+  repositoryUrl: "https://github.com/PenglongHuang/chinese-novelist-skill",
+  commit: "cb6c3e7d0563c6a685e6539ea642642ab98855d7",
+  version: "master@cb6c3e7",
+  license: "MIT",
+  licenseUrl: "https://github.com/PenglongHuang/chinese-novelist-skill/blob/cb6c3e7d0563c6a685e6539ea642642ab98855d7/LICENSE",
+  purpose: "把「从零写完整中文长篇」的分阶段流程（定位问答 / 规划 / 创作 / 校验）作为一条技能接入，可随时开关与删除。",
+} as const;
+
+const SKILL_PACK_KEY = "content.novelistSkill.package.v1";
+const SKILL_PACK_SOURCE_PATHS = [
+  "SKILL.md",
+  "references/flows/phase0-initialization.md",
+  "references/flows/phase1-layer1-core.md",
+  "references/flows/phase1-layer2-customize.md",
+  "references/flows/phase1-layer3-title.md",
+  "references/flows/phase2-planning.md",
+  "references/flows/phase3-writing.md",
+  "references/flows/phase4-validation.md",
+  "references/flows/shared-infrastructure.md",
+] as const;
+const MAX_SKILL_PACK_FILE_BYTES = 120_000;
+const MAX_SKILL_PACK_INSTRUCTIONS_CHARACTERS = 64_000;
+const FONT_VERIFICATION_KEY = "resources.fontPack.verified.v1";
+
 const LORN_SOURCE_PATHS = [
   "CommonSkills/通用-蒸馏作者文风/SKILL.md",
   "CommonSkills/通用-蒸馏作者文风/references/作者风格模板格式定义.md",
@@ -120,6 +170,24 @@ const modelVerificationSchema = z.object({
   verifiedAt: z.string().min(1),
 });
 
+const fontVerificationSchema = z.object({
+  bytes: z.number().int().positive(),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  lastModified: z.number().nullable(),
+  verifiedAt: z.string().min(1),
+});
+
+const novelistSkillPackageSchema = z.object({
+  source: z.literal("chinese-novelist-skill"),
+  version: z.literal(1),
+  repository: z.literal(SKILL_PACK_INFO.repository),
+  commitSha: z.literal(SKILL_PACK_INFO.commit),
+  installedAt: z.string().min(1),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  upstreamLicense: z.literal("MIT"),
+  skills: z.array(catalogSkillSchema.extend({ source: z.literal("plugin") })).length(1),
+});
+
 export type LocalModelKind = "embedding" | "rerank";
 
 export const LOCAL_MODEL_INFO = {
@@ -148,7 +216,7 @@ export const LOCAL_MODEL_INFO = {
 } as const;
 
 export interface ResourceItemState {
-  id: "openficm-content" | "oh-story" | "lorn-style" | LocalModelKind;
+  id: "openficm-content" | OptionalResourceKind;
   label: string;
   status: "ready" | "missing" | "incomplete";
   detail: string;
@@ -194,6 +262,25 @@ export function getLocalModelFile(kind: LocalModelKind): File {
 
 function verificationKey(kind: LocalModelKind): string {
   return `${MODEL_VERIFICATION_PREFIX}${kind}`;
+}
+
+function fontDirectory(): Directory {
+  return new Directory(Paths.document, "openficm-resources", "fonts");
+}
+
+/** 已下载的字体文件；不存在时调用方按「未安装」处理，编辑器自动回落到系统字体。 */
+export function getLocalFontFile(): File {
+  return new File(fontDirectory(), FONT_PACK_INFO.fileName);
+}
+
+function fontFilePath(): string | null {
+  const file = getLocalFontFile();
+  return file.exists && file.size === FONT_PACK_INFO.bytes ? file.uri : null;
+}
+
+/** 返回可直接交给 expo-font 注册的字体文件路径；未安装或大小不符时为 null。 */
+export function getInstalledFontFilePath(): string | null {
+  return fontFilePath();
 }
 
 async function readStoredJson(key: string): Promise<unknown> {
@@ -541,14 +628,182 @@ async function downloadModel(kind: LocalModelKind, onProgress?: (progress: Resou
   throw new Error(`${info.name} 所有下载源均失败 —— ${failures.join("；")}`);
 }
 
+/** 依次尝试主源与镜像，全部失败才抛错。 */
+async function fetchTextWithMirrors(urls: string[], maximumBytes: number): Promise<string> {
+  let lastError: unknown;
+  for (const url of urls) {
+    try {
+      return await fetchText(url, maximumBytes);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("下载远程内容失败");
+}
+
+async function verifyFont(): Promise<ResourceItemState> {
+  const base = { id: FONT_PACK_INFO.id, label: FONT_PACK_INFO.label, bytes: FONT_PACK_INFO.bytes, required: false, purpose: FONT_PACK_INFO.purpose } as const;
+  const file = getLocalFontFile();
+  if (!file.exists) return { ...base, status: "missing", detail: "尚未下载" };
+  if (file.size !== FONT_PACK_INFO.bytes) return { ...base, status: "incomplete", detail: `文件大小异常：${file.size}/${FONT_PACK_INFO.bytes}` };
+  const cached = fontVerificationSchema.safeParse(await readStoredJson(FONT_VERIFICATION_KEY));
+  if (cached.success
+    && cached.data.bytes === FONT_PACK_INFO.bytes
+    && cached.data.sha256 === FONT_PACK_INFO.sha256
+    && cached.data.lastModified === file.lastModified) {
+    return { ...base, status: "ready", detail: `已就绪 · ${FONT_PACK_INFO.license}` };
+  }
+  const sha256 = await sha256File(file);
+  if (sha256 !== FONT_PACK_INFO.sha256) return { ...base, status: "incomplete", detail: "SHA-256 校验失败" };
+  await setSetting(FONT_VERIFICATION_KEY, JSON.stringify({
+    bytes: FONT_PACK_INFO.bytes,
+    sha256,
+    lastModified: file.lastModified,
+    verifiedAt: new Date().toISOString(),
+  }));
+  return { ...base, status: "ready", detail: `已就绪 · ${FONT_PACK_INFO.license}` };
+}
+
+async function downloadFont(onProgress?: (progress: ResourceInstallProgress) => void): Promise<void> {
+  const directory = fontDirectory();
+  directory.create({ intermediates: true, idempotent: true });
+  const target = getLocalFontFile();
+  const failures: string[] = [];
+  const sources = [FONT_PACK_INFO.url, ...FONT_PACK_INFO.mirrors];
+
+  for (const source of sources) {
+    const sourceLabel = source.includes("gh-proxy") || source.includes("ghfast") ? "国内镜像" : "GitHub";
+    const temporary = new File(directory, `${FONT_PACK_INFO.fileName}.download`);
+    if (temporary.exists) temporary.delete();
+    const task = File.createDownloadTask(source, temporary, {
+      headers: { Accept: "application/octet-stream", "User-Agent": "OpenFicM-Android" },
+      onProgress: ({ bytesWritten, totalBytes }) => onProgress?.({
+        stage: FONT_PACK_INFO.id,
+        label: `下载${FONT_PACK_INFO.label}（${sourceLabel}）`,
+        completed: 0,
+        total: 1,
+        bytesWritten,
+        totalBytes: totalBytes > 0 ? totalBytes : FONT_PACK_INFO.bytes,
+      }),
+    });
+    try {
+      const downloaded = await task.downloadAsync();
+      if (!downloaded) throw new Error("字体下载被暂停");
+      if (downloaded.size !== FONT_PACK_INFO.bytes) throw new Error(`字体下载不完整：${downloaded.size}/${FONT_PACK_INFO.bytes}`);
+      onProgress?.({ stage: FONT_PACK_INFO.id, label: "校验字体文件", completed: 0, total: 1, bytesWritten: 0, totalBytes: FONT_PACK_INFO.bytes });
+      const sha256 = await sha256File(downloaded, (bytesRead, totalBytes) => onProgress?.({
+        stage: FONT_PACK_INFO.id,
+        label: "校验字体文件",
+        completed: 0,
+        total: 1,
+        bytesWritten: bytesRead,
+        totalBytes,
+      }));
+      if (sha256 !== FONT_PACK_INFO.sha256) throw new Error("字体文件 SHA-256 校验失败");
+      if (target.exists) target.delete();
+      await downloaded.move(target);
+      await setSetting(FONT_VERIFICATION_KEY, JSON.stringify({
+        bytes: FONT_PACK_INFO.bytes,
+        sha256,
+        lastModified: target.lastModified,
+        verifiedAt: new Date().toISOString(),
+      }));
+      onProgress?.({ stage: FONT_PACK_INFO.id, label: "字体已就绪", completed: 1, total: 1, bytesWritten: FONT_PACK_INFO.bytes, totalBytes: FONT_PACK_INFO.bytes });
+      return;
+    } catch (error) {
+      if (temporary.exists) temporary.delete();
+      failures.push(`${sourceLabel}：${error instanceof Error ? error.message : String(error)}`);
+      onProgress?.({ stage: FONT_PACK_INFO.id, label: `${sourceLabel}下载失败，正在尝试下一个下载源`, completed: 0, total: 1 });
+    } finally {
+      task.release();
+    }
+  }
+  throw new Error(`字体包所有下载源均失败 —— ${failures.join("；")}`);
+}
+
+export type NovelistSkillPackage = z.infer<typeof novelistSkillPackageSchema>;
+
+export async function getInstalledNovelistSkillPack(): Promise<NovelistSkillPackage | null> {
+  const parsed = novelistSkillPackageSchema.safeParse(await readStoredJson(SKILL_PACK_KEY));
+  return parsed.success ? parsed.data : null;
+}
+
+export async function uninstallNovelistSkillPack(): Promise<void> {
+  await setSetting(SKILL_PACK_KEY, "");
+}
+
+async function installNovelistSkillPack(onProgress?: (progress: ResourceInstallProgress) => void): Promise<void> {
+  const documents = new Map<string, string>();
+  for (let index = 0; index < SKILL_PACK_SOURCE_PATHS.length; index += 1) {
+    const path = SKILL_PACK_SOURCE_PATHS[index];
+    onProgress?.({
+      stage: SKILL_PACK_INFO.id,
+      label: `下载技能包：${path.split("/").at(-1)}`,
+      completed: index,
+      total: SKILL_PACK_SOURCE_PATHS.length,
+    });
+    const content = await fetchTextWithMirrors([
+      rawGitHubUrl(SKILL_PACK_INFO.repository, SKILL_PACK_INFO.commit, path),
+      `https://gh-proxy.com/${rawGitHubUrl(SKILL_PACK_INFO.repository, SKILL_PACK_INFO.commit, path)}`,
+      `https://ghfast.top/${rawGitHubUrl(SKILL_PACK_INFO.repository, SKILL_PACK_INFO.commit, path)}`,
+    ], MAX_SKILL_PACK_FILE_BYTES);
+    documents.set(path, content);
+  }
+
+  const skillFile = documents.get("SKILL.md");
+  if (!skillFile) throw new Error("技能包缺少 SKILL.md");
+  const instructions = [
+    skillFile.trim(),
+    ...SKILL_PACK_SOURCE_PATHS.filter((path) => path !== "SKILL.md").map((path) => {
+      const content = documents.get(path);
+      return content ? `\n\n<!-- ${path} -->\n${content.trim()}` : "";
+    }),
+  ].join("").slice(0, MAX_SKILL_PACK_INSTRUCTIONS_CHARACTERS);
+
+  const sourceHash = [...documents.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([path, content]) => `${path}\n${content}`)
+    .join("\n\u0000\n");
+
+  const packageValue = novelistSkillPackageSchema.parse({
+    source: "chinese-novelist-skill",
+    version: 1,
+    repository: SKILL_PACK_INFO.repository,
+    commitSha: SKILL_PACK_INFO.commit,
+    installedAt: new Date().toISOString(),
+    sha256: await sha256Text(sourceHash),
+    upstreamLicense: "MIT",
+    skills: [{
+      id: "plugin-novelist--core",
+      name: "中文小说创作流程",
+      description: "来自 Chinese Novelist（MIT）：分阶段从零产出中文长篇——定位问答、规划、撰写、自动校验。",
+      instructions,
+      enabled: false,
+      source: "plugin" as const,
+    }],
+  });
+  await setSetting(SKILL_PACK_KEY, JSON.stringify(packageValue));
+  onProgress?.({ stage: SKILL_PACK_INFO.id, label: "技能包已安装", completed: SKILL_PACK_SOURCE_PATHS.length, total: SKILL_PACK_SOURCE_PATHS.length });
+}
+
 export async function getRuntimeResourceState(): Promise<RuntimeResourceState> {
-  const [catalog, ohStory, lorn, embedding, rerank] = await Promise.all([
+  const [catalog, ohStory, lorn, font, skillPack, embedding, rerank] = await Promise.all([
     getInstalledOpenFicMCatalog(),
     getInstalledOhStoryPackage(),
     getInstalledLornStylePackage(),
+    verifyFont(),
+    getInstalledNovelistSkillPack(),
     verifyModel("embedding"),
     verifyModel("rerank"),
   ]);
+  const skillPackItem: ResourceItemState = {
+    id: SKILL_PACK_INFO.id,
+    label: SKILL_PACK_INFO.label,
+    status: skillPack ? "ready" : "missing",
+    detail: skillPack ? `${skillPack.commitSha.slice(0, 7)} · ${skillPack.skills.length} 个技能 · ${SKILL_PACK_INFO.license}` : "未安装（可选）",
+    required: false,
+    purpose: SKILL_PACK_INFO.purpose,
+  };
   const items: ResourceItemState[] = [
     {
       id: "openficm-content",
@@ -574,6 +829,8 @@ export async function getRuntimeResourceState(): Promise<RuntimeResourceState> {
       required: false,
       purpose: "用于从导入的参考小说中蒸馏文风。该内容未声明开源许可，需手动获取。",
     },
+    skillPackItem,
+    font,
     embedding,
     rerank,
   ];
@@ -587,9 +844,9 @@ export async function getRuntimeResourceState(): Promise<RuntimeResourceState> {
   };
 }
 
-export type OptionalResourceKind = "oh-story" | "lorn-style" | LocalModelKind;
+export type OptionalResourceKind = "oh-story" | "lorn-style" | "novelist-skill" | "font-wenkai" | LocalModelKind;
 
-export const ALL_OPTIONAL_RESOURCE_KINDS: OptionalResourceKind[] = ["oh-story", "lorn-style", "embedding", "rerank"];
+export const ALL_OPTIONAL_RESOURCE_KINDS: OptionalResourceKind[] = ["oh-story", "lorn-style", "novelist-skill", "font-wenkai", "embedding", "rerank"];
 
 /**
  * 安装指定的「可选增强」资源。
@@ -632,6 +889,19 @@ export async function installOptionalResources(
 
   if (wanted.has("lorn-style") && isMissing("lorn-style")) {
     await run("Lorn 文风包", () => installLornStylePackage(onProgress));
+  }
+
+  if (wanted.has("novelist-skill") && isMissing("novelist-skill")) {
+    await run(SKILL_PACK_INFO.label, () => installNovelistSkillPack(onProgress));
+  }
+
+  if (wanted.has("font-wenkai") && isMissing("font-wenkai")) {
+    const needBytes = FONT_PACK_INFO.bytes + DOWNLOAD_SPACE_RESERVE;
+    if (Paths.availableDiskSpace < needBytes) {
+      errors.push("字体包：存储空间不足，至少需要 " + Math.ceil(needBytes / 1024 / 1024) + " MB 可用空间");
+    } else {
+      await run(FONT_PACK_INFO.label, () => downloadFont(onProgress));
+    }
   }
 
   const modelKinds = (["embedding", "rerank"] as const).filter((kind) => wanted.has(kind) && isMissing(kind));

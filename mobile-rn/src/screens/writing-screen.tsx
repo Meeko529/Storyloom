@@ -19,6 +19,7 @@ import {
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 import { Button, EmptyState, ErrorNotice, Field, Header, Screen, SheetBackdrop } from "@/components/ui";
+import { ensureEditorFontLoaded } from "@/settings/font-loader";
 import { exportNovel, type ExportScope, type NovelExportFormat } from "@/lib/export";
 import { countNotesUnder, deleteNotesUnder } from "@/data/note-repositories";
 import {
@@ -109,6 +110,7 @@ export function WritingScreen() {
   const [stylePickerVisible, setStylePickerVisible] = useState(false);
   const [pendingEvolution, setPendingEvolution] = useState<ChapterDraftSnapshot | null>(null);
   const [evolvingStyle, setEvolvingStyle] = useState(false);
+  const [fontReadyTick, setFontReadyTick] = useState(0);
   const draftRef = useRef<DraftState>({ chapterId: "", title: "", content: "", dirty: false, version: 0 });
   const savingRef = useRef(false);
   const persistDraftRef = useRef<(force: boolean) => Promise<boolean>>(async () => true);
@@ -124,6 +126,10 @@ export function WritingScreen() {
       if (Number.isInteger(delay) && delay >= 250 && delay <= 10_000) setAutoSaveDelay(delay);
       setEditorFontSize(prefs.fontSize);
       setEditorFont(prefs.fontFamily);
+      // 文楷是运行时下载的字体：进入写作页时补一次注册，注册完成后再渲染一次。
+      if (prefs.fontFamily === "wenkai") {
+        void ensureEditorFontLoaded().then((ready) => { if (ready) setFontReadyTick((tick) => tick + 1); });
+      }
     }).catch((settingsError) => {
       setError(settingsError instanceof Error ? settingsError.message : String(settingsError));
     });
@@ -141,7 +147,7 @@ export function WritingScreen() {
       lineHeight: Math.round(editorFontSize * 1.65),
       fontFamily: editorFontFamily(editorFont),
     }),
-    [editorFontSize, editorFont],
+    [editorFontSize, editorFont, fontReadyTick],
   );
 
   const activeVolume = useMemo(

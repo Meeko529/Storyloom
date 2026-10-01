@@ -3,7 +3,7 @@ import { Platform } from "react-native";
 import { getSetting, setSetting } from "@/data/repositories";
 
 /** 正文可选的字体档位。 */
-export type EditorFontId = "system" | "serif" | "kai";
+export type EditorFontId = "system" | "serif" | "kai" | "wenkai";
 
 export const EDITOR_FONT_KEY = "general.editorFontFamily";
 export const EDITOR_FONT_SIZE_KEY = "general.editorFontSize";
@@ -21,10 +21,11 @@ export const EDITOR_FONT_OPTIONS: Array<{ id: EditorFontId; label: string; hint:
   { id: "system", label: "黑体", hint: "系统默认，笔画清晰" },
   { id: "serif", label: "宋体", hint: "衬线字体，观感接近纸书印刷" },
   { id: "kai", label: "楷体", hint: "手写风格，观感柔和；部分设备可能回落到默认字体" },
+  { id: "wenkai", label: "文楷", hint: "霞鹜文楷（OFL-1.1）：笔画带手写笔意，接近纸书；需先在「设置 → 可选内容」中下载" },
 ];
 
 export function normalizeEditorFont(value: string | null | undefined): EditorFontId {
-  return value === "serif" || value === "kai" ? value : DEFAULT_EDITOR_FONT;
+  return value === "serif" || value === "kai" || value === "wenkai" ? value : DEFAULT_EDITOR_FONT;
 }
 
 /** 把存储值夹到合法区间；非法值回落到默认字号。 */
@@ -48,8 +49,13 @@ export function normalizeChatFontSize(value: string | number | null | undefined)
 export function editorFontFamily(id: EditorFontId): string | undefined {
   if (id === "serif") return Platform.select({ ios: "Songti SC", android: "serif", default: "serif" });
   if (id === "kai") return Platform.select({ ios: "Kaiti SC", android: "casual", default: "cursive" });
+  // 文楷需要先由 font-loader 注册；未安装时 RN 会回落到系统字体。
+  if (id === "wenkai") return EDITOR_FONT_FAMILY_WENKAI;
   return undefined;
 }
+
+/** 与 remote-resources 中字体包登记的族名保持一致。 */
+export const EDITOR_FONT_FAMILY_WENKAI = "StoryloomWenKai";
 
 export interface EditorPrefs {
   fontSize: number;

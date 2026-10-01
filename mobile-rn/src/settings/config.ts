@@ -11,6 +11,7 @@ import { getInstalledOhStoryPackage } from "./oh-story-updater";
 import {
   compactLornDistillationInstructions,
   getInstalledLornStylePackage,
+  getInstalledNovelistSkillPack,
   getInstalledOpenFicMCatalog,
 } from "./remote-resources";
 
@@ -282,12 +283,14 @@ function adaptLornStyleSkill(skill: AgentSkill): AgentSkill {
 }
 
 export async function getAgentSkills(): Promise<AgentSkill[]> {
-  const [value, openFicMCatalog, lornPackage, remotePackage] = await Promise.all([readJson("agent.skills"), getInstalledOpenFicMCatalog(), getInstalledLornStylePackage(), getInstalledOhStoryPackage()]);
+  const [value, openFicMCatalog, lornPackage, remotePackage, skillPackPackage] = await Promise.all([readJson("agent.skills"), getInstalledOpenFicMCatalog(), getInstalledLornStylePackage(), getInstalledOhStoryPackage(), getInstalledNovelistSkillPack()]);
   const records = Array.isArray(value) ? value.filter(isRecord) : [];
   const overrides = new Map(records.filter((item) => typeof item.id === "string").map((item) => [item.id as string, item]));
   const managedBuiltins = (openFicMCatalog?.skills ?? []).map((skill) => ({ ...skill, source: "builtin" as const }));
   const builtinIds = new Set(managedBuiltins.map((skill) => skill.id));
-  const pluginSkills = (lornPackage?.skills ?? []).map((skill) => adaptLornStyleSkill({ ...skill, source: "plugin" as const }));
+  const lornPluginSkills = (lornPackage?.skills ?? []).map((skill) => adaptLornStyleSkill({ ...skill, source: "plugin" as const }));
+  const skillPackSkills = (skillPackPackage?.skills ?? []).map((skill) => ({ ...skill, source: "plugin" as const }));
+  const pluginSkills = [...lornPluginSkills, ...skillPackSkills];
   const pluginIds = new Set(pluginSkills.map((skill) => skill.id));
   const builtins = managedBuiltins.map((skill) => {
     const override = overrides.get(skill.id);
@@ -309,8 +312,8 @@ export async function getAgentSkills(): Promise<AgentSkill[]> {
 }
 
 export async function saveAgentSkills(skills: AgentSkill[]): Promise<void> {
-  const [openFicMCatalog, lornPackage, remotePackage] = await Promise.all([getInstalledOpenFicMCatalog(), getInstalledLornStylePackage(), getInstalledOhStoryPackage()]);
-  const managedIds = new Set([...(openFicMCatalog?.skills ?? []).map((skill) => skill.id), ...(lornPackage?.skills ?? []).map((skill) => skill.id), ...(remotePackage?.skills ?? []).map((skill) => skill.id)]);
+  const [openFicMCatalog, lornPackage, remotePackage, skillPackPackage] = await Promise.all([getInstalledOpenFicMCatalog(), getInstalledLornStylePackage(), getInstalledOhStoryPackage(), getInstalledNovelistSkillPack()]);
+  const managedIds = new Set([...(openFicMCatalog?.skills ?? []).map((skill) => skill.id), ...(lornPackage?.skills ?? []).map((skill) => skill.id), ...(remotePackage?.skills ?? []).map((skill) => skill.id), ...(skillPackPackage?.skills ?? []).map((skill) => skill.id)]);
   await writeJson("agent.skills", skills.map((skill) => managedIds.has(skill.id)
     ? { id: skill.id, enabled: skill.enabled }
     : { ...skill, source: "custom" }));

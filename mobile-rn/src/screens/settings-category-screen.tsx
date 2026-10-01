@@ -68,9 +68,11 @@ import {
 } from "@/agent/context-usage";import { getLocalModelStatus, warmUpLocalModels } from "@/search/local-models";
 import {
   ALL_OPTIONAL_RESOURCE_KINDS,
+  FONT_PACK_INFO,
   getRuntimeResourceState,
   installOptionalResources,
   LOCAL_MODEL_INFO,
+  SKILL_PACK_INFO,
   type OptionalResourceKind,
   type RuntimeResourceState,
 } from "@/settings/remote-resources";
@@ -105,6 +107,7 @@ import type { Model } from "@/types";
 
 export type SettingsCategory =
   | "editor"
+  | "resources"
   | "mascot"
   | "models"
   | "free-models"
@@ -125,6 +128,7 @@ const TITLES: Record<Exclude<SettingsCategory, "models">, string> = {
   "model-capabilities": "模型能力",
   "conv-advanced": "连接与高级",
   index: "索引",
+  resources: "可选内容",
   style: "作者文风",
   "agent-tools": "工具权限",
   rules: "规则",
@@ -1195,7 +1199,10 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
               );
             }}
           />
-          <View style={styles.subsectionDivider} />
+        </View>
+      ) : null}
+      {category === "resources" ? (
+        <View style={styles.section}>
           <Text style={styles.subsectionTitle}>本地模型</Text>
           <Text style={styles.sectionHint}>
             语义检索所需，不随安装包分发；不装不影响写作与对话，仅影响检索增强。下载时会自动尝试国内镜像。
@@ -1204,7 +1211,12 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
             label="当前加载状态"
             value={`嵌入：${getLocalModelStatus().embeddingLoaded ? "已加载" : "未加载"} · 重排：${getLocalModelStatus().rerankLoaded ? "已加载" : "未加载"}`}
           />
-          {OPTIONAL_RESOURCE_DESCRIPTIONS.filter((entry) => entry.id !== "lorn-style").map(renderOptionalResource)}
+          <View style={styles.subsectionDivider} />
+          <Text style={styles.subsectionTitle}>字体与技能包</Text>
+          <Text style={styles.sectionHint}>
+            未安装不影响写作与对话，仅影响对应的增强功能；下载时会自动尝试国内镜像。
+          </Text>
+          {OPTIONAL_RESOURCE_DESCRIPTIONS.map(renderOptionalResource)}
           <Button
             label={resourceBusyKind === "all" ? "处理中" : "补齐全部可选内容"}
             variant="secondary"
@@ -1218,12 +1230,6 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       {category === "style" ? (
         <View style={styles.section}>
           <SettingRow label="文风书库" value="请从设置菜单重新进入" />
-          <View style={styles.subsectionDivider} />
-          <Text style={styles.subsectionTitle}>Lorn 原版文风 Skill</Text>
-          <Text style={styles.sectionHint}>
-            用于从导入的参考小说中蒸馏文风；上游未声明开源许可，因此不随安装包分发，需手动下载。
-          </Text>
-          {OPTIONAL_RESOURCE_DESCRIPTIONS.filter((entry) => entry.id === "lorn-style").map(renderOptionalResource)}
         </View>
       ) : null}
       {category === "agent-tools" ? (
