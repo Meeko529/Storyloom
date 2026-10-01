@@ -64,7 +64,7 @@ Storyloom **stands on OpenFicM's shoulders rather than rewriting it**: the UI, l
 - Dual style system: reference styles (distilled from imported TXT / Markdown / EPUB / Word documents — **identified by MIME and content when the filename lacks an extension**, reusable across projects) + author style (learned from your edits)
 
 **Settings & maintenance**
-- 13 settings entries grouped by function: Basics / Connection & Models / Creation System / Knowledge / System; explanations live at the top of each sub-page
+- 14 settings entries grouped by function: Basics / Connection & Models / Creation System / Knowledge / System; explanations live at the top of each sub-page
 - Rules, skills and agents can all be added, edited and deleted, **grouped by category** (skills 6 groups / agents 2 groups / permissions 6 groups) with search; **tap a skill to read its full instructions**, and built-in skills can be duplicated into editable copies
 - Optional downloads (advanced content pack, local retrieval models) — **the app works without them**
 - **In-app updates**: check and install from the "Advanced" page — no need to visit GitHub

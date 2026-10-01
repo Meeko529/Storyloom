@@ -8,6 +8,30 @@ Important changes to this project. Format based on [Keep a Changelog](https://ke
 
 ---
 
+## [0.1.28] — 2026-10-01
+
+### Added
+
+- **New "Optional content" settings entry** (Knowledge group): every on-demand download in one place — local embedding / rerank models, the Lorn style Skill, a third-party skill pack, and a body-text font pack; nothing is required for writing
+- **Body font pack (LXGW WenKai GB Lite)**: OFL-1.1 open-source Chinese font; download it and pick "文楷" under Editor → Body font (SHA-256 verified, China mirrors), fixing devices where Kai fell back to the default font
+- **Third-party skill pack (Chinese Novelist, MIT)**: a staged workflow for writing complete Chinese long-form fiction (Q&A positioning / planning / drafting / validation), installed from a pinned commit, toggleable and removable
+- Style distillation now shows a **progress bar with percentage** (sampling / analysis / synthesis / saving)
+- Downloads no longer misreport: downloading one item only marks that item as busy
+
+### Fixed
+
+- Bookshelf depth redone: the plank renders at the texture's native aspect ratio (no more vertical stretching) with books seated behind it; book shadows are a small soft shade on the right; removed the accidental cover border
+- Update dialogs no longer stack (removed a leftover legacy alert); Advanced no longer dumps the full release notes
+- Assistant: your own messages align right and size to content; execution / reasoning / error cards adapt to content (no full-width, no squeezed vertical text); expanding a card no longer jumps to the latest message
+- "Raw error details" width follows its content
+- Agents / skills / rules / tool-permission cards drop the harsh white background
+- Style-library Word (.docx) import fixed (database whitelist was missing docx)
+- Collapsed groups become a compact list without large empty gaps
+- The ⋯ menu is now an anchored dropdown under its button and narrower (shelf / writing / assistant); meaningless right-side hints removed
+- Shelf sorting no longer offers "by title"
+
+---
+
 ## [0.1.27] — 2026-10-01
 
 ### Added
