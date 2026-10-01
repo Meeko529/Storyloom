@@ -7,7 +7,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Image, ImageBackground, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { appendBreadcrumb } from "@/lib/crash-log";
 import { importProjectFromFile } from "@/lib/doc-import";
 import { downsampleToFile } from "@/lib/media-downsample";
@@ -17,6 +17,8 @@ import { Button, EmptyState, ErrorNotice, Field, Header, Screen } from "@/compon
 import { createProject, deleteProject, getProjectStats, getProjectStatsMap, getSetting, listProjects, setSetting, updateProjectCover, updateProjectInfo, type ProjectStats } from "@/data/repositories";
 import type { RootStackParamList, RootTabParamList } from "@/navigation/types";
 import { useAppStore } from "@/store/app-store";
+
+const PLANK_IMAGE = require("../../assets/images/shelf-plank.png");
 import { colors, radius, shadow, spacing } from "@/theme";
 import type { Project } from "@/types";
 
@@ -343,7 +345,7 @@ function coverColor(title: string): string {
                     );
                   })}
                 </View>
-                <View style={styles.shelfPlank} />
+                <ImageBackground source={PLANK_IMAGE} style={styles.shelfPlankImage} resizeMode="stretch" />
                 <View style={styles.shelfLabels}>
                   {row.map((project) => {
                     const st = stats[project.id];
@@ -540,14 +542,14 @@ const styles = StyleSheet.create({
   statsText: { flex: 1, color: colors.textMuted, fontSize: 10.5 },
   headerActions: { flexDirection: "row", alignItems: "center" },
   shelfRow: { paddingHorizontal: 14, marginBottom: 2 },
-  shelfBooks: { flexDirection: "row", alignItems: "flex-end", gap: 10 },
+  shelfBooks: { flexDirection: "row", alignItems: "flex-end", gap: 10, marginBottom: -12, paddingHorizontal: 6 },
   shelfCell: { flex: 1, alignItems: "center" },
   bookObject: { width: "100%", aspectRatio: 3 / 4, borderRadius: 10, overflow: "hidden", justifyContent: "center", borderWidth: 1, borderColor: "rgba(0,0,0,0.12)", elevation: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.38, shadowRadius: 6 },
   bookSpine: { position: "absolute", left: 0, top: 0, bottom: 0, width: "9%", backgroundColor: "#EDE6D8", borderRightWidth: 1, borderRightColor: "rgba(0,0,0,0.10)" },
   bookCoverTextWrap: { alignSelf: "stretch", alignItems: "center", gap: 2, paddingHorizontal: 18 },
   bookCoverLine: { color: "rgba(255,255,255,0.95)", fontSize: 16, fontWeight: "800", letterSpacing: 1 },
   bookCoverLineLead: { fontSize: 20 },
-  shelfPlank: { alignSelf: "stretch", height: 8, borderRadius: 2, backgroundColor: "#E7E4DD", borderBottomWidth: 5, borderBottomColor: "#BDB9AE", elevation: 5, shadowColor: "#000", shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.22, shadowRadius: 5 },
+  shelfPlankImage: { alignSelf: "stretch", height: 60 },
   shelfLabels: { flexDirection: "row", gap: 10, marginTop: 8 },
   shelfLabelCell: { flex: 1, alignItems: "center" },
   gridCover: { width: "100%", aspectRatio: 3 / 4, borderRadius: 10, alignItems: "flex-end", justifyContent: "center", overflow: "hidden" },
