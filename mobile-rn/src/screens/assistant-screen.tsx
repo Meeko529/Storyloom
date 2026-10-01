@@ -252,19 +252,6 @@ function retryRequestForMessage(
   };
 }
 
-function ErrorDetails({ detail }: { detail: string }) {
-  const [expanded, setExpanded] = useState(false);
-  return (
-    <View style={styles.errorDetails}>
-      <Pressable accessibilityRole="button" onPress={() => setExpanded((value) => !value)} style={styles.errorDetailsToggle}>
-        <Text style={styles.errorDetailsLabel}>原始错误详情</Text>
-        <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={15} color={colors.textMuted} />
-      </Pressable>
-      {expanded ? <Text selectable style={styles.errorDetailsText}>{detail}</Text> : null}
-    </View>
-  );
-}
-
 export function AssistantScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList>>();
   const projectId = useAppStore((state) => state.currentProjectId);
@@ -278,9 +265,12 @@ export function AssistantScreen() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSession, setActiveSession] = useState<ChatSession | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  /** 打开或切换对话后跳到最新一条（一次性；发送期间的滚动另有逻辑）。 */
+  /** 打开或切换对话后跳到最新一条。滚动必须在列表真正渲染出新内容之后执行——
+   *  一次性 rAF 滚动会在 FlatList 挂载前跑空（表现为停在顶部），
+   *  所以这里只置"待滚"标记，由 onContentSizeChange 在内容尺寸变化时执行并清除。 */
+  const pendingScrollToEndRef = useRef(true);
   const scrollToEndOnce = () => {
-    requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false }));
+    pendingScrollToEndRef.current = true;
   };
   const [models, setModels] = useState<Model[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -784,6 +774,7 @@ export function AssistantScreen() {
       ? messages.find((message) => message.id === editingMessageId && message.role === "user") ?? null
       : null;
     if (!project || !activeSession || !content || sending) return;
+    pendingScrollToEndRef.current = true;
     if (retry && (retry.sessionId !== activeSession.id || !messages.some((message) => message.id === retry.userMessage.id))) {
       setRetryRequest(null);
       setError("重试消息已不在当前对话中，请重新发送");
@@ -1031,6 +1022,12 @@ export function AssistantScreen() {
           style={styles.flex}
           data={messages}
           keyExtractor={(item) => item.id}
+          onContentSizeChange={() => {
+            if (pendingScrollToEndRef.current) {
+              pendingScrollToEndRef.current = false;
+              requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false }));
+            }
+          }}
           contentContainerStyle={messages.length ? styles.messages : styles.emptyMessages}
           ListFooterComponent={sending && !liveTrace ? (
             <View style={styles.thinkingRow}>
@@ -1098,7 +1095,6 @@ export function AssistantScreen() {
               ) : null}
               <Text selectable style={[styles.messageText, chatTextStyle]}>{item.content}</Text>
 
-              {failed && item.metadata?.errorDetail ? <ErrorDetails detail={item.metadata.errorDetail} /> : null}
               {item.role === "assistant" && messageRetry ? (
                 <MessageActionBar content={item.content} onRetry={() => void send(messageRetry)} retryDisabled={sending} />
               ) : null}
@@ -1567,10 +1563,6 @@ const styles = StyleSheet.create({
   failureRetry: { minHeight: 28, flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.sm, borderWidth: 1, borderColor: colors.danger, borderRadius: radius.sm },
   failureRetryDisabled: { opacity: 0.5 },
   failureRetryText: { color: colors.danger, fontSize: 12, fontWeight: "700" },
-  errorDetails: { alignSelf: "flex-start", flexShrink: 1, maxWidth: "100%", gap: spacing.xs, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceMuted },
-  errorDetailsToggle: { minHeight: 28, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  errorDetailsLabel: { color: colors.textMuted, fontSize: 12, fontWeight: "600" },
-  errorDetailsText: { color: colors.textMuted, fontSize: 12, lineHeight: 17 },
   composerWrap: { marginHorizontal: spacing.md, marginBottom: spacing.sm, gap: 6 },
   composer: { flexDirection: "row", alignItems: "center", gap: 6, paddingLeft: 6, paddingRight: 6, paddingVertical: 6, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 999, ...shadow.card },
   writeBadge: { color: colors.primary, fontSize: 11, fontWeight: "800", backgroundColor: "rgba(23,107,87,0.12)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, overflow: "hidden" },
