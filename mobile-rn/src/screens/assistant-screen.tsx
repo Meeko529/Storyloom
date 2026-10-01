@@ -930,7 +930,7 @@ export function AssistantScreen() {
               }}
               style={styles.iconButton}
             >
-              <Ionicons name="swap-horizontal-outline" size={20} color={colors.primary} />
+              <Ionicons name="swap-horizontal-outline" size={22} color={colors.primary} />
             </Pressable>
             <Pressable accessibilityLabel="更多操作" onPress={() => setHeaderMenuVisible((value) => !value)} style={styles.iconButton}>
               <Ionicons name="ellipsis-horizontal" size={22} color={colors.primary} />
@@ -1608,7 +1608,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  newSessionButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: 11, marginBottom: 10 },
+  newSessionButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: 11, marginHorizontal: spacing.lg, marginBottom: 10 },
   newSessionButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "700" },
   renameActions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm },
     sheetRowActive: { backgroundColor: colors.surfaceMuted },

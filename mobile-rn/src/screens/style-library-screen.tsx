@@ -373,6 +373,7 @@ export function StyleLibraryScreen() {
                 onPress={() => openProfile(profile)}
                 onActivate={() => void activate(profile)}
                 disabled={busy || !projectId}
+                inset
               />
             ))}
             <View style={styles.sectionHeading}>
@@ -552,15 +553,18 @@ function ProfileRow({
   onPress,
   onActivate,
   disabled,
+  inset = false,
 }: {
   profile: StyleProfile;
   active: boolean;
   onPress: () => void;
   onActivate: () => void;
   disabled: boolean;
+  /** 列表页使用时补左右留白；弹层里的调用已有内边距，保持 false。 */
+  inset?: boolean;
 }) {
   return (
-    <View style={[styles.profileRow, active && styles.profileRowActive]}>
+    <View style={[styles.profileRow, inset && styles.profileRowInset, active && styles.profileRowActive]}>
       <Pressable onPress={onPress} style={styles.profileMain}>
         <Ionicons name={active ? "checkmark-circle" : "document-text-outline"} size={20} color={active ? colors.primary : colors.textMuted} />
         <View style={styles.profileCopy}>
@@ -602,6 +606,7 @@ const styles = StyleSheet.create({
   sourceTitle: { color: colors.text, fontSize: 16, fontWeight: "700" },
   sourceMeta: { color: colors.textMuted, fontSize: 12 },
   profileRow: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm, paddingLeft: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, backgroundColor: colors.surface },
+  profileRowInset: { marginHorizontal: spacing.lg },
   profileRowActive: { borderColor: colors.primary, backgroundColor: "#E6F3EF" },
   profileMain: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm },
   profileCopy: { flex: 1, minWidth: 0, gap: 3 },
