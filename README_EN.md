@@ -30,9 +30,10 @@ Storyloom **stands on OpenFicM's shoulders rather than rewriting it**: the UI, l
 ## Features
 
 **Writing**
-- Local bookshelf and project management with volume / chapter structure and preview-first editing (accident-proof); the header "⋯ menu" holds the **shelf style (grid / list)** and **local import**
+- Local bookshelf and project management with volume / chapter structure and preview-first editing (accident-proof); the header "⋯ menu" holds **local import / shelf style (grid / list) / category management / show categories on shelf / shelf sorting**
 - **Grid view looks like a real bookshelf**: books stand on a single plank (lit top face + darker front edge), titles and volume / chapter / word counts sit **below the plank**; covers get rounded corners and a light spine, books without a cover get a generated typographic cover (color derived from the title — not a flat color block)
 - Autosave with background saving and keyboard avoidance
+- **Chapter version history**: before a save overwrites a chapter, the outgoing revision is kept (last 30 per chapter); "⋯ → Version history" lets you read any revision and restore it — the current text is archived first
 - Export chapter / volume / whole book as Markdown, plain text (TXT) or **EPUB** (shared via the system sheet; no storage permission requested)
 - **Categories & groups**: create your own categories ("⋯ menu → Category management"), assign books via long-press; the shelf top filters by the current group (switch via the header or chips, remembered), with four sort orders
 - **Local import**: bring TXT / Markdown / Word (.docx) / EPUB files in as projects — split by volume / chapter headings and opened right after importing
@@ -41,11 +42,11 @@ Storyloom **stands on OpenFicM's shoulders rather than rewriting it**: the UI, l
 **Assistant & agent**
 - Sessions are scoped per project; edit any past message and re-run
 - Tool permissions in three modes (allow / ask every time / deny), per-tool or in bulk; tools are **grouped by target** (projects & chapters / characters / world info / notes / style & retrieval / interaction) with a search box
-- **Write confirmation first**: before the AI writes chapters / notes / settings you see before-and-after with red/green line stats — accept or reject as a group, undo after accepting
+- **Write confirmation first**: before the AI writes chapters / notes / settings you see before-and-after with red/green line stats — accept or reject as a group, undo after accepting; prose produced by the assistant is written into the corresponding chapter
 - **Attachments**: send txt / md / json / csv and **Word (.docx)** files to the assistant; save them as project notes for long-term retrieval
 - **Conversation directory**: a directory-style panel — full-width "new conversation" button, per-conversation **rename**, message counts; new conversations ask for confirmation
 - **Mascot**: a little figure on the input box corner — six to choose from (cat / fox / paper crane / shiba / dragon / ink-drop), tinted by the theme
-- **Visible reasoning**: when the model returns its thinking (DeepSeek-R1 family, Zhipu reasoning, Gemini, Claude extended thinking) it appears as a collapsible block with elapsed time
+- **Reasoning and prose stream in live**: all three protocols stream, so reasoning and text appear as they are generated instead of arriving in one block; while a request runs you see "working · Ns elapsed", with reasoning text and tool-execution events on one live timeline, and finished run cards show "took Ns". Model reasoning (DeepSeek-R1 family, Zhipu reasoning, Gemini, Claude extended thinking) appears as a collapsible block
 - **Context usage meter**: the title bar shows an estimated percentage; tap for the breakdown
 - Live tool execution, with sub-agent delegation
 - A shared budget of 24 model requests per conversation (protects rate-limited relays)
@@ -60,6 +61,7 @@ Storyloom **stands on OpenFicM's shoulders rather than rewriting it**: the UI, l
 
 **Materials & retrieval**
 - Character library (with avatars), world info, three-level notes (book / volume / chapter); **notes and world info can be exported** (Markdown, hierarchical)
+- **World info entries carry trigger conditions**: resident entry / trigger probability / scan depth / secondary keywords, so entries are read by keyword during writing and chat; **SillyTavern world info JSON and character cards can be imported** (JSON or PNG with an embedded card) with trigger conditions preserved
 - Full-text search + local semantic retrieval (Chinese embedding + reranking, on-device, offline)
 - Dual style system: reference styles (distilled from imported TXT / Markdown / EPUB / Word documents — **identified by MIME and content when the filename lacks an extension**, reusable across projects) + author style (learned from your edits)
 
@@ -145,7 +147,7 @@ Changed: a **fixed signing certificate** (configured in repo Secrets), so every 
 
 ### 10. Settings grouping & built-in creation presets
 
-- 13 entries in five groups (Basics / Connection & Models / Creation System / Knowledge / System); list shows names only, explanations at sub-page tops
+- 14 entries in five groups (Basics / Connection & Models / Creation System / Knowledge / System); list shows names only, explanations at sub-page tops
 - Built-in long-form / short-form / screenplay agents plus **23 self-written skills** (self-written, not translated or copied from external sources), merged with the remote content pack by id — upstream content is never overwritten; **both read paths merge** these extensions
 - **Models page**: default-model card + provider rows (fetch models / advanced / delete) + radio to switch default + long-press for per-model conversation settings + "clean duplicates" in the corner
 - **Model capabilities page**: temperature / max tokens / tool calls / image input per model
@@ -156,7 +158,7 @@ Changed: a **fixed signing certificate** (configured in repo Secrets), so every 
 
 Upstream only offers "chat and copy things over yourself": the AI rewrites directly and mistakes mean digging through history by hand. This project adds three things — **write confirmation** (confirmation cards with before/after and red/green line stats, group accept/reject, single-level undo), **creation tools** (the AI can create projects / volumes / chapters, also confirmed first), and a **navigation trail** (page visits and opened books are logged and exported with diagnostics).
 
-Supporting work: the **free-model section** and **content-pack export/import** on the model side; a **directory-style conversation panel**, **attachments**, a collapsible **reasoning block** and a live **context meter** on the assistant side; **project covers & info**, **note & world-info export**, generated covers and grid / list views on the bookshelf side; **update checks** and cover / avatar **downsampling** on the maintenance side.
+Supporting work: the **free-model section** (twelve free models) and **content-pack export/import** on the model side; a **directory-style conversation panel**, **attachments**, **streamed reasoning and prose** in a collapsible block and a live **context meter** on the assistant side; **chapter version history** (revisions kept before each overwrite, restorable) on the writing side; **project covers & info**, **note & world-info export**, **SillyTavern world info & character card import**, generated covers and grid / list views on the bookshelf side; **update checks** and cover / avatar **downsampling** on the maintenance side.
 
 See the [Features](#features) section for what these look like, and [docs/上游来源与改动清单.md](docs/上游来源与改动清单.md) for the file-by-file log.
 
@@ -179,7 +181,7 @@ Chinese Android ROMs warn about non-store APKs — **this is system behavior, no
 
 ### 3. Configure a model
 
-The app **ships with no models**; you bring an API key. The easiest path is **Settings → Connection & Models → Free models**: pick one of five free models, get a key, enable. Manual setup and the function-calling caveat are in the Chinese guide.
+The app **ships with no models**; you bring an API key. The easiest path is **Settings → Connection & Models → Free models**: pick one of twelve free models, get a key, enable. Manual setup and the function-calling caveat are in the Chinese guide.
 
 **Nothing is downloaded on first launch**; optional models for semantic retrieval and style distillation are under "Settings → Advanced → Optional content".
 

@@ -8,6 +8,30 @@ Important changes to this project. Format based on [Keep a Changelog](https://ke
 
 ---
 
+## [0.1.31] — 2026-10-01
+
+### Added
+
+- **True streaming for reasoning and prose**: all three protocols (OpenAI-compatible / Gemini / Anthropic) now stream — reasoning and text appear as they are generated rather than arriving in one block at the end; endpoints that reject streaming (some relays) fall back to non-streaming automatically. An idle timeout replaces the whole-request timeout, so a response that is still transferring is not cut off
+- **Live timeline in the assistant**: "working · Ns elapsed" while the request runs, reasoning text scrolling in live, and tool-execution events listed in order on the same timeline; finished run cards show "took Ns"
+- **Chapter version history (time machine)**: before a save overwrites a chapter, the outgoing revision is kept (last 30 per chapter). "⋯ → Version history" in the writing screen lets you read any revision in full and restore it; **the current text is archived first**
+- **World-info trigger conditions**: entries gain resident / trigger probability / scan depth / secondary keywords; all of them are preserved when importing a SillyTavern world info file (previously only the primary keys survived)
+- **Prose written to chapters**: the system prompt now requires the assistant to write prose into a chapter; write confirmation still applies
+
+### Fixed
+
+- The assistant message list now uses the industry-standard inverted list (newest first, position preserved): opening, switching and sending reliably land on the newest content, and expanding a run card no longer jumps the view
+- Editing only a world-info entry's text no longer wipes its trigger keywords (it did before)
+- Keywords separated by Chinese punctuation (e.g. "甲，乙") in a SillyTavern world info file now split into two keywords instead of one
+- Diagnostics breadcrumb timestamps now use local time (they were UTC, 8 hours behind the phone's clock)
+- Every tool call (success or failure) is recorded in the breadcrumb trail, so a full call sequence is visible when diagnosing
+- Removed the divider line under assistant message bubbles
+- Distillation completion text now depends on progress: once the whole book is covered it suggests starting over
+- The "installed" state on the Optional content page is now a prominent badge
+- Spacing and preview line height inside the write-confirmation card
+
+---
+
 ## [0.1.30] — 2026-10-01
 
 ### Added
