@@ -547,7 +547,7 @@ const styles = StyleSheet.create({
   shelfBooks: { flexDirection: "row", alignItems: "flex-end", gap: 10, marginBottom: -12, paddingHorizontal: 6 },
   shelfCell: { flex: 1, alignItems: "center" },
   bookObject: { width: "100%", aspectRatio: 3 / 4, borderRadius: 10, overflow: "hidden", justifyContent: "center" },
-  bookShadowImage: { position: "absolute", left: 4, top: 7, width: "100%", height: "100%", borderRadius: 10 },
+  bookShadowImage: { position: "absolute", left: 4, top: 0, width: "100%", height: "100%", borderRadius: 10 },
   bookSpine: { position: "absolute", left: 0, top: 0, bottom: 0, width: "9%", backgroundColor: "#EDE6D8", borderRightWidth: 1, borderRightColor: "rgba(0,0,0,0.10)" },
   bookCoverTextWrap: { alignSelf: "stretch", alignItems: "center", gap: 2, paddingHorizontal: 18 },
   bookCoverLine: { color: "rgba(255,255,255,0.95)", fontSize: 16, fontWeight: "800", letterSpacing: 1 },
