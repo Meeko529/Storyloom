@@ -98,6 +98,7 @@ export function WritingScreen() {
   const [nameValue, setNameValue] = useState("");
   const [nameSaving, setNameSaving] = useState(false);
   const [exportPickerVisible, setExportPickerVisible] = useState(false);
+  const [headerMenuVisible, setHeaderMenuVisible] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportFormat, setExportFormat] = useState<NovelExportFormat>("markdown");
   const [projectPickerVisible, setProjectPickerVisible] = useState(false);
@@ -579,15 +580,43 @@ export function WritingScreen() {
             >
               <Ionicons name="swap-horizontal-outline" size={22} color={colors.primary} />
             </Pressable>
-            <Pressable accessibilityLabel="导出作品" onPress={() => setExportPickerVisible(true)} style={styles.iconButton}>
-              <Ionicons name="share-outline" size={22} color={colors.primary} />
-            </Pressable>
-            <Pressable accessibilityLabel={volumes.length ? "新建章节" : "新建卷"} onPress={openNewChapter} style={styles.iconButton}>
-              <Ionicons name={volumes.length ? "document-text-outline" : "folder-open-outline"} size={23} color={colors.primary} />
+            <Pressable accessibilityLabel="更多操作" onPress={() => setHeaderMenuVisible((value) => !value)} style={styles.iconButton}>
+              <Ionicons name="ellipsis-horizontal" size={22} color={colors.primary} />
             </Pressable>
           </View>
         )}
       />
+      {headerMenuVisible ? (
+        <>
+          <Pressable accessibilityLabel="关闭更多操作" onPress={() => setHeaderMenuVisible(false)} style={styles.headerMenuBackdrop} />
+          <View style={styles.headerMenuCard}>
+            <Pressable
+              accessibilityLabel="导出作品"
+              onPress={() => { setHeaderMenuVisible(false); setExportPickerVisible(true); }}
+              style={({ pressed }) => [styles.headerMenuRow, pressed && styles.headerMenuRowPressed]}
+            >
+              <Ionicons name="share-outline" size={20} color={colors.primary} />
+              <Text style={styles.headerMenuText}>导出作品</Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel="新建卷"
+              onPress={() => { setHeaderMenuVisible(false); void openNameDialog({ kind: "create-volume" }, "第一卷"); }}
+              style={({ pressed }) => [styles.headerMenuRow, pressed && styles.headerMenuRowPressed]}
+            >
+              <Ionicons name="folder-open-outline" size={20} color={colors.primary} />
+              <Text style={styles.headerMenuText}>新建卷</Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel="新建章节"
+              onPress={() => { setHeaderMenuVisible(false); openNewChapter(); }}
+              style={({ pressed }) => [styles.headerMenuRow, pressed && styles.headerMenuRowPressed]}
+            >
+              <Ionicons name="document-text-outline" size={20} color={colors.primary} />
+              <Text style={styles.headerMenuText}>新建章节</Text>
+            </Pressable>
+          </View>
+        </>
+      ) : null}
             {/* behavior=height 会按键盘高度设置容器高度；键盘收起后偶发拿到过期高度，导致编辑器整体变矮（footer 悬在页面中部）。padding 型只加内边距，收起即恢复。 */}
       <KeyboardAvoidingView style={styles.flex} behavior="padding" automaticOffset>
         <Pressable accessibilityRole="button" onPress={() => setChapterPickerVisible(true)} style={styles.chapterPicker}>
@@ -973,6 +1002,11 @@ const styles = StyleSheet.create({
   muted: { color: colors.textMuted, fontSize: 15, padding: spacing.lg, textAlign: "center" },
   iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   headerActions: { flexDirection: "row", alignItems: "center" },
+  headerMenuBackdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9 },
+  headerMenuCard: { position: "absolute", top: 100, right: 18, width: 176, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingVertical: 4, zIndex: 10, elevation: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 10 },
+  headerMenuRow: { minHeight: 46, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md },
+  headerMenuRowPressed: { backgroundColor: colors.surfaceMuted },
+  headerMenuText: { color: colors.text, fontSize: 14, fontWeight: "600" },
   chapterPicker: {
     minHeight: 56,
     flexDirection: "row",
@@ -985,7 +1019,7 @@ const styles = StyleSheet.create({
   chapterPickerTextGroup: { flex: 1, minWidth: 0, gap: 2 },
   chapterPickerVolume: { color: colors.textMuted, fontSize: 12, fontWeight: "600" },
   chapterPickerText: { color: colors.text, fontSize: 15, fontWeight: "700" },
-  styleSelector: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border, backgroundColor: colors.surface },
+  styleSelector: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   styleSelectorText: { flex: 1, color: colors.textMuted, fontSize: 13, fontWeight: "600" },
   styleSelectorTextActive: { color: colors.primary },
   errorWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },

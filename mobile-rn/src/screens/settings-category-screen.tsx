@@ -296,7 +296,8 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
   const [ohStoryBusy, setOhStoryBusy] = useState(false);
   const [resourceState, setResourceState] = useState<RuntimeResourceState | null>(null);
   const [resourceProgress, setResourceProgress] = useState("");
-  const [resourceBusy, setResourceBusy] = useState(false);
+  /** 正在下载的可选内容；null = 空闲，"all" = 一键补齐全部。 */
+  const [resourceBusyKind, setResourceBusyKind] = useState<OptionalResourceKind | "all" | null>(null);
   const [appUpdate, setAppUpdate] = useState<AppUpdateInfo | null>(null);
   const [appUpdateBusy, setAppUpdateBusy] = useState(false);
   const [appUpdateError, setAppUpdateError] = useState<string | null>(null);
@@ -650,7 +651,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
   };
 
   const downloadResources = async (kinds: OptionalResourceKind[] = ALL_OPTIONAL_RESOURCE_KINDS) => {
-    setResourceBusy(true);
+    setResourceBusyKind(kinds.length > 1 ? "all" : kinds[0] ?? "all");
     setError(null);
     setResourceProgress("准备下载…");
     try {
@@ -670,8 +671,30 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       setError(resourceError instanceof Error ? resourceError.message : String(resourceError));
       setResourceState(await getRuntimeResourceState().catch(() => null));
     } finally {
-      setResourceBusy(false);
+      setResourceBusyKind(null);
     }
+  };
+
+  /** 可选内容卡片：标题、体积、用途与下载按钮（busy 只作用在当前这一项上）。 */
+  const renderOptionalResource = (entry: { id: OptionalResourceKind; title: string; sizeMb: number; purpose: string }) => {
+    const item = resourceState?.items.find((candidate) => candidate.id === entry.id);
+    const ready = item?.status === "ready";
+    const busy = resourceBusyKind === entry.id || resourceBusyKind === "all";
+    return (
+      <View key={entry.id} style={styles.resourceCard}>
+        <Text style={styles.settingLabel}>{entry.title}</Text>
+        <Text style={styles.modelHint}>约 {entry.sizeMb} MB · {ready ? "已安装" : item?.detail ?? "未安装"}</Text>
+        <Text style={styles.sectionHint}>{entry.purpose}</Text>
+        {ready ? null : (
+          <Button
+            label={busy ? "处理中" : `下载（约 ${entry.sizeMb} MB）`}
+            variant="secondary"
+            onPress={() => void downloadResources([entry.id])}
+            disabled={resourceBusyKind !== null}
+          />
+        )}
+      </View>
+    );
   };
 
   const saveIndex = async (next: IndexSettings) => {
@@ -1172,11 +1195,35 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
               );
             }}
           />
+          <View style={styles.subsectionDivider} />
+          <Text style={styles.subsectionTitle}>本地模型</Text>
+          <Text style={styles.sectionHint}>
+            语义检索所需，不随安装包分发；不装不影响写作与对话，仅影响检索增强。下载时会自动尝试国内镜像。
+          </Text>
+          <SettingRow
+            label="当前加载状态"
+            value={`嵌入：${getLocalModelStatus().embeddingLoaded ? "已加载" : "未加载"} · 重排：${getLocalModelStatus().rerankLoaded ? "已加载" : "未加载"}`}
+          />
+          {OPTIONAL_RESOURCE_DESCRIPTIONS.filter((entry) => entry.id !== "lorn-style").map(renderOptionalResource)}
+          <Button
+            label={resourceBusyKind === "all" ? "处理中" : "补齐全部可选内容"}
+            variant="secondary"
+            onPress={() => void downloadResources()}
+            disabled={resourceBusyKind !== null}
+            loading={resourceBusyKind === "all"}
+          />
+          {resourceProgress ? <Text style={styles.progressText}>{resourceProgress}</Text> : null}
         </View>
       ) : null}
       {category === "style" ? (
         <View style={styles.section}>
           <SettingRow label="文风书库" value="请从设置菜单重新进入" />
+          <View style={styles.subsectionDivider} />
+          <Text style={styles.subsectionTitle}>Lorn 原版文风 Skill</Text>
+          <Text style={styles.sectionHint}>
+            用于从导入的参考小说中蒸馏文风；上游未声明开源许可，因此不随安装包分发，需手动下载。
+          </Text>
+          {OPTIONAL_RESOURCE_DESCRIPTIONS.filter((entry) => entry.id === "lorn-style").map(renderOptionalResource)}
         </View>
       ) : null}
       {category === "agent-tools" ? (
@@ -1561,35 +1608,6 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
           ) : null}
           {ohStoryProgress ? <Text style={styles.progressText}>{ohStoryProgress}</Text> : null}
           <View style={styles.subsectionDivider} />
-          <Text style={styles.subsectionTitle}>可选内容（不影响基本使用）</Text>
-          <Text style={styles.sectionHint}>
-            未安装不影响写作与对话，仅影响对应的增强功能；下载时将自动尝试国内镜像。
-          </Text>
-          <SettingRow
-            label="当前加载状态"
-            value={`嵌入：${getLocalModelStatus().embeddingLoaded ? "已加载" : "未加载"} · 重排：${getLocalModelStatus().rerankLoaded ? "已加载" : "未加载"}`}
-          />
-          {OPTIONAL_RESOURCE_DESCRIPTIONS.map((entry) => {
-            const item = resourceState?.items.find((candidate) => candidate.id === entry.id);
-            const ready = item?.status === "ready";
-            return (
-              <View key={entry.id} style={styles.resourceCard}>
-                <Text style={styles.settingLabel}>{entry.title}</Text>
-                <Text style={styles.modelHint}>约 {entry.sizeMb} MB · {ready ? "已安装" : item?.detail ?? "未安装"}</Text>
-                <Text style={styles.sectionHint}>{entry.purpose}</Text>
-                {ready ? null : (
-                  <Button
-                    label={resourceBusy ? "处理中" : `下载（约 ${entry.sizeMb} MB）`}
-                    variant="secondary"
-                    onPress={() => void downloadResources([entry.id])}
-                    disabled={resourceBusy}
-                  />
-                )}
-              </View>
-            );
-          })}
-          <Button label={resourceBusy ? "处理中" : "一键补齐全部"} onPress={() => void downloadResources()} disabled={resourceBusy} loading={resourceBusy} />
-          {resourceProgress ? <Text style={styles.progressText}>{resourceProgress}</Text> : null}
           <Button label="清除当前作品索引" variant="secondary" onPress={() => {
             if (!projectId) return;
             Alert.alert("清除索引", "只删除索引，不删除章节、角色和世界书数据。", [
@@ -1665,7 +1683,7 @@ const styles = StyleSheet.create({
   permissionRow: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   permissionText: { flex: 1, minWidth: 0 },
   permissionMode: { minWidth: 64, color: colors.primary, fontSize: 13, fontWeight: "700", textAlign: "right" },
-  manageRow: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: spacing.sm, marginVertical: 5, paddingVertical: spacing.sm, paddingLeft: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, backgroundColor: colors.surface },
+  manageRow: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: spacing.sm, marginVertical: 5, paddingVertical: spacing.sm, paddingLeft: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm },
   activeRow: { borderColor: colors.primary, backgroundColor: "#E6F3EF" },
   manageText: { flex: 1, minWidth: 0, gap: spacing.xs },
   iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
@@ -1676,7 +1694,7 @@ const styles = StyleSheet.create({
   modelHint: { color: colors.primary, fontSize: 12 },
   modelChoices: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   resourceCard: { gap: spacing.sm, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm },
-  permissionCard: { gap: spacing.sm, marginVertical: 5, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, backgroundColor: colors.surface },
+  permissionCard: { gap: spacing.sm, marginVertical: 5, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm },
   presetRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   presetChip: { minHeight: 36, justifyContent: "center", paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: 999 },
   presetChipText: { color: colors.textMuted, fontSize: 13, fontWeight: "600" },

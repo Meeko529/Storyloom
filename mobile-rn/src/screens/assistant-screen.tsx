@@ -292,6 +292,7 @@ export function AssistantScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sessionPickerVisible, setSessionPickerVisible] = useState(false);
+  const [headerMenuVisible, setHeaderMenuVisible] = useState(false);
   const [messageCounts, setMessageCounts] = useState<Record<string, number>>({});
   const [renaming, setRenaming] = useState<ChatSession | null>(null);
   const [mascotEnabled, setMascotEnabled] = useState(true);
@@ -943,25 +944,36 @@ export function AssistantScreen() {
             >
               <Ionicons name="swap-horizontal-outline" size={20} color={colors.primary} />
             </Pressable>
-            <Pressable
-              accessibilityLabel="查看上下文占用"
-              onPress={() => setContextSheetVisible(true)}
-              style={styles.contextButton}
-            >
-              <Ionicons name="pie-chart-outline" size={18} color={contextUsage.overflow ? colors.danger : colors.primary} />
-              <Text style={[styles.contextButtonText, contextUsage.overflow && styles.contextButtonTextOverflow]}>
-                {formatUsagePercent(contextUsage.ratio)}
-              </Text>
-            </Pressable>
-            <Pressable accessibilityLabel="新建对话" disabled={sending} onPress={confirmNewSession} style={styles.iconButton}>
-              <Ionicons name="create-outline" size={22} color={colors.primary} />
-            </Pressable>
-            <Pressable accessibilityLabel="管理对话" disabled={sending} onPress={() => setSessionPickerVisible(true)} style={styles.iconButton}>
-              <Ionicons name="chatbubbles-outline" size={22} color={colors.primary} />
+            <Pressable accessibilityLabel="更多操作" onPress={() => setHeaderMenuVisible((value) => !value)} style={styles.iconButton}>
+              <Ionicons name="ellipsis-horizontal" size={22} color={colors.primary} />
             </Pressable>
           </View>
         }
       />
+      {headerMenuVisible ? (
+        <>
+          <Pressable accessibilityLabel="关闭更多操作" onPress={() => setHeaderMenuVisible(false)} style={styles.headerMenuBackdrop} />
+          <View style={styles.headerMenuCard}>
+            <Pressable
+              accessibilityLabel="管理对话"
+              disabled={sending}
+              onPress={() => { setHeaderMenuVisible(false); setSessionPickerVisible(true); }}
+              style={({ pressed }) => [styles.headerMenuRow, pressed && styles.headerMenuRowPressed]}
+            >
+              <Ionicons name="chatbubbles-outline" size={20} color={colors.primary} />
+              <Text style={styles.headerMenuText}>管理对话</Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel="上下文占用"
+              onPress={() => { setHeaderMenuVisible(false); setContextSheetVisible(true); }}
+              style={({ pressed }) => [styles.headerMenuRow, pressed && styles.headerMenuRowPressed]}
+            >
+              <Ionicons name="pie-chart-outline" size={20} color={colors.primary} />
+              <Text style={styles.headerMenuText}>上下文占用</Text>
+            </Pressable>
+          </View>
+        </>
+      ) : null}
       <View style={styles.contextBar}>
         <View style={styles.projectContext}>
           <Ionicons name="book-outline" size={19} color={colors.primary} />
@@ -1012,7 +1024,6 @@ export function AssistantScreen() {
           style={styles.flex}
           data={messages}
           keyExtractor={(item) => item.id}
-          onContentSizeChange={() => requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false }))}
           contentContainerStyle={messages.length ? styles.messages : styles.emptyMessages}
           ListFooterComponent={sending && !liveTrace ? (
             <View style={styles.thinkingRow}>
@@ -1495,7 +1506,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
-    backgroundColor: colors.surface,
   },
   projectContext: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: spacing.sm },
   projectCopy: { flex: 1, minWidth: 0, gap: 2 },
@@ -1519,7 +1529,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
-    backgroundColor: colors.surface,
   },
   styleSelectorText: { flex: 1, minWidth: 0, color: colors.textMuted, fontSize: 13, fontWeight: "600" },
   styleSelectorTextActive: { color: colors.primary },
@@ -1550,12 +1559,12 @@ const styles = StyleSheet.create({
   assistantMessage: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   messageRole: { color: colors.primary, fontSize: 12, fontWeight: "700" },
   messageText: { color: colors.text, fontSize: 16, lineHeight: 24 },
-  failureCard: { alignSelf: "flex-start", maxWidth: "92%", minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: "#E4B4AE", borderRadius: radius.md, backgroundColor: "#FFF4F2" },
+  failureCard: { alignSelf: "flex-start", flexShrink: 1, maxWidth: "88%", minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderWidth: 1, borderColor: "#E4B4AE", borderRadius: radius.sm, backgroundColor: "#FFF4F2" },
   failureTitle: { color: colors.danger, fontSize: 13, fontWeight: "700" },
-  failureRetry: { minHeight: 36, flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.sm, borderWidth: 1, borderColor: colors.danger, borderRadius: radius.sm },
+  failureRetry: { minHeight: 28, flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.sm, borderWidth: 1, borderColor: colors.danger, borderRadius: radius.sm },
   failureRetryDisabled: { opacity: 0.5 },
   failureRetryText: { color: colors.danger, fontSize: 12, fontWeight: "700" },
-  errorDetails: { gap: spacing.xs, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceMuted },
+  errorDetails: { alignSelf: "flex-start", flexShrink: 1, maxWidth: "100%", gap: spacing.xs, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceMuted },
   errorDetailsToggle: { minHeight: 28, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   errorDetailsLabel: { color: colors.textMuted, fontSize: 12, fontWeight: "600" },
   errorDetailsText: { color: colors.textMuted, fontSize: 12, lineHeight: 17 },
@@ -1636,9 +1645,11 @@ const styles = StyleSheet.create({
   sheetRowText: { flex: 1, minWidth: 0 },
   sheetRowTitle: { color: colors.text, fontSize: 15, fontWeight: "600" },
   sheetRowMeta: { marginTop: 3, color: colors.textMuted, fontSize: 12 },
-  contextButton: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: spacing.sm, minHeight: 34, borderRadius: radius.sm },
-  contextButtonText: { color: colors.primary, fontSize: 13, fontWeight: "600" },
-  contextButtonTextOverflow: { color: colors.danger },
+  headerMenuBackdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9 },
+  headerMenuCard: { position: "absolute", top: 100, right: 18, width: 176, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingVertical: 4, zIndex: 10, elevation: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 10 },
+  headerMenuRow: { minHeight: 46, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md },
+  headerMenuRowPressed: { backgroundColor: colors.surfaceMuted },
+  headerMenuText: { color: colors.text, fontSize: 14, fontWeight: "600" },
   contextMeter: { height: 8, marginHorizontal: spacing.lg, borderRadius: 4, overflow: "hidden", backgroundColor: colors.surfaceMuted },
   contextMeterFill: { height: 8, borderRadius: 4 },
   contextPercent: { marginTop: spacing.sm, marginHorizontal: spacing.lg, color: colors.text, fontSize: 26, fontWeight: "700" },

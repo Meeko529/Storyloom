@@ -39,7 +39,7 @@ export function ProjectsScreen() {
   const [importing, setImporting] = useState(false);
   /** 分类与排序 */
   const [categories, setCategories] = useState<Category[]>([]);
-  const [shelfSort, setShelfSort] = useState<"recent" | "created" | "title" | "words">("recent");
+  const [shelfSort, setShelfSort] = useState<"recent" | "created" | "words">("recent");
   /** 当前显示的分组；null = 全部。存设置时用 "all" 表示全部 */
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [categoryPanelVisible, setCategoryPanelVisible] = useState(false);
@@ -70,7 +70,7 @@ export function ProjectsScreen() {
         .then((value) => setViewMode(value === "list" ? "list" : "grid"))
         .catch(() => {});
       void getSetting("general.shelfSort")
-        .then((value) => setShelfSort(value === "created" || value === "title" || value === "words" ? value : "recent"))
+        .then((value) => setShelfSort(value === "created" || value === "words" ? value : "recent"))
         .catch(() => {});
       void getSetting("general.shelfCategory")
         .then((value) => setSelectedCategoryId(value && value !== "all" ? value : null))
@@ -100,7 +100,7 @@ export function ProjectsScreen() {
   };
 
   /** 排序：改设置即生效；分类开关同理。 */
-  const applyShelfSort = (rule: "recent" | "created" | "title" | "words") => {
+  const applyShelfSort = (rule: "recent" | "created" | "words") => {
     setShelfSort(rule);
     setShelfMenuView("main");
     void setSetting("general.shelfSort", rule);
@@ -111,6 +111,7 @@ export function ProjectsScreen() {
     setCategoryPanelVisible(false);
     void setSetting("general.shelfCategory", categoryId ?? "all");
   };
+  const closeCategoryManager = () => { setCategoryManagerVisible(false); setRenamingCategory(null); };
   const addCategory = async () => {
     const name = newCategoryName.trim();
     if (!name) return;
@@ -152,7 +153,6 @@ export function ProjectsScreen() {
   const sortedProjects = useMemo(() => {
     const list = [...projects];
     if (shelfSort === "created") list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    else if (shelfSort === "title") list.sort((a, b) => a.title.localeCompare(b.title, "zh"));
     else if (shelfSort === "words") list.sort((a, b) => (stats[b.id]?.characters ?? 0) - (stats[a.id]?.characters ?? 0));
     else list.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     return list;
@@ -412,7 +412,6 @@ function coverColor(title: string): string {
                 ? <ActivityIndicator size={20} color={colors.primary} />
                 : <Ionicons name="document-outline" size={20} color={colors.primary} />}
               <Text style={styles.menuRowText}>本机导入</Text>
-              <Text style={styles.menuRowHint}>TXT · Word · EPUB</Text>
             </Pressable>
             <Pressable
               accessibilityLabel={viewMode === "grid" ? "书架样式：切换为列表" : "书架样式：切换为网格"}
@@ -421,7 +420,6 @@ function coverColor(title: string): string {
             >
               <Ionicons name={viewMode === "grid" ? "list-outline" : "grid-outline"} size={20} color={colors.primary} />
               <Text style={styles.menuRowText}>书架样式</Text>
-              <Text style={styles.menuRowHint}>{viewMode === "grid" ? "网格" : "列表"}</Text>
             </Pressable>
             <Pressable
               accessibilityLabel="分类管理"
@@ -430,7 +428,6 @@ function coverColor(title: string): string {
             >
               <Ionicons name="folder-open-outline" size={20} color={colors.primary} />
               <Text style={styles.menuRowText}>分类管理</Text>
-              <Text style={styles.menuRowHint}>{categories.length} 个分类</Text>
             </Pressable>
             <Pressable
               accessibilityLabel="书架排序"
@@ -439,9 +436,6 @@ function coverColor(title: string): string {
             >
               <Ionicons name="swap-vertical-outline" size={20} color={colors.primary} />
               <Text style={styles.menuRowText}>书架排序</Text>
-              <Text style={styles.menuRowHint}>{
-                shelfSort === "recent" ? "最近更新" : shelfSort === "created" ? "创建时间" : shelfSort === "title" ? "书名" : "字数"
-              }</Text>
             </Pressable>
           </View>
         </>
@@ -454,7 +448,6 @@ function coverColor(title: string): string {
             {([
               { id: "recent", label: "最近更新" },
               { id: "created", label: "创建时间" },
-              { id: "title", label: "书名" },
               { id: "words", label: "字数" },
             ] as const).map((option) => (
               <Pressable
@@ -691,70 +684,77 @@ function coverColor(title: string): string {
         </Pressable>
       </Modal>
 
-      <Modal visible={categoryManagerVisible} transparent animationType="slide" onRequestClose={() => { setCategoryManagerVisible(false); setRenamingCategory(null); }}>
+      <Modal visible={categoryManagerVisible} transparent animationType="slide" onRequestClose={closeCategoryManager}>
         <KeyboardAvoidingView style={styles.menuBackdrop} behavior="height" automaticOffset>
+          <Pressable accessibilityLabel="关闭分类管理" onPress={closeCategoryManager} style={styles.sheetBackdropFill} />
           <View style={styles.menuSheet}>
-            <Text style={styles.menuTitle}>{assignTarget ? "归入分类" : "分类管理"}</Text>
-            {assignTarget ? (
-              <>
-                <Text style={styles.categorySectionHint}>将《{assignTarget.title}》归入：</Text>
-                <Pressable
-                  accessibilityLabel="归入未分类"
-                  onPress={() => void assignToCategory(null)}
-                  style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
-                >
-                  <Ionicons name="albums-outline" size={20} color={colors.textMuted} />
-                  <Text style={styles.menuRowText}>未分类</Text>
-                </Pressable>
-                {categories.map((category) => (
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>{assignTarget ? "归入分类" : "分类管理"}</Text>
+              <Pressable accessibilityLabel="关闭" onPress={closeCategoryManager} style={styles.sheetClose}>
+                <Ionicons name="close" size={22} color={colors.textMuted} />
+              </Pressable>
+            </View>
+            <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetScrollContent} keyboardShouldPersistTaps="handled">
+              {assignTarget ? (
+                <>
+                  <Text style={styles.sheetSectionTitle}>归入</Text>
+                  <Text style={styles.categorySectionHint}>将《{assignTarget.title}》归入：</Text>
                   <Pressable
-                    key={category.id}
-                    accessibilityLabel={`归入${category.name}`}
-                    onPress={() => void assignToCategory(category.id)}
+                    accessibilityLabel="归入未分类"
+                    onPress={() => void assignToCategory(null)}
                     style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
                   >
-                    <Ionicons name="folder-outline" size={20} color={colors.primary} />
-                    <Text style={styles.menuRowText}>{category.name}</Text>
-                    {assignTarget.categoryId === category.id ? <Ionicons name="checkmark" size={20} color={colors.primary} /> : null}
+                    <Ionicons name="albums-outline" size={20} color={colors.textMuted} />
+                    <Text style={styles.menuRowText}>未分类</Text>
                   </Pressable>
-                ))}
-              </>
-            ) : (
-              <>
-                <Field label="新建分类" value={newCategoryName} onChangeText={setNewCategoryName} />
-                <Button label="创建分类" onPress={() => void addCategory()} disabled={!newCategoryName.trim()} />
-                {categories.map((category) => {
-                  const count = projects.filter((project) => project.categoryId === category.id).length;
-                  const renaming = renamingCategory?.id === category.id;
-                  return renaming ? (
-                    <View key={category.id} style={styles.categoryEditRow}>
-                      <Field label="分类名" value={renamingCategory.name} onChangeText={(value) => setRenamingCategory({ id: category.id, name: value })} />
-                      <View style={styles.categoryActions}>
-                        <Button label="取消" variant="secondary" onPress={() => setRenamingCategory(null)} />
-                        <Button label="保存" onPress={() => void saveCategoryRename()} disabled={!renamingCategory.name.trim()} />
+                  {categories.map((category) => (
+                    <Pressable
+                      key={category.id}
+                      accessibilityLabel={`归入${category.name}`}
+                      onPress={() => void assignToCategory(category.id)}
+                      style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+                    >
+                      <Ionicons name="folder-outline" size={20} color={colors.primary} />
+                      <Text style={styles.menuRowText}>{category.name}</Text>
+                      {assignTarget.categoryId === category.id ? <Ionicons name="checkmark" size={20} color={colors.primary} /> : null}
+                    </Pressable>
+                  ))}
+                </>
+              ) : (
+                <>
+                  <Text style={styles.sheetSectionTitle}>新建分类</Text>
+                  <Field label="分类名" value={newCategoryName} onChangeText={setNewCategoryName} />
+                  <Button label="创建分类" onPress={() => void addCategory()} disabled={!newCategoryName.trim()} />
+                  <Text style={styles.sheetSectionTitle}>已有分类</Text>
+                  {categories.length ? categories.map((category) => {
+                    const count = projects.filter((project) => project.categoryId === category.id).length;
+                    const renaming = renamingCategory?.id === category.id;
+                    return renaming ? (
+                      <View key={category.id} style={styles.categoryEditRow}>
+                        <Field label="分类名" value={renamingCategory.name} onChangeText={(value) => setRenamingCategory({ id: category.id, name: value })} />
+                        <View style={styles.categoryActions}>
+                          <Button label="取消" variant="secondary" onPress={() => setRenamingCategory(null)} />
+                          <Button label="保存" onPress={() => void saveCategoryRename()} disabled={!renamingCategory.name.trim()} />
+                        </View>
                       </View>
-                    </View>
-                  ) : (
-                    <View key={category.id} style={styles.categoryRow}>
-                      <View style={[styles.categoryRow, { flex: 1 }]}>
-                        <Text style={[styles.title, { fontSize: 14 }]}>{category.name}</Text>
-                        <Text style={styles.categoryMeta}>{count} 部作品</Text>
+                    ) : (
+                      <View key={category.id} style={styles.categoryRow}>
+                        <View style={[styles.categoryRow, { flex: 1 }]}>
+                          <Text style={[styles.title, { fontSize: 14 }]}>{category.name}</Text>
+                          <Text style={styles.categoryMeta}>{count} 部作品</Text>
+                        </View>
+                        <Pressable accessibilityLabel={`重命名 ${category.name}`} onPress={() => setRenamingCategory({ id: category.id, name: category.name })} style={styles.iconButton}>
+                          <Ionicons name="create-outline" size={19} color={colors.textMuted} />
+                        </Pressable>
+                        <Pressable accessibilityLabel={`删除 ${category.name}`} onPress={() => removeCategory(category)} style={styles.iconButton}>
+                          <Ionicons name="trash-outline" size={19} color={colors.textMuted} />
+                        </Pressable>
                       </View>
-                      <Pressable accessibilityLabel={`重命名 ${category.name}`} onPress={() => setRenamingCategory({ id: category.id, name: category.name })} style={styles.iconButton}>
-                        <Ionicons name="create-outline" size={19} color={colors.textMuted} />
-                      </Pressable>
-                      <Pressable accessibilityLabel={`删除 ${category.name}`} onPress={() => removeCategory(category)} style={styles.iconButton}>
-                        <Ionicons name="trash-outline" size={19} color={colors.textMuted} />
-                      </Pressable>
-                    </View>
-                  );
-                })}
-                {!categories.length ? <Text style={styles.categorySectionHint}>还没有分类，先创建一个。</Text> : null}
-              </>
-            )}
-            <View style={styles.modalActions}>
-              <Button label="关闭" variant="secondary" onPress={() => { setCategoryManagerVisible(false); setRenamingCategory(null); }} />
-            </View>
+                    );
+                  }) : <Text style={styles.categorySectionHint}>还没有分类，先创建一个。</Text>}
+                </>
+              )}
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -797,7 +797,7 @@ const styles = StyleSheet.create({
   statsText: { flex: 1, color: colors.textMuted, fontSize: 10.5 },
   headerActions: { flexDirection: "row", alignItems: "center" },
   shelfRow: { paddingHorizontal: 14, marginBottom: 2 },
-  shelfBooks: { flexDirection: "row", alignItems: "flex-end", gap: 10, marginBottom: -12, paddingHorizontal: 6 },
+  shelfBooks: { flexDirection: "row", alignItems: "flex-end", gap: 10, marginBottom: -4, paddingHorizontal: 6 },
   shelfCell: { flex: 1, alignItems: "center" },
   bookObject: { width: "100%", aspectRatio: 3 / 4, borderRadius: 10, overflow: "hidden", justifyContent: "center" },
   bookShadowImage: { position: "absolute", left: 4, top: 0, width: "100%", height: "100%", borderRadius: 10 },
@@ -805,7 +805,7 @@ const styles = StyleSheet.create({
   bookCoverTextWrap: { alignSelf: "stretch", alignItems: "center", gap: 2, paddingHorizontal: 18 },
   bookCoverLine: { color: "rgba(255,255,255,0.95)", fontSize: 16, fontWeight: "800", letterSpacing: 1 },
   bookCoverLineLead: { fontSize: 20 },
-  shelfPlankImage: { alignSelf: "stretch", height: 60 },
+  shelfPlankImage: { alignSelf: "stretch", aspectRatio: 3462 / 383 },
   shelfLabels: { flexDirection: "row", gap: 10, marginTop: 8 },
   shelfLabelCell: { flex: 1, alignItems: "center" },
   gridCover: { width: "100%", aspectRatio: 3 / 4, borderRadius: 10, alignItems: "flex-end", justifyContent: "center", overflow: "hidden" },
@@ -814,8 +814,15 @@ const styles = StyleSheet.create({
   gridName: { alignSelf: "stretch", fontSize: 12, fontWeight: "600", textAlign: "center" },
   gridStats: { alignSelf: "stretch", fontSize: 10, color: colors.textMuted, textAlign: "center" },
   shelfMenuBackdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9 },
-  shelfMenuCard: { position: "absolute", top: 100, right: 18, width: 236, backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, paddingVertical: 4, zIndex: 10, elevation: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 10 },
+  shelfMenuCard: { position: "absolute", top: 100, right: 18, width: 176, backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, paddingVertical: 4, zIndex: 10, elevation: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 10 },
   menuBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay },
+  sheetBackdropFill: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
+  sheetHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xs, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  sheetTitle: { color: colors.text, fontSize: 16, fontWeight: "700" },
+  sheetClose: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  sheetScroll: { maxHeight: 460 },
+  sheetScrollContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg, gap: spacing.sm },
+  sheetSectionTitle: { marginTop: spacing.xs, color: colors.textMuted, fontSize: 12, fontWeight: "700" },
   menuSheet: { paddingVertical: spacing.sm, paddingBottom: spacing.xl, borderTopLeftRadius: radius.md, borderTopRightRadius: radius.md, backgroundColor: colors.background },
   menuTitle: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xs, color: colors.textMuted, fontSize: 13 },
   menuRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 52, paddingHorizontal: spacing.lg },

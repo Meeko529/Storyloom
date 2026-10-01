@@ -74,7 +74,7 @@ function TraceEventRow({ event }: { event: AgentTraceEvent }) {
         style={styles.eventHeader}
       >
         <View style={styles.eventKindIcon}>
-          <Ionicons name={eventIcon(event.kind)} size={18} color={colors.textMuted} />
+          <Ionicons name={eventIcon(event.kind)} size={15} color={colors.textMuted} />
         </View>
         <View style={styles.eventCopy}>
           <View style={styles.eventTitleLine}>
@@ -147,7 +147,7 @@ export function AgentTraceView({
         style={styles.traceHeader}
       >
         <View style={styles.traceIcon}>
-          <Ionicons name="git-network-outline" size={19} color={status.color} />
+          <Ionicons name="git-network-outline" size={15} color={status.color} />
         </View>
         <View style={styles.traceCopy}>
           <Text style={[styles.traceStatus, { color: status.color }]}>{status.label}</Text>
@@ -165,7 +165,7 @@ export function AgentTraceView({
             }}
             style={[styles.traceRetry, retryDisabled && styles.traceRetryDisabled]}
           >
-            <Ionicons name="refresh-outline" size={16} color={colors.danger} />
+            <Ionicons name="refresh-outline" size={14} color={colors.danger} />
             <Text style={styles.traceRetryText}>{retryDisabled ? "处理中" : "重试"}</Text>
           </Pressable>
         ) : null}
@@ -316,7 +316,8 @@ export function AgentQuestionSheet({
 const styles = StyleSheet.create({
   trace: {
     alignSelf: "flex-start",
-    maxWidth: "92%",
+    flexShrink: 1,
+    maxWidth: "88%",
     overflow: "hidden",
     borderWidth: 1,
     borderColor: colors.border,
@@ -325,30 +326,30 @@ const styles = StyleSheet.create({
   },
   traceError: { borderColor: "#E4B4AE" },
   traceHeader: {
-    minHeight: 58,
+    minHeight: 42,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
   },
   traceIcon: {
-    width: 34,
-    height: 34,
+    width: 26,
+    height: 26,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.sm,
     backgroundColor: colors.surfaceMuted,
   },
-  traceCopy: { flex: 1, minWidth: 0 },
+  traceCopy: { flexShrink: 1, minWidth: 0 },
   traceStatus: { fontSize: 13, fontWeight: "700" },
   traceSummary: { marginTop: 2, color: colors.textMuted, fontSize: 12 },
-  traceRetry: { minHeight: 34, flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.sm, borderWidth: 1, borderColor: colors.danger, borderRadius: radius.sm },
+  traceRetry: { minHeight: 26, flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.sm, borderWidth: 1, borderColor: colors.danger, borderRadius: radius.sm },
   traceRetryDisabled: { opacity: 0.5 },
   traceRetryText: { color: colors.danger, fontSize: 12, fontWeight: "700" },
   events: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   collaborationNotice: {
-    minHeight: 38,
+    minHeight: 34,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
@@ -358,21 +359,21 @@ const styles = StyleSheet.create({
   collaborationText: { flex: 1, color: colors.primary, fontSize: 12, fontWeight: "600" },
   event: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   eventHeader: {
-    minHeight: 54,
+    minHeight: 42,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
   },
-  eventKindIcon: { width: 26, alignItems: "center" },
-  eventCopy: { flex: 1, minWidth: 0 },
+  eventKindIcon: { width: 22, alignItems: "center" },
+  eventCopy: { flexShrink: 1, minWidth: 0 },
   eventTitleLine: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   eventTitle: { flexShrink: 1, color: colors.text, fontSize: 13, fontWeight: "700" },
   agentName: { flexShrink: 1, color: colors.textMuted, fontSize: 11 },
   eventDetail: { marginTop: 3, color: colors.textMuted, fontSize: 12, lineHeight: 17 },
-  payloads: { gap: spacing.sm, paddingHorizontal: spacing.md, paddingBottom: spacing.md },
-  payload: { gap: spacing.xs, padding: spacing.sm, borderRadius: radius.sm, backgroundColor: colors.surfaceMuted },
+  payloads: { gap: spacing.xs, paddingHorizontal: spacing.sm, paddingBottom: spacing.sm },
+  payload: { gap: spacing.xs, padding: spacing.xs, borderRadius: radius.sm, backgroundColor: colors.surfaceMuted },
   payloadLabel: { color: colors.textMuted, fontSize: 11, fontWeight: "700" },
   payloadText: { color: colors.text, fontSize: 12, lineHeight: 18 },
   questionBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay },
@@ -383,7 +384,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   questionHeader: {
-    minHeight: 66,
+    minHeight: 56,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,

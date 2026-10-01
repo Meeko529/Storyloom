@@ -65,6 +65,15 @@ export function StyleLibraryScreen() {
   const [error, setError] = useState<string | null>(null);
   const [distillationError, setDistillationError] = useState<string | null>(null);
   const [distillationProgress, setDistillationProgress] = useState("");
+  const [distillationStep, setDistillationStep] = useState<{ stage: string; completed: number; total: number } | null>(null);
+  /** 全流程进度：抽样 10% / 分析 70% / 汇总 15% / 保存 5%，避免条子在不同阶段来回跳。 */
+  const distillationPercent = (() => {
+    if (!distillationStep) return 0;
+    const span: Record<string, [number, number]> = { sampling: [0, 10], analyzing: [10, 80], synthesizing: [80, 95], saving: [95, 100] };
+    const [base, end] = span[distillationStep.stage] ?? [0, 100];
+    const ratio = distillationStep.total > 0 ? Math.min(1, distillationStep.completed / distillationStep.total) : 0;
+    return Math.round(base + (end - base) * ratio);
+  })();
   const [distillationCheckpoint, setDistillationCheckpoint] = useState<StyleDistillationCheckpoint | null>(null);
   const [distillationCoverage, setDistillationCoverage] = useState<StyleDistillationCoverage | null>(null);
   const [distillationModelName, setDistillationModelName] = useState<string | null>(null);
@@ -119,6 +128,7 @@ export function StyleLibraryScreen() {
     setError(null);
     setDistillationError(null);
     setDistillationProgress("");
+    setDistillationStep(null);
     try {
       const [nextProfiles, checkpoint, coverage] = await Promise.all([
         listStyleProfilesForSource(source.id),
@@ -141,6 +151,7 @@ export function StyleLibraryScreen() {
     setEditingSource(false);
     setDistillationError(null);
     setDistillationProgress("");
+    setDistillationStep(null);
     setDistillationCheckpoint(null);
     setDistillationCoverage(null);
   };
@@ -181,7 +192,8 @@ export function StyleLibraryScreen() {
         sourceId: selectedSource.id,
         selection,
         restart,
-        onProgress: ({ label, completed, total }) => {
+        onProgress: ({ stage, label, completed, total }) => {
+          setDistillationStep({ stage, completed, total });
           setDistillationProgress(total > 1 ? `${label}（${completed}/${total}）` : label);
         },
       });
@@ -454,7 +466,12 @@ export function StyleLibraryScreen() {
                 </View>
               ) : null}
               {distillationProgress ? (
-                <Text style={styles.progressText}>{distillationProgress}</Text>
+                <View style={styles.progressBox}>
+                  <View style={styles.progressTrack}>
+                    <View style={[styles.progressFill, { width: `${distillationPercent}%` }]} />
+                  </View>
+                  <Text style={styles.progressText}>{distillationProgress} · {distillationPercent}%</Text>
+                </View>
               ) : (
                 <Text style={styles.helperText}>每轮抽取连续 24 {coverageUnitName}、分 4 批分析后并入文风指南，不会上传整本小说。反复点击“继续蒸馏”会向后随机推进，逐步覆盖全书。</Text>
               )}
@@ -600,6 +617,9 @@ const styles = StyleSheet.create({
   inlineActions: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: spacing.sm },
   secondaryIconAction: { width: 46, height: 46, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, backgroundColor: colors.surface },
   helperText: { color: colors.textMuted, fontSize: 13, lineHeight: 19 },
+  progressBox: { gap: 6, marginTop: 2 },
+  progressTrack: { height: 6, borderRadius: 3, backgroundColor: colors.surfaceMuted, overflow: "hidden" },
+  progressFill: { height: 6, borderRadius: 3, backgroundColor: colors.primary },
   progressText: { color: colors.primary, fontSize: 13, lineHeight: 19, fontWeight: "600" },
   checkpointBox: { gap: spacing.xs, padding: spacing.md, borderWidth: 1, borderColor: colors.primary, borderRadius: radius.sm, backgroundColor: "#E6F3EF" },
   checkpointTitle: { color: colors.primary, fontSize: 13, fontWeight: "700" },
