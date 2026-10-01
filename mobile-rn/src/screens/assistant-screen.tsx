@@ -1000,12 +1000,6 @@ export function AssistantScreen() {
         </Text>
         <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
       </Pressable>
-      <Pressable accessibilityRole="button" disabled={sending} onPress={() => setSessionPickerVisible(true)} style={styles.sessionSelector}>
-        <Ionicons name="chatbubble-outline" size={17} color={colors.textMuted} />
-        <Text style={styles.sessionTitle} numberOfLines={1}>{activeSession?.title ?? "新对话"}</Text>
-        <Text style={styles.sessionTime}>{activeSession ? formatSessionTime(activeSession.updatedAt) : ""}</Text>
-        <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
-      </Pressable>
       <KeyboardAvoidingView style={styles.flex} behavior="height" automaticOffset>
         <FlatList
           style={styles.flex}
@@ -1516,17 +1510,6 @@ const styles = StyleSheet.create({
   },
   styleSelectorText: { flex: 1, minWidth: 0, color: colors.textMuted, fontSize: 13, fontWeight: "600" },
   styleSelectorTextActive: { color: colors.primary },
-  sessionSelector: {
-    minHeight: 42,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  sessionTitle: { flex: 1, color: colors.text, fontSize: 13, fontWeight: "600" },
-  sessionTime: { color: colors.textMuted, fontSize: 11 },
   errorWrap: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   messages: { padding: spacing.lg, gap: spacing.md },
   liveTimeline: { marginTop: spacing.md, gap: spacing.sm },
