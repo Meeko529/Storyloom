@@ -305,7 +305,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
-    backgroundColor: colors.surface,
+    backgroundColor: "#EFF3F0",
   },
   traceError: { borderColor: "#E4B4AE" },
   traceHeader: {
