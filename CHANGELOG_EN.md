@@ -8,6 +8,26 @@ Important changes to this project. Format based on [Keep a Changelog](https://ke
 
 ---
 
+## [0.1.30] — 2026-10-01
+
+### Added
+
+- **Free model catalog 5 → 12**: added Agnes AI (indefinitely free, official endpoint), ModelScope (2000 calls/day), iFlytek Spark Lite (long-term free), SiliconFlow DeepSeek-R1-Distill (reasoning), Groq (GPT-OSS-120B), Cloudflare Workers AI (with account-ID placeholder guidance); every free-tier claim verified online
+- **SillyTavern world info import**: the world info page accepts SillyTavern World Info JSON, preserving content, enabled state and trigger keywords (key[])
+- **SillyTavern character card import**: the characters page accepts V1/V2/V3 JSON cards and PNG cards with embedded data; personality / scenario / first message fold into the character description
+- **World info trigger keywords**: entries gain editable keywords; during writing and chat the writing assistant prioritizes reading matching entries
+
+### Fixed
+
+- The assistant correctly jumps to the newest content after opening / switching conversations and after sending (previously stuck on the oldest); expanding a run card no longer causes jumps
+- The shelf plank now spans edge to edge instead of stopping at the page margins
+- The Optional content page now shows the previously missing Chinese Novelist skill pack and WenKai font pack download cards
+- Spacing between blocks inside the distillation details sheet
+- The assistant run card background changed from pure white to a light green-gray; failure red border unchanged
+- Five copy strings no longer reference the renamed settings group
+
+---
+
 ## [0.1.29] — 2026-10-01
 
 ### Added

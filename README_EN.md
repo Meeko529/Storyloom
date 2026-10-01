@@ -53,7 +53,7 @@ Storyloom **stands on OpenFicM's shoulders rather than rewriting it**: the UI, l
 
 **Model integration** (the focus of this project)
 - Three protocols: OpenAI-compatible / Google Gemini / Anthropic
-- **Free-model section**: a dedicated page with five free models — get a key, paste, enable
+- **Free-model section**: a dedicated page with twelve free models — get a key, paste, enable
 - **Provider quick-fill**: Zhipu, DeepSeek, Qwen, SiliconFlow, Kimi, OpenRouter — tap to fill the endpoint
 - **Provider advanced settings**: custom headers, custom auth header name & prefix, disable tools, swap `max_tokens` for `max_completion_tokens` — for relays and self-hosted gateways
 - Separate font & size for writing and chat: body size 11–28, three font choices, live preview
