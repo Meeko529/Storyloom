@@ -72,8 +72,8 @@ export function FreeModelsScreen({ onBack }: { onBack: () => void }) {
                   <Ionicons name="sparkles-outline" size={20} color={colors.primary} />
                 </View>
                 <View style={styles.cardText}>
-                  <Text numberOfLines={1} style={styles.cardTitle}>{item.platform} · {item.modelLabel}</Text>
-                  <Text numberOfLines={2} style={styles.cardNote}>{item.note}</Text>
+                  <Text numberOfLines={expanded ? undefined : 1} style={styles.cardTitle}>{item.platform} · {item.modelLabel}</Text>
+                  <Text numberOfLines={expanded ? undefined : 2} style={styles.cardNote}>{item.note}</Text>
                 </View>
                 <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={18} color={colors.textMuted} />
               </Pressable>

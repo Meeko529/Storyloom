@@ -38,7 +38,8 @@ import {
   normalizeContextWindow,
 } from "@/agent/context-usage";
 import { editorFontFamily, readChatPrefs } from "@/settings/editor-prefs";
-import { AgentQuestionSheet, AgentTraceView } from "@/components/agent-run-view";
+import { AgentQuestionSheet, AgentTraceView, ReasoningRow } from "@/components/agent-run-view";
+import { appendCrashLog } from "@/lib/crash-log";
 import { MessageActionBar } from "@/components/message-action-bar";
 import { Button, EmptyState, ErrorNotice, Field, Header, Screen, SheetBackdrop } from "@/components/ui";
 import {
@@ -81,23 +82,6 @@ import type {
   Provider,
   StyleProfile,
 } from "@/types";
-
-/** 思考型模型的推理过程：默认折叠，由用户决定是否展开查看。 */
-function ReasoningBlock({ text, seconds, live = false }: { text: string; seconds?: number; live?: boolean }) {
-  const [expanded, setExpanded] = useState(live);
-  const characters = text.trim().length;
-  return (
-    <View style={styles.reasoningCard}>
-      <Pressable accessibilityRole="button" accessibilityLabel={expanded ? "收起思考过程" : "展开思考过程"} onPress={() => setExpanded((value) => !value)} style={styles.reasoningHeader}>
-        <Ionicons name="bulb-outline" size={16} color={live ? colors.primary : colors.textMuted} />
-        <Text style={[styles.reasoningTitle, live && styles.reasoningTitleLive]}>{live ? "思考中" : "思考过程"}</Text>
-        <Text style={styles.reasoningMeta}>{seconds ? `用时 ${seconds}s · ` : ""}{characters} 字</Text>
-        <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
-      </Pressable>
-      {expanded ? <Text selectable style={styles.reasoningText}>{text}</Text> : null}
-    </View>
-  );
-}
 
 /**
  * 工具授权。写入类工具先展示「改前 / 改后」，按一整组接受或驳回，
@@ -879,6 +863,11 @@ export function AssistantScreen() {
       setAttachments([]);
     } catch (sendError) {
       const friendlyError = humanizeAgentError(sendError);
+      // 失败必须留痕：此前这条路径只弹提示、不写诊断报告，复现时查不到任何记录。
+      void appendCrashLog(
+        "助手执行失败",
+        friendlyError.detail ? `${friendlyError.message} —— ${friendlyError.detail}` : friendlyError.message,
+      );
       if (isCurrentRequest()) setError(friendlyError.message);
       const failedTrace = sendError instanceof AgentRunError ? sendError.trace : latestTrace;
       const retryModelId = runSelection?.model.id ?? retry?.modelId ?? activeSession.modelId ?? "";
@@ -1016,8 +1005,16 @@ export function AssistantScreen() {
                     <ActivityIndicator size="small" color={colors.primary} />
                     <Text style={styles.liveHeaderText}>处理中 · 已处理 {thinkingSeconds}s</Text>
                   </View>
-                  {liveReasoning.trim() ? <ReasoningBlock text={liveReasoning} live /> : null}
-                  {liveTrace ? <AgentTraceView trace={liveTrace} defaultExpanded inline /> : null}
+                  {liveTrace ? (
+                    <AgentTraceView
+                      trace={liveTrace}
+                      defaultExpanded
+                      inline
+                      reasoning={liveReasoning.trim() ? { text: liveReasoning, live: true } : undefined}
+                    />
+                  ) : liveReasoning.trim() ? (
+                    <ReasoningRow text={liveReasoning} live />
+                  ) : null}
                 </>
               ) : null}
               {writeCard ? (
@@ -1103,7 +1100,12 @@ export function AssistantScreen() {
                 </View>
               ) : null}
               {item.metadata?.agentTrace ? (
-                <AgentTraceView trace={item.metadata.agentTrace} durationSeconds={item.metadata.processingSeconds} inline />
+                <AgentTraceView
+                  trace={item.metadata.agentTrace}
+                  durationSeconds={item.metadata.processingSeconds}
+                  inline
+                  reasoning={item.metadata.reasoning ? { text: item.metadata.reasoning, seconds: item.metadata.processingSeconds } : undefined}
+                />
               ) : failed ? (
                 <View style={styles.failureCard}>
                   <Text style={styles.failureTitle}>执行失败</Text>
@@ -1114,9 +1116,6 @@ export function AssistantScreen() {
                     </Pressable>
                   ) : null}
                 </View>
-              ) : null}
-              {item.role === "assistant" && item.metadata?.reasoning ? (
-                <ReasoningBlock text={item.metadata.reasoning} seconds={item.metadata.processingSeconds} />
               ) : null}
               {item.role === "user" && item.metadata?.attachments?.length ? (
                 <View style={styles.attachmentRow}>
@@ -1515,7 +1514,6 @@ const styles = StyleSheet.create({
   liveTimeline: { marginTop: spacing.md, gap: spacing.sm },
   liveHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xs },
   liveHeaderText: { color: colors.text, fontSize: 13, fontWeight: "600" },
-  reasoningTitleLive: { color: colors.primary },
   emptyMessages: { flexGrow: 1 },
   message: { gap: spacing.md, paddingVertical: spacing.md },
   messageHeader: { minHeight: 28, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
@@ -1560,11 +1558,6 @@ const styles = StyleSheet.create({
   welcomeChipText: { color: colors.textMuted, fontSize: 11.5 },
   editingBanner: { minHeight: 36, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   undoBanner: { minHeight: 36, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.md, paddingVertical: spacing.xs, backgroundColor: "#E6F3EF", borderRadius: 8 },
-  reasoningCard: { alignSelf: "flex-start", maxWidth: "92%", borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, borderRadius: 8, marginBottom: spacing.xs },
-  reasoningHeader: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: spacing.sm, paddingVertical: 8 },
-  reasoningTitle: { color: colors.textMuted, fontSize: 13 },
-  reasoningMeta: { flex: 1, color: colors.textMuted, fontSize: 12 },
-  reasoningText: { color: colors.textMuted, fontSize: 13, lineHeight: 20, paddingHorizontal: spacing.sm, paddingBottom: spacing.sm },
   attachmentRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   attachmentChip: { flexDirection: "row", alignItems: "center", gap: 5, maxWidth: "100%", paddingHorizontal: 9, paddingVertical: 6, borderRadius: 8, backgroundColor: "#E6F3EF" },
   attachmentName: { color: colors.text, fontSize: 12, maxWidth: 150 },

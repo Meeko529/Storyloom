@@ -3,13 +3,12 @@ import { useEffect, useMemo, useState, type ComponentProps } from "react";
 import {
   ActivityIndicator,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
-
 import { Button } from "@/components/ui";
 import { colors, radius, spacing } from "@/theme";
 import type {
@@ -60,11 +59,11 @@ function EventPayload({ label, value }: { label: string; value: string }) {
   );
 }
 
-function TraceEventRow({ event }: { event: AgentTraceEvent }) {
+function TraceEventRow({ event, inline = false }: { event: AgentTraceEvent; inline?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const hasPayload = Boolean(event.input || event.output);
   return (
-    <View style={styles.event}>
+    <View style={[styles.event, inline && styles.eventInline]}>
       <Pressable
         accessibilityRole={hasPayload ? "button" : undefined}
         accessibilityState={hasPayload ? { expanded } : undefined}
@@ -101,11 +100,34 @@ function TraceEventRow({ event }: { event: AgentTraceEvent }) {
   );
 }
 
+/** 思考过程行：与执行事件同层，收在一条时间线里。默认收起，点开看全文。 */
+export function ReasoningRow({ text, seconds, live }: { text: string; seconds?: number; live?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const characters = text.trim().length;
+  return (
+    <View style={styles.reasoningRow}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={open ? "收起思考过程" : "展开思考过程"}
+        onPress={() => setOpen((value) => !value)}
+        style={styles.reasoningRowHeader}
+      >
+        <Ionicons name="bulb-outline" size={15} color={live ? colors.primary : colors.textMuted} />
+        <Text style={[styles.reasoningRowTitle, live && styles.reasoningRowTitleLive]}>{live ? "思考中" : "思考过程"}</Text>
+        <Text style={styles.reasoningRowMeta}>{seconds ? `用时 ${seconds}s · ` : ""}{characters} 字</Text>
+        <Ionicons name={open ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
+      </Pressable>
+      {open ? <Text selectable style={styles.reasoningRowText}>{text}</Text> : null}
+    </View>
+  );
+}
+
 export function AgentTraceView({
   trace,
   defaultExpanded = false,
   durationSeconds,
   inline = false,
+  reasoning,
 }: {
   trace: AgentRunTrace;
   defaultExpanded?: boolean;
@@ -113,6 +135,8 @@ export function AgentTraceView({
   durationSeconds?: number;
   /** 时间线形态：不画卡片外框与底色，状态行与执行事件直接铺在消息/实时时间线里。 */
   inline?: boolean;
+  /** 本轮模型的思考文本：作为时间线里的一行，与执行事件同层。 */
+  reasoning?: { text: string; seconds?: number; live?: boolean };
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded || trace.status === "running");
   const status = runStatus(trace);
@@ -157,6 +181,9 @@ export function AgentTraceView({
         {trace.status === "running" ? <ActivityIndicator size="small" color={colors.primary} /> : null}
         <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={18} color={colors.textMuted} />
       </Pressable>
+      {reasoning?.text.trim() ? (
+        <ReasoningRow text={reasoning.text} seconds={reasoning.seconds} live={reasoning.live} />
+      ) : null}
       {expanded ? (
         <View style={[styles.events, inline && styles.eventsInline]}>
           {trace.collaborationRequired ? (
@@ -165,7 +192,7 @@ export function AgentTraceView({
               <Text style={styles.collaborationText}>此任务可按需调用专业子智能体协作</Text>
             </View>
           ) : null}
-          {trace.events.map((event) => <TraceEventRow key={event.id} event={event} />)}
+          {trace.events.map((event) => <TraceEventRow key={event.id} event={event} inline={inline} />)}
         </View>
       ) : null}
     </View>
@@ -211,17 +238,16 @@ export function AgentQuestionSheet({
               <Ionicons name="help-circle-outline" size={21} color={colors.primary} />
             </View>
             <View style={styles.questionHeaderCopy}>
-              <Text style={styles.questionSheetTitle}>{request.agentName} 需要你的选择</Text>
-              <Text style={styles.questionSheetSubtitle}>{request.questions.length} 个问题</Text>
+              <Text style={styles.questionSheetTitle}>{request.agentName} 需要你的选择 · {request.questions.length} 个问题</Text>
             </View>
             <Pressable accessibilityLabel="稍后回答" onPress={onCancel} style={styles.closeButton}>
               <Ionicons name="close" size={24} color={colors.textMuted} />
             </Pressable>
           </View>
-          <KeyboardAwareScrollView
-            bottomOffset={spacing.xl}
+          <ScrollView
             contentContainerStyle={styles.questions}
             keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
           >
             {request.questions.map((question, questionIndex) => (
               <View key={`${request.id}-${questionIndex}`} style={styles.question}>
@@ -287,7 +313,7 @@ export function AgentQuestionSheet({
                 </View>
               </View>
             ))}
-          </KeyboardAwareScrollView>
+          </ScrollView>
           <View style={styles.questionActions}>
             <Button label="稍后再说" variant="secondary" onPress={onCancel} />
             <Button label="提交回答" disabled={!canSubmit} onPress={submit} />
@@ -342,7 +368,14 @@ const styles = StyleSheet.create({
     backgroundColor: "#E8F2EE",
   },
   collaborationText: { flex: 1, color: colors.primary, fontSize: 12, fontWeight: "600" },
+  reasoningRow: { paddingHorizontal: 0 },
+  reasoningRowHeader: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 34 },
+  reasoningRowTitle: { color: colors.textMuted, fontSize: 13 },
+  reasoningRowTitleLive: { color: colors.primary },
+  reasoningRowMeta: { flex: 1, color: colors.textMuted, fontSize: 12 },
+  reasoningRowText: { color: colors.textMuted, fontSize: 13, lineHeight: 20 },
   event: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  eventInline: { borderTopWidth: 0, borderTopColor: "transparent" },
   eventHeader: {
     minHeight: 42,
     flexDirection: "row",
@@ -361,17 +394,17 @@ const styles = StyleSheet.create({
   payload: { gap: spacing.xs, padding: spacing.xs, borderRadius: radius.sm, backgroundColor: colors.surfaceMuted },
   payloadLabel: { color: colors.textMuted, fontSize: 11, fontWeight: "700" },
   payloadText: { color: colors.text, fontSize: 12, lineHeight: 18 },
-  questionBackdrop: { width: "100%" },
+  questionBackdrop: { width: "100%", maxWidth: "88%", alignSelf: "flex-start" },
   questionSheet: {
-    maxHeight: 460,
+    maxHeight: 400,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
-    backgroundColor: colors.surface,
+    backgroundColor: "#EFF3F0",
     overflow: "hidden",
   },
   questionHeader: {
-    minHeight: 56,
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
@@ -389,28 +422,27 @@ const styles = StyleSheet.create({
     backgroundColor: "#E8F2EE",
   },
   questionHeaderCopy: { flex: 1, minWidth: 0 },
-  questionSheetTitle: { color: colors.text, fontSize: 17, fontWeight: "700" },
-  questionSheetSubtitle: { marginTop: 2, color: colors.textMuted, fontSize: 12 },
+  questionSheetTitle: { color: colors.text, fontSize: 15, fontWeight: "700" },
   closeButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  questions: { padding: spacing.lg, paddingBottom: spacing.xl, gap: spacing.xl },
+  questions: { padding: spacing.md, paddingBottom: spacing.lg, gap: spacing.lg },
   question: { gap: spacing.sm },
   questionIndex: { color: colors.primary, fontSize: 11, fontWeight: "700" },
-  questionTitle: { color: colors.text, fontSize: 17, fontWeight: "700", lineHeight: 24 },
+  questionTitle: { color: colors.text, fontSize: 15, fontWeight: "700", lineHeight: 21 },
   questionDescription: { color: colors.textMuted, fontSize: 13, lineHeight: 19 },
   options: { gap: spacing.sm, marginTop: spacing.xs },
   option: {
-    minHeight: 52,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
+    borderRadius: radius.sm,
+    backgroundColor: colors.background,
   },
-  optionSelected: { borderColor: colors.primary, backgroundColor: "#E8F2EE" },
+  optionSelected: { borderColor: colors.primary, backgroundColor: colors.surface },
   optionCopy: { flex: 1, minWidth: 0 },
   optionLabel: { color: colors.text, fontSize: 14, fontWeight: "600" },
   optionLabelSelected: { color: colors.primary },

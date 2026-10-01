@@ -256,22 +256,19 @@ function AppUpdatePopup() {
       <View style={styles.updateBackdrop}>
         <View style={styles.updateCard}>
           <Text style={styles.updateTitle}>发现新版本 {info.latestVersion}</Text>
-          {busy ? (
-            <Text style={styles.updateHint}>{progress || "正在下载…"}</Text>
-          ) : (
-            <ScrollView style={styles.updateNotesScroll} nestedScrollEnabled>
-              {parseUpdateNotes(info.notes).map((line, index) =>
-                line.kind === "section" ? (
-                  <Text key={index} style={styles.updateNoteSection}>{line.text}</Text>
-                ) : (
-                  <View key={index} style={styles.updateNoteRow}>
-                    <Text style={styles.updateNoteBullet}>·</Text>
-                    <Text style={styles.updateNoteText}>{line.text}</Text>
-                  </View>
-                ),
-              )}
-            </ScrollView>
-          )}
+          {busy ? <Text style={styles.updateHint}>{progress || "正在下载…"}</Text> : null}
+          <ScrollView style={styles.updateNotesScroll} nestedScrollEnabled>
+            {parseUpdateNotes(info.notes).map((line, index) =>
+              line.kind === "section" ? (
+                <Text key={index} style={styles.updateNoteSection}>{line.text}</Text>
+              ) : (
+                <View key={index} style={styles.updateNoteRow}>
+                  <Text style={styles.updateNoteBullet}>·</Text>
+                  <Text style={styles.updateNoteText}>{line.text}</Text>
+                </View>
+              ),
+            )}
+          </ScrollView>
           <View style={styles.updateActions}>
             <Pressable disabled={busy} onPress={() => setInfo(null)} style={styles.updateLater}>
               <Text style={styles.updateLaterText}>稍后</Text>
