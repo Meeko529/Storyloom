@@ -473,7 +473,11 @@ export function StyleLibraryScreen() {
                   <Text style={styles.progressText}>{distillationProgress} · {distillationPercent}%</Text>
                 </View>
               ) : (
-                <Text style={styles.helperText}>每轮抽取连续 24 {coverageUnitName}、分 4 批分析后并入文风指南，不会上传整本小说。反复点击“继续蒸馏”会向后随机推进，逐步覆盖全书。</Text>
+                <Text style={styles.helperText}>
+                  {coverageFinished
+                    ? `已覆盖全书（${distillationCoverage?.coveredUntil ?? 0}/${distillationCoverage?.totalUnits ?? 0} ${coverageUnitName}）。想继续积累样本，请点击「重新开始」重新扫描全书。`
+                    : `每轮抽取连续 24 ${coverageUnitName}、分 4 批分析后并入文风指南，不会上传整本小说。反复点击“继续蒸馏”会向后随机推进，逐步覆盖全书。`}
+                </Text>
               )}
               <Text style={styles.helperText}>
                 蒸馏使用当前默认模型：{distillationModelName ?? "尚未选择默认模型"}

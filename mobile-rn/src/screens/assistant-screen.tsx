@@ -265,13 +265,9 @@ export function AssistantScreen() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSession, setActiveSession] = useState<ChatSession | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  /** 打开或切换对话后跳到最新一条。滚动必须在列表真正渲染出新内容之后执行——
-   *  一次性 rAF 滚动会在 FlatList 挂载前跑空（表现为停在顶部），
-   *  所以这里只置"待滚"标记，由 onContentSizeChange 在内容尺寸变化时执行并清除。 */
-  const pendingScrollToEndRef = useRef(true);
-  const scrollToEndOnce = () => {
-    pendingScrollToEndRef.current = true;
-  };
+  /** 聊天列表为 inverted（业界标准：GiftedChat 等）——offset 0 恒为最新消息，
+   *  打开 / 切换 / 发送天然落在最新，无需任何滚动代码。 */
+  const reversedMessages = useMemo(() => [...messages].reverse(), [messages]);
   const [models, setModels] = useState<Model[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [defaultModelId, setDefaultModelId] = useState<string | null>(null);
@@ -309,7 +305,6 @@ export function AssistantScreen() {
   const [pendingQuestion, setPendingQuestion] = useState<AgentClarificationRequest | null>(null);
   const [retryRequest, setRetryRequest] = useState<RetryRequest | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
-  const listRef = useRef<FlatList<ChatMessage>>(null);
   const composerRef = useRef<TextInput>(null);
   const loadRequestRef = useRef(0);
   const sendRequestRef = useRef(0);
@@ -395,8 +390,7 @@ export function AssistantScreen() {
       setSessions(nextSessions);
       setActiveSession(nextSession);
       setMessages(nextMessages);
-      scrollToEndOnce();
-      const lastFailed = [...nextMessages].reverse().find((message) => message.role === "assistant" && (message.metadata?.taskStatus === "failed" || message.metadata?.agentTrace?.status === "error"));
+            const lastFailed = [...nextMessages].reverse().find((message) => message.role === "assistant" && (message.metadata?.taskStatus === "failed" || message.metadata?.agentTrace?.status === "error"));
       setRetryRequest(lastFailed ? retryRequestForMessage(lastFailed, nextMessages, nextSession, nextSelection, activeAgent?.id ?? null) : null);
       setModels(nextModels);
       setProviders(nextProviders);
@@ -555,13 +549,10 @@ export function AssistantScreen() {
       await setSetting(activeSessionSettingKey(effectiveProjectId), session.id);
       setActiveSession(session);
       setMessages(nextMessages);
-      scrollToEndOnce();
-      const lastFailed = [...nextMessages].reverse().find((message) => message.role === "assistant" && (message.metadata?.taskStatus === "failed" || message.metadata?.agentTrace?.status === "error"));
+            const lastFailed = [...nextMessages].reverse().find((message) => message.role === "assistant" && (message.metadata?.taskStatus === "failed" || message.metadata?.agentTrace?.status === "error"));
       setRetryRequest(lastFailed ? retryRequestForMessage(lastFailed, nextMessages, session, nextSelection, activeAgentId) : null);
       setSelection(nextSelection);
       setError(selectionError);
-      setSessionPickerVisible(false);
-      requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false }));
     } catch (switchError) {
       setError(switchError instanceof Error ? switchError.message : String(switchError));
     }
@@ -658,8 +649,7 @@ export function AssistantScreen() {
       const nextMessages = await listMessages(replacement.id);
       setActiveSession(replacement);
       setMessages(nextMessages);
-      scrollToEndOnce();
-      setRetryRequest(null);
+            setRetryRequest(null);
       try {
         setSelection(await resolveSelection(effectiveModelId, models, providers));
         setError(null);
@@ -774,7 +764,6 @@ export function AssistantScreen() {
       ? messages.find((message) => message.id === editingMessageId && message.role === "user") ?? null
       : null;
     if (!project || !activeSession || !content || sending) return;
-    pendingScrollToEndRef.current = true;
     if (retry && (retry.sessionId !== activeSession.id || !messages.some((message) => message.id === retry.userMessage.id))) {
       setRetryRequest(null);
       setError("重试消息已不在当前对话中，请重新发送");
@@ -860,9 +849,6 @@ export function AssistantScreen() {
         approveTool: requestToolApproval,
         askUser,
         onTrace: (trace) => {
-          latestTrace = trace;
-          setLiveTrace(trace);
-          requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
         },
       });
       const processingSeconds = Math.max(1, Math.round((Date.now() - requestStartedAt) / 1000));
@@ -883,8 +869,6 @@ export function AssistantScreen() {
       setLiveTrace(null);
       setUndoTarget(undoLabel());
       setAttachments([]);
-      refreshData();
-      requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
     } catch (sendError) {
       const friendlyError = humanizeAgentError(sendError);
       if (isCurrentRequest()) setError(friendlyError.message);
@@ -1018,18 +1002,13 @@ export function AssistantScreen() {
       </Pressable>
       <KeyboardAvoidingView style={styles.flex} behavior="height" automaticOffset>
         <FlatList
-          ref={listRef}
           style={styles.flex}
-          data={messages}
+          data={reversedMessages}
           keyExtractor={(item) => item.id}
-          onContentSizeChange={() => {
-            if (pendingScrollToEndRef.current) {
-              pendingScrollToEndRef.current = false;
-              requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false }));
-            }
-          }}
+          inverted
+          maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 120 }}
           contentContainerStyle={messages.length ? styles.messages : styles.emptyMessages}
-          ListFooterComponent={sending && !liveTrace ? (
+          ListHeaderComponent={sending && !liveTrace ? (
             <View style={styles.thinkingRow}>
               <ActivityIndicator size="small" color={colors.primary} />
               <Text style={styles.thinkingText}>思考中…（{thinkingSeconds}s）</Text>
@@ -1040,7 +1019,7 @@ export function AssistantScreen() {
             </View>
           ) : null}
           ListEmptyComponent={models.length ? (
-            <View style={styles.welcomeBox}>
+            <View style={[styles.welcomeBox, { transform: [{ scaleY: -1 }] }]}>
               <Text style={styles.welcomeTitle}>聊灵感、记想法</Text>
               <View style={styles.welcomeChipsRow}>
               {["记一个灵感", "梳理一下我的想法", "随便聊聊"].map((suggestion) => (
@@ -1555,7 +1534,7 @@ const styles = StyleSheet.create({
   messageTime: { color: colors.textMuted, fontSize: 12 },
   messageEditText: { color: colors.textMuted, fontSize: 13, fontWeight: "700" },
   userMessage: { alignSelf: "flex-end", maxWidth: "88%", paddingHorizontal: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceMuted },
-  assistantMessage: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  assistantMessage: {},
   messageRole: { color: colors.primary, fontSize: 12, fontWeight: "700" },
   messageText: { color: colors.text, fontSize: 16, lineHeight: 24 },
   failureCard: { alignSelf: "flex-start", flexShrink: 1, maxWidth: "88%", minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderWidth: 1, borderColor: "#E4B4AE", borderRadius: radius.sm, backgroundColor: "#FFF4F2" },

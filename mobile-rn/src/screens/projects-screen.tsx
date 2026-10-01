@@ -548,7 +548,7 @@ function coverColor(title: string): string {
                 <ImageBackground
                   source={PLANK_IMAGE}
                   resizeMode="stretch"
-                  style={{ position: "absolute", left: -14, right: -14, bottom: 0, height: plankStrip }}
+                  style={{ position: "absolute", left: -60, right: -60, bottom: 0, height: plankStrip }}
                 />
                 <View style={[styles.shelfBooks, { paddingBottom: plankBelow }]}>
                   {row.map((project) => {

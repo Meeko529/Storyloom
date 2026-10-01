@@ -699,7 +699,17 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
     return (
       <View key={entry.id} style={styles.resourceCard}>
         <Text style={styles.settingLabel}>{entry.title}</Text>
-        <Text style={styles.modelHint}>约 {entry.sizeMb} MB · {ready ? "已安装" : item?.detail ?? "未安装"}</Text>
+        <View style={styles.resourceMetaRow}>
+          <Text style={styles.modelHint}>约 {entry.sizeMb} MB</Text>
+          {ready ? (
+            <View style={styles.installedBadge}>
+              <Ionicons name="checkmark-circle" size={15} color={colors.primary} />
+              <Text style={styles.installedBadgeText}>已安装</Text>
+            </View>
+          ) : (
+            <Text style={styles.modelHint}>{item?.detail ?? "未安装"}</Text>
+          )}
+        </View>
         <Text style={styles.sectionHint}>{entry.purpose}</Text>
         {ready ? null : (
           <Button
@@ -1712,6 +1722,9 @@ const styles = StyleSheet.create({
   modelHint: { color: colors.primary, fontSize: 12 },
   modelChoices: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   resourceCard: { gap: spacing.sm, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm },
+  resourceMetaRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  installedBadge: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: 999, backgroundColor: "#E6F3EF" },
+  installedBadgeText: { color: colors.primary, fontSize: 12, fontWeight: "700" },
   permissionCard: { gap: spacing.sm, marginVertical: 5, padding: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm },
   presetRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   presetChip: { minHeight: 36, justifyContent: "center", paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: 999 },
