@@ -8,6 +8,27 @@ Important changes to this project. Format based on [Keep a Changelog](https://ke
 
 ---
 
+## [0.1.25] — 2026-10-01
+
+### Added
+
+- **Bookshelf local import**: bring TXT / Markdown / Word (.docx) / EPUB files in as projects — split by volume / chapter headings (recognizes 「第X卷」/「第X章」/ prologue / epilogue markers; one chapter when no markers; oversized chapters auto-split), opened right after importing
+- **Bookshelf header becomes 「＋ New」 and a 「⋯ menu」**: the menu holds the shelf style (grid / list) and local import; category management / show categories on shelf / shelf sorting are placeholders (not yet available)
+- **Selectable mascot**: Settings → Basics → Mascot, six options (cat / fox / paper crane / shiba / dragon / ink-drop), tinted by the theme
+- **Processing time per reply**: the reasoning block header shows elapsed seconds
+- **English README and CHANGELOG** (bilingual navigation)
+
+### Fixed
+
+- Bookshelf depth: cover outline and shadows strengthened; plank recolored to a light warm gray with a drop shadow
+- Update dialog: shows the release notes; buttons are Now Later / View details (opens the GitHub Release) / Update now
+- User bubbles size to their content; the Edit button is gray and shows the send time
+- Agents / skills / tool permissions grouped, collapsed by default; search matches names and descriptions only
+- Style-library imports: picker MIME list aligned with attachments; size check no longer misfires; failures carry a stage label and are logged
+- Write-confirmation dialog: changes collapsed by default (summary + 3-line preview + expand), height-capped with internal scrolling
+
+---
+
 ## [0.1.24] — 2026-10-01
 
 ### Added

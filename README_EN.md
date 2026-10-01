@@ -30,10 +30,11 @@ Storyloom **stands on OpenFicM's shoulders rather than rewriting it**: the UI, l
 ## Features
 
 **Writing**
-- Local bookshelf and project management with volume / chapter structure and preview-first editing (accident-proof); the bookshelf supports **cover-wall grid / list** views
+- Local bookshelf and project management with volume / chapter structure and preview-first editing (accident-proof); the header "⋯ menu" holds the **shelf style (grid / list)** and **local import**
 - **Grid view looks like a real bookshelf**: books stand on a single plank (lit top face + darker front edge), titles and volume / chapter / word counts sit **below the plank**; covers get rounded corners and a light spine, books without a cover get a generated typographic cover (color derived from the title — not a flat color block)
 - Autosave with background saving and keyboard avoidance
 - Export chapter / volume / whole book as Markdown, plain text (TXT) or **EPUB** (shared via the system sheet; no storage permission requested)
+- **Local import**: bring TXT / Markdown / Word (.docx) / EPUB files in as projects — split by volume / chapter headings and opened right after importing
 - **One-tap backup / restore**: everything packed into a zip you can keep on a cloud drive or PC, restored wholesale on a new phone
 
 **Assistant & agent**
@@ -42,7 +43,7 @@ Storyloom **stands on OpenFicM's shoulders rather than rewriting it**: the UI, l
 - **Write confirmation first**: before the AI writes chapters / notes / settings you see before-and-after with red/green line stats — accept or reject as a group, undo after accepting
 - **Attachments**: send txt / md / json / csv and **Word (.docx)** files to the assistant; save them as project notes for long-term retrieval
 - **Conversation directory**: a directory-style panel — full-width "new conversation" button, per-conversation **rename**, message counts; new conversations ask for confirmation
-- **Mascot**: a little cat on the input box corner, tinted by the theme (selectable in settings)
+- **Mascot**: a little figure on the input box corner — six to choose from (cat / fox / paper crane / shiba / dragon / ink-drop), tinted by the theme
 - **Visible reasoning**: when the model returns its thinking (DeepSeek-R1 family, Zhipu reasoning, Gemini, Claude extended thinking) it appears as a collapsible block with elapsed time
 - **Context usage meter**: the title bar shows an estimated percentage; tap for the breakdown
 - Live tool execution, with sub-agent delegation
