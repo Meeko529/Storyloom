@@ -83,14 +83,14 @@ import type {
 } from "@/types";
 
 /** 思考型模型的推理过程：默认折叠，由用户决定是否展开查看。 */
-function ReasoningBlock({ text, seconds }: { text: string; seconds?: number }) {
-  const [expanded, setExpanded] = useState(false);
+function ReasoningBlock({ text, seconds, live = false }: { text: string; seconds?: number; live?: boolean }) {
+  const [expanded, setExpanded] = useState(live);
   const characters = text.trim().length;
   return (
     <View style={styles.reasoningCard}>
       <Pressable accessibilityRole="button" accessibilityLabel={expanded ? "收起思考过程" : "展开思考过程"} onPress={() => setExpanded((value) => !value)} style={styles.reasoningHeader}>
-        <Ionicons name="bulb-outline" size={16} color={colors.textMuted} />
-        <Text style={styles.reasoningTitle}>思考过程</Text>
+        <Ionicons name="bulb-outline" size={16} color={live ? colors.primary : colors.textMuted} />
+        <Text style={[styles.reasoningTitle, live && styles.reasoningTitleLive]}>{live ? "思考中" : "思考过程"}</Text>
         <Text style={styles.reasoningMeta}>{seconds ? `用时 ${seconds}s · ` : ""}{characters} 字</Text>
         <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
       </Pressable>
@@ -295,6 +295,7 @@ export function AssistantScreen() {
   const [stylePickerVisible, setStylePickerVisible] = useState(false);
   const [updatingStyle, setUpdatingStyle] = useState(false);
   const [liveTrace, setLiveTrace] = useState<AgentRunTrace | null>(null);
+  const [liveReasoning, setLiveReasoning] = useState("");
   // 最近一次被接受的 AI 写入（撤销入口），null 表示当前没有可撤销的改动
   const [undoTarget, setUndoTarget] = useState<string | null>(null);
   // 待随下一条消息发送的文本附件
@@ -777,6 +778,7 @@ export function AssistantScreen() {
     setError(null);
     setInput("");
     setLiveTrace(null);
+    setLiveReasoning("");
     let userMessage = retry?.userMessage ?? null;
     let nextHistory = retry?.history ?? [];
     let userMessageSaved = Boolean(userMessage);
@@ -848,6 +850,9 @@ export function AssistantScreen() {
         agentId: retry?.agentId ?? activeAgentId,
         approveTool: requestToolApproval,
         askUser,
+        onDelta: (delta) => {
+          if (delta.reasoning) setLiveReasoning((current) => current + delta.reasoning);
+        },
         onTrace: (trace) => {
         },
       });
@@ -1008,14 +1013,14 @@ export function AssistantScreen() {
           inverted
           maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 120 }}
           contentContainerStyle={messages.length ? styles.messages : styles.emptyMessages}
-          ListHeaderComponent={sending && !liveTrace ? (
-            <View style={styles.thinkingRow}>
-              <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.thinkingText}>思考中…（{thinkingSeconds}s）</Text>
-            </View>
-          ) : liveTrace ? (
-            <View style={styles.liveTrace}>
-              <AgentTraceView trace={liveTrace} defaultExpanded />
+          ListHeaderComponent={sending || liveTrace ? (
+            <View style={styles.liveTimeline}>
+              <View style={styles.liveHeader}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={styles.liveHeaderText}>处理中 · 已处理 {thinkingSeconds}s</Text>
+              </View>
+              {liveReasoning.trim() ? <ReasoningBlock text={liveReasoning} live /> : null}
+              {liveTrace ? <AgentTraceView trace={liveTrace} defaultExpanded /> : null}
             </View>
           ) : null}
           ListEmptyComponent={models.length ? (
@@ -1046,7 +1051,7 @@ export function AssistantScreen() {
                 </View>
               ) : null}
               {item.metadata?.agentTrace ? (
-                <AgentTraceView trace={item.metadata.agentTrace} />
+                <AgentTraceView trace={item.metadata.agentTrace} durationSeconds={item.metadata.processingSeconds} />
               ) : failed ? (
                 <View style={styles.failureCard}>
                   <Text style={styles.failureTitle}>执行失败</Text>
@@ -1523,9 +1528,10 @@ const styles = StyleSheet.create({
   sessionTime: { color: colors.textMuted, fontSize: 11 },
   errorWrap: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   messages: { padding: spacing.lg, gap: spacing.md },
-  thinkingRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm },
-  thinkingText: { color: colors.textMuted, fontSize: 12 },
-  liveTrace: { marginTop: spacing.md },
+  liveTimeline: { marginTop: spacing.md, gap: spacing.sm },
+  liveHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xs },
+  liveHeaderText: { color: colors.text, fontSize: 13, fontWeight: "600" },
+  reasoningTitleLive: { color: colors.primary },
   emptyMessages: { flexGrow: 1 },
   message: { gap: spacing.md, paddingVertical: spacing.md },
   messageHeader: { minHeight: 28, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },

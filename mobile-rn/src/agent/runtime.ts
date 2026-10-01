@@ -105,6 +105,7 @@ type LoopInput = {
   consistencyEventId: string | null;
   approveTool?: ToolApproval;
   askUser?: AskUser;
+  onDelta?: (delta: { content?: string; reasoning?: string }) => void;
   recorder: TraceRecorder;
   requiredSkill: AgentSkill | null;
   userRequest: string;
@@ -607,7 +608,7 @@ async function runAgentLoop(input: LoopInput): Promise<LoopResult> {
       throw new Error("本次任务的模型请求次数已达上限，请拆分需求后重试");
     }
     input.budget.remaining -= 1;
-    const turn = await callModel(input.selection, messages, tools);
+    const turn = await callModel(input.selection, messages, tools, input.onDelta ? { onDelta: input.onDelta } : undefined);
     messages.push({ role: "assistant", content: turn.content, toolCalls: turn.toolCalls });
 
     if (turn.toolCalls.length === 0) {
@@ -796,6 +797,8 @@ export async function runAgent(input: {
   approveTool?: ToolApproval;
   askUser?: AskUser;
   onTrace?: TraceListener;
+  /** 流式增量：正文与思考过程实时回传（用于边想边显示）。 */
+  onDelta?: (delta: { content?: string; reasoning?: string }) => void;
 }): Promise<AgentRunResult> {
   const consistencyKey = `agent.pendingConsistency.${input.project.id}`;
   const convOverrideRaw = await getSetting(`context.override.${input.selection.model.id}`).catch(() => null);

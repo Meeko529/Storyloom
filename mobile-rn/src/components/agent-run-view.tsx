@@ -105,10 +105,13 @@ function TraceEventRow({ event }: { event: AgentTraceEvent }) {
 export function AgentTraceView({
   trace,
   defaultExpanded = false,
+  durationSeconds,
 
 }: {
   trace: AgentRunTrace;
   defaultExpanded?: boolean;
+  /** 本轮总耗时（秒）：完成态在工作摘要后追加“用时 Ns”。 */
+  durationSeconds?: number;
 
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded || trace.status === "running");
@@ -149,7 +152,7 @@ export function AgentTraceView({
         </View>
         <View style={styles.traceCopy}>
           <Text style={[styles.traceStatus, { color: status.color }]}>{status.label}</Text>
-          <Text style={styles.traceSummary} numberOfLines={1}>{trace.primaryAgentName} · {summary}</Text>
+          <Text style={styles.traceSummary} numberOfLines={1}>{trace.primaryAgentName} · {summary}{durationSeconds ? ` · 用时 ${durationSeconds}s` : ""}</Text>
         </View>
         {trace.status === "running" ? <ActivityIndicator size="small" color={colors.primary} /> : null}
         <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={18} color={colors.textMuted} />
