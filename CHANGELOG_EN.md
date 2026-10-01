@@ -8,6 +8,31 @@ Important changes to this project. Format based on [Keep a Changelog](https://ke
 
 ---
 
+## [0.1.27] — 2026-10-01
+
+### Added
+
+- **Bookshelf categories**: "⋯ menu → Category management" — create / rename / delete categories (deleting moves its books back to uncategorized), with per-category book counts; long-press a book for "Move to category…"
+- **Bookshelf category filter**: the header shows the current group (tap for a full multi-row picker), plus a chip row under the quick actions for fast switching; selecting a group shows only its books, "All" flattens the shelf; the choice is remembered
+- **Shelf sorting**: recently updated / created / title / word count — applied within groups and to the flat shelf
+- **Book shadow & plank as textures**: more realistic depth and lighting
+
+### Fixed
+
+- Update dialogs no longer stack: removed a leftover legacy alert that appeared alongside the new card
+- The Advanced page no longer dumps the full release notes
+- User message bubbles align to the right (previously stuck mid-left); the timestamp and edit button follow
+- Assistant execution / reasoning / error cards are narrowed instead of full-width
+- Agents / skills / tool permissions collapse into a compact grouped list with separators
+- **Style library Word (.docx) imports now succeed**: the database whitelist was missing docx
+- Removed the accidental border around book covers
+
+### Changed
+
+- The shelf ⋯ menu is now an anchored dropdown under the button; category management and sorting became real features, replacing the "show categories on shelf" toggle
+
+---
+
 ## [0.1.26] — 2026-10-01
 
 ### Added

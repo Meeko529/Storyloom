@@ -34,6 +34,7 @@ Storyloom **stands on OpenFicM's shoulders rather than rewriting it**: the UI, l
 - **Grid view looks like a real bookshelf**: books stand on a single plank (lit top face + darker front edge), titles and volume / chapter / word counts sit **below the plank**; covers get rounded corners and a light spine, books without a cover get a generated typographic cover (color derived from the title — not a flat color block)
 - Autosave with background saving and keyboard avoidance
 - Export chapter / volume / whole book as Markdown, plain text (TXT) or **EPUB** (shared via the system sheet; no storage permission requested)
+- **Categories & groups**: create your own categories ("⋯ menu → Category management"), assign books via long-press; the shelf top filters by the current group (switch via the header or chips, remembered), with four sort orders
 - **Local import**: bring TXT / Markdown / Word (.docx) / EPUB files in as projects — split by volume / chapter headings and opened right after importing
 - **One-tap backup / restore**: everything packed into a zip you can keep on a cloud drive or PC, restored wholesale on a new phone
 
