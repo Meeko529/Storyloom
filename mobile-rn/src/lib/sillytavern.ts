@@ -15,6 +15,14 @@ export interface StWorldEntry {
   name: string;
   content: string;
   keywords: string[];
+  /** keysecondary：次要关键词，配合主关键词判断条目是否该被读到。 */
+  secondaryKeywords: string[];
+  /** constant：常驻条目，不看关键词。 */
+  isConstant: boolean;
+  /** probability：触发概率 0–100。 */
+  probability: number;
+  /** scan_depth：往前回看多少条消息找关键词。 */
+  scanDepth: number;
   isEnabled: boolean;
 }
 
@@ -31,8 +39,9 @@ function asStringArray(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.trim());
   }
+  // 字符串形态：中文世界书里常写「甲，乙」，所以中英文逗号与顿号都要当分隔符
   if (typeof value === "string" && value.trim()) {
-    return value.split(",").map((part) => part.trim()).filter(Boolean);
+    return value.split(/[,，、]/).map((part) => part.trim()).filter(Boolean);
   }
   return [];
 }
@@ -60,10 +69,20 @@ export function parseSillyTavernWorldInfo(text: string): StWorldEntry[] {
     if (!content && keys.length === 0) continue;
     const uid = typeof row.uid === "number" ? row.uid : entries.length + 1;
     const comment = typeof row.comment === "string" && row.comment.trim() ? row.comment.trim() : "";
+    const probability = typeof row.probability === "number" && Number.isFinite(row.probability)
+      ? Math.max(0, Math.min(100, Math.round(row.probability)))
+      : 100;
+    const scanDepth = typeof row.scan_depth === "number" && Number.isFinite(row.scan_depth)
+      ? Math.max(0, Math.round(row.scan_depth))
+      : 4;
     entries.push({
       name: comment || keys[0] || `条目 ${uid}`,
       content,
       keywords: keys,
+      secondaryKeywords: asStringArray(row.keysecondary),
+      isConstant: row.constant === true,
+      probability,
+      scanDepth,
       isEnabled: row.disable !== true,
     });
   }

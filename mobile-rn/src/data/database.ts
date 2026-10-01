@@ -137,6 +137,21 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
       updated_at TEXT NOT NULL
     );
 
+    /*
+     * 章节历史版本（时间机器）：每次保存覆盖正文前，把被覆盖的那一版存进来。
+     * content 冗余存全文，不用外键指向章节草稿——草稿会被清理，历史版本要独立留存。
+     */
+    CREATE TABLE IF NOT EXISTS chapter_versions (
+      id TEXT PRIMARY KEY NOT NULL,
+      chapter_id TEXT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      character_count INTEGER NOT NULL DEFAULT 0,
+      reason TEXT NOT NULL DEFAULT 'autosave',
+      created_at TEXT NOT NULL
+    );
+
     CREATE VIRTUAL TABLE IF NOT EXISTS chapter_fts USING fts5(
       chapter_id UNINDEXED,
       project_id UNINDEXED,
@@ -217,11 +232,15 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
       entry_order INTEGER NOT NULL,
       content TEXT NOT NULL DEFAULT '',
       token_count INTEGER NOT NULL DEFAULT 0,
+      keywords_json TEXT,
+      secondary_keywords_json TEXT,
+      is_constant INTEGER NOT NULL DEFAULT 0,
+      probability INTEGER NOT NULL DEFAULT 100,
+      scan_depth INTEGER NOT NULL DEFAULT 4,
       is_enabled INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
-
     CREATE TABLE IF NOT EXISTS vector_chunks (
       id TEXT PRIMARY KEY NOT NULL,
       project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -267,6 +286,8 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
       ON style_profiles(source_id, version DESC);
     CREATE INDEX IF NOT EXISTS idx_chapter_drafts_chapter_updated
       ON chapter_drafts(chapter_id, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_chapter_versions_chapter_created
+      ON chapter_versions(chapter_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_messages_project_created
       ON chat_messages(project_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_characters_project_updated
@@ -326,8 +347,22 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
 /** 世界书条目触发关键词：JSON 字符串数组，SillyTavern 导入时保留原 key[]。 */
 async function migrateWorldInfoKeywords(database: SQLite.SQLiteDatabase): Promise<void> {
   const columns = await database.getAllAsync<{ name: string }>("PRAGMA table_info(world_info_entries)");
-  if (!columns.some((column) => column.name === "keywords_json")) {
+  const names = new Set(columns.map((column) => column.name));
+  if (!names.has("keywords_json")) {
     await database.execAsync("ALTER TABLE world_info_entries ADD COLUMN keywords_json TEXT;");
+  }
+  // 条目库升级（对齐 SillyTavern 规格）：次要关键词、常驻、触发概率、扫描深度。
+  if (!names.has("secondary_keywords_json")) {
+    await database.execAsync("ALTER TABLE world_info_entries ADD COLUMN secondary_keywords_json TEXT;");
+  }
+  if (!names.has("is_constant")) {
+    await database.execAsync("ALTER TABLE world_info_entries ADD COLUMN is_constant INTEGER NOT NULL DEFAULT 0;");
+  }
+  if (!names.has("probability")) {
+    await database.execAsync("ALTER TABLE world_info_entries ADD COLUMN probability INTEGER NOT NULL DEFAULT 100;");
+  }
+  if (!names.has("scan_depth")) {
+    await database.execAsync("ALTER TABLE world_info_entries ADD COLUMN scan_depth INTEGER NOT NULL DEFAULT 4;");
   }
 }
 

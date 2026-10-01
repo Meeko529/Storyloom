@@ -416,6 +416,10 @@ export const agentTools: AgentToolDefinition[] = [
       properties: {
         title: { type: "string", description: "条目标题" },
         content: { type: "string", description: "完整设定内容" },
+        keywords: { type: "array", items: { type: "string" }, description: "触发关键词；正文或对话里出现这些词时这条设定才值得读取（可选）" },
+        secondary_keywords: { type: "array", items: { type: "string" }, description: "次要关键词，配合主关键词收紧触发条件（可选）" },
+        constant: { type: "boolean", description: "常驻条目：不看关键词，任何时候都该被读到（可选）" },
+        probability: { type: "number", description: "触发概率 0–100，默认 100（可选）" },
       },
       required: ["title", "content"],
       additionalProperties: false,
@@ -423,13 +427,17 @@ export const agentTools: AgentToolDefinition[] = [
   },
   {
     name: "edit_world_entry",
-    description: "根据正文或设定变化更新世界书条目；调用前先读取条目，至少提供 title 或 content",
+    description: "根据正文或设定变化更新世界书条目；调用前先读取条目，至少提供 title 或 content。没传触发条件时原值保留",
     parameters: {
       type: "object",
       properties: {
         entry_id: { type: "string", description: "世界书条目 ID" },
         title: { type: "string", description: "更新后的条目标题" },
         content: { type: "string", description: "更新后的完整设定内容" },
+        keywords: { type: "array", items: { type: "string" }, description: "触发关键词；不传则保留原值（可选）" },
+        secondary_keywords: { type: "array", items: { type: "string" }, description: "次要关键词；不传则保留原值（可选）" },
+        constant: { type: "boolean", description: "是否为常驻条目；不传则保留原值（可选）" },
+        probability: { type: "number", description: "触发概率 0–100；不传则保留原值（可选）" },
       },
       required: ["entry_id"],
       additionalProperties: false,
@@ -487,6 +495,19 @@ function optionalString(args: Record<string, unknown>, key: string): string | nu
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+/** 可选字符串数组参数（世界书触发关键词）；没传返回 undefined，交给存储层保留原值。 */
+function optionalStringArray(args: Record<string, unknown>, key: string): string[] | undefined {
+  const value = args[key];
+  if (Array.isArray(value)) {
+    const items = value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean);
+    return items;
+  }
+  if (typeof value === "string" && value.trim()) {
+    return value.split(/[,，、]/).map((part) => part.trim()).filter(Boolean);
+  }
+  return undefined;
+}
+
 export async function executeAgentTool(
   projectId: string,
   name: string,
@@ -541,13 +562,17 @@ export async function executeAgentTool(
     const entries = await listWorldInfoEntries(worldInfo.id);
     return {
       world_info: { id: worldInfo.id, name: worldInfo.name, description: worldInfo.description },
-      entries: entries.filter((entry) => entry.isEnabled).map(({ id, uid, name, keywords, tokenCount, updatedAt }) => ({
-        id,
-        uid,
-        name,
-        keywords,
-        token_count: tokenCount,
-        updated_at: updatedAt,
+      entries: entries.filter((entry) => entry.isEnabled).map((entry) => ({
+        id: entry.id,
+        uid: entry.uid,
+        name: entry.name,
+        keywords: entry.keywords,
+        constant: entry.isConstant,
+        secondary_keywords: entry.secondaryKeywords,
+        // 概率只有不是 100 时才值得带出来，避免每条都塞一个恒等值占 token
+        ...(entry.probability < 100 ? { probability: entry.probability } : {}),
+        token_count: entry.tokenCount,
+        updated_at: entry.updatedAt,
       })),
     };
   }
@@ -771,6 +796,10 @@ export async function executeAgentTool(
       worldInfoId: worldInfo.id,
       name: title,
       content: requiredString(args, "content"),
+      keywords: optionalStringArray(args, "keywords"),
+      secondaryKeywords: optionalStringArray(args, "secondary_keywords"),
+      isConstant: args.constant === true,
+      probability: typeof args.probability === "number" ? args.probability : undefined,
     });
     return { success: true, entry_id: entry.id, title: entry.name };
   }
@@ -781,7 +810,11 @@ export async function executeAgentTool(
     if (entry.worldInfoId !== worldInfo.id) throw new Error("未找到世界书条目");
     const hasTitle = typeof args.title === "string";
     const hasContent = typeof args.content === "string";
-    if (!hasTitle && !hasContent) throw new Error("至少需要提供 title 或 content");
+    const keywords = optionalStringArray(args, "keywords");
+    const secondaryKeywords = optionalStringArray(args, "secondary_keywords");
+    const hasTriggers = keywords !== undefined || secondaryKeywords !== undefined
+      || typeof args.constant === "boolean" || typeof args.probability === "number";
+    if (!hasTitle && !hasContent && !hasTriggers) throw new Error("至少需要提供 title、content 或触发条件");
     const nextTitle = hasTitle ? requiredString(args, "title") : entry.name;
     if (nextTitle !== entry.name) {
       const existing = await listWorldInfoEntries(worldInfo.id);
@@ -792,6 +825,10 @@ export async function executeAgentTool(
       worldInfoId: worldInfo.id,
       name: nextTitle,
       content: hasContent ? args.content as string : entry.content,
+      keywords,
+      secondaryKeywords,
+      isConstant: typeof args.constant === "boolean" ? args.constant : undefined,
+      probability: typeof args.probability === "number" ? args.probability : undefined,
       isEnabled: entry.isEnabled,
     });
     return { success: true, entry_id: updated.id, title: updated.name };

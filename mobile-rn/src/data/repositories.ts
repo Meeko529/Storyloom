@@ -3,6 +3,7 @@ import * as SecureStore from "expo-secure-store";
 import { createId } from "@/lib/id";
 import type {
   Chapter,
+  ChapterVersion,
   Character,
   ChatMessage,
   ChatMessageMetadata,
@@ -74,6 +75,16 @@ type ProjectRow = {
 type CategoryRow = { id: string; name: string; order_index: number };
 type VolumeRow = { id: string; project_id: string; title: string; order_index: number };
 type ChapterRow = { id: string; project_id: string; volume_id: string; title: string; content: string; order_index: number; updated_at: string };
+type ChapterVersionRow = {
+  id: string;
+  chapter_id: string;
+  project_id: string;
+  title: string;
+  content: string;
+  character_count: number;
+  reason: string;
+  created_at: string;
+};
 type ProviderRow = { id: string; name: string; type: ProviderType; base_url: string; api_key_ref: string; created_at: string };
 type ModelRow = {
   id: string;
@@ -122,6 +133,10 @@ type WorldInfoEntryRow = {
   content: string;
   token_count: number;
   keywords_json?: string | null;
+  secondary_keywords_json?: string | null;
+  is_constant?: number | null;
+  probability?: number | null;
+  scan_depth?: number | null;
   is_enabled: number;
   created_at: string;
   updated_at: string;
@@ -142,6 +157,10 @@ const mapVolume = (row: VolumeRow): Volume => ({
 const mapChapter = (row: ChapterRow): Chapter => ({
   id: row.id, projectId: row.project_id, volumeId: row.volume_id, title: row.title,
   content: row.content, orderIndex: row.order_index, updatedAt: row.updated_at,
+});
+const mapChapterVersion = (row: ChapterVersionRow): ChapterVersion => ({
+  id: row.id, chapterId: row.chapter_id, projectId: row.project_id, title: row.title,
+  content: row.content, characterCount: row.character_count, reason: row.reason, createdAt: row.created_at,
 });
 const mapProvider = (row: ProviderRow): Provider => ({
   id: row.id, name: row.name, type: row.type, baseUrl: row.base_url,
@@ -192,30 +211,38 @@ const mapWorldInfo = (row: WorldInfoRow): WorldInfo => ({
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
-const mapWorldInfoEntry = (row: WorldInfoEntryRow): WorldInfoEntry => {
-  let keywords: string[] = [];
-  if (row.keywords_json) {
-    try {
-      const parsed: unknown = JSON.parse(row.keywords_json);
-      if (Array.isArray(parsed)) keywords = parsed.filter((item): item is string => typeof item === "string");
-    } catch {
-      keywords = [];
-    }
+/** 世界书条目的触发条件默认值（对齐 SillyTavern 规格）。 */
+export const DEFAULT_WORLD_SCAN_DEPTH = 4;
+
+function parseStringArray(value: string | null | undefined): string[] {
+  if (!value) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
   }
-  return {
-    id: row.id,
-    worldInfoId: row.world_info_id,
-    uid: row.uid,
-    name: row.name,
-    order: row.entry_order,
-    content: row.content,
-    tokenCount: row.token_count,
-    keywords,
-    isEnabled: row.is_enabled === 1,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-};
+}
+
+const clampProbability = (value: number): number => Math.max(0, Math.min(100, Math.round(value)));
+
+const mapWorldInfoEntry = (row: WorldInfoEntryRow): WorldInfoEntry => ({
+  id: row.id,
+  worldInfoId: row.world_info_id,
+  uid: row.uid,
+  name: row.name,
+  order: row.entry_order,
+  content: row.content,
+  tokenCount: row.token_count,
+  keywords: parseStringArray(row.keywords_json),
+  secondaryKeywords: parseStringArray(row.secondary_keywords_json),
+  isConstant: row.is_constant === 1,
+  probability: row.probability ?? 100,
+  scanDepth: row.scan_depth ?? DEFAULT_WORLD_SCAN_DEPTH,
+  isEnabled: row.is_enabled === 1,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
 
 function requiredText(value: string, label: string): string {
   const normalized = value.trim();
@@ -601,7 +628,7 @@ export async function createChapter(
   return { id, projectId, volumeId, title: normalizedTitle, content, orderIndex, updatedAt: now };
 }
 
-export async function saveChapter(id: string, title: string, content: string): Promise<void> {
+export async function saveChapter(id: string, title: string, content: string, reason = "autosave"): Promise<void> {
   const db = await getDatabase();
   const now = new Date().toISOString();
   const chapter = await getChapter(id);
@@ -611,6 +638,26 @@ export async function saveChapter(id: string, title: string, content: string): P
   const consistencyKey = `agent.pendingConsistency.${chapter.projectId}`;
   const consistencyValue = JSON.stringify({ chapterId: id, chapterTitle: normalizedTitle, updatedAt: now });
   await db.withExclusiveTransactionAsync(async (txn) => {
+    // 历史版本：覆盖前先把「正在被替换的这一版」存下来。
+    // 两个前置判断缺一不可——内容没变不存（切章回来再存一次），与上一版历史相同也不存（自动保存连点）。
+    if (chapter.content !== content) {
+      const last = await txn.getFirstAsync<{ content: string }>(
+        "SELECT content FROM chapter_versions WHERE chapter_id = ? ORDER BY rowid DESC LIMIT 1",
+        id,
+      );
+      if (last?.content !== chapter.content) {
+        await txn.runAsync(
+          "INSERT INTO chapter_versions(id, chapter_id, project_id, title, content, character_count, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+          createId(), id, chapter.projectId, chapter.title, chapter.content, chapter.content.length, reason, now,
+        );
+        await txn.runAsync(`
+          DELETE FROM chapter_versions
+          WHERE chapter_id = ? AND rowid NOT IN (
+            SELECT rowid FROM chapter_versions WHERE chapter_id = ? ORDER BY rowid DESC LIMIT ?
+          )
+        `, id, id, MAX_CHAPTER_VERSIONS);
+      }
+    }
     await txn.runAsync("UPDATE chapters SET title = ?, content = ?, updated_at = ? WHERE id = ?", normalizedTitle, content, now, id);
     await txn.runAsync("UPDATE projects SET updated_at = ? WHERE id = ?", now, chapter.projectId);
     await txn.runAsync(
@@ -621,6 +668,48 @@ export async function saveChapter(id: string, title: string, content: string): P
     await txn.runAsync("DELETE FROM chapter_fts WHERE chapter_id = ?", id);
     await txn.runAsync("INSERT INTO chapter_fts(chapter_id, project_id, title, content) VALUES (?, ?, ?, ?)", id, chapter.projectId, normalizedTitle, content);
   });
+}
+
+/** 每章保留的历史版本上限，超出按最旧淘汰。 */
+const MAX_CHAPTER_VERSIONS = 30;
+
+/** 历史版本列表：最近一版在最前。 */
+export async function listChapterVersions(chapterId: string): Promise<ChapterVersion[]> {
+  const db = await getDatabase();
+  return (await db.getAllAsync<ChapterVersionRow>(
+    "SELECT * FROM chapter_versions WHERE chapter_id = ? ORDER BY rowid DESC",
+    chapterId,
+  )).map(mapChapterVersion);
+}
+
+export async function getChapterVersion(id: string): Promise<ChapterVersion | null> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<ChapterVersionRow>("SELECT * FROM chapter_versions WHERE id = ?", id);
+  return row ? mapChapterVersion(row) : null;
+}
+
+/**
+ * 恢复到某一版：先把当前正文存成一版历史（reason=restore），再写回那一版的正文。
+ * 这样"恢复"本身也可被撤销，不会把当前内容吃掉。
+ */
+export async function restoreChapterVersion(versionId: string): Promise<Chapter> {
+  const db = await getDatabase();
+  const version = await db.getFirstAsync<ChapterVersionRow>("SELECT * FROM chapter_versions WHERE id = ?", versionId);
+  if (!version) throw new Error("历史版本不存在");
+  await saveChapter(version.chapter_id, version.title, version.content, "restore");
+  const chapter = await getChapter(version.chapter_id);
+  if (!chapter) throw new Error("章节不存在");
+  return chapter;
+}
+
+export async function deleteChapterVersion(id: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync("DELETE FROM chapter_versions WHERE id = ?", id);
+}
+
+export async function clearChapterVersions(chapterId: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync("DELETE FROM chapter_versions WHERE chapter_id = ?", chapterId);
 }
 
 export async function renameChapter(id: string, title: string): Promise<Chapter> {
@@ -657,6 +746,7 @@ export async function deleteChapter(id: string): Promise<void> {
     const chapter = await txn.getFirstAsync<ChapterRow>("SELECT * FROM chapters WHERE id = ?", id);
     if (!chapter) throw new Error("章节不存在");
     await txn.runAsync("DELETE FROM chapter_fts WHERE chapter_id = ?", id);
+    await txn.runAsync("DELETE FROM chapter_versions WHERE chapter_id = ?", id);
     await txn.runAsync("DELETE FROM vector_chunks WHERE project_id = ? AND source_type = 'chapter' AND source_id = ?", chapter.project_id, id);
     await txn.runAsync("DELETE FROM chapters WHERE id = ?", id);
     await txn.runAsync("UPDATE projects SET updated_at = ? WHERE id = ?", now, chapter.project_id);
@@ -1114,6 +1204,10 @@ export async function saveWorldInfoEntry(input: {
   name: string;
   content?: string;
   keywords?: string[];
+  secondaryKeywords?: string[];
+  isConstant?: boolean;
+  probability?: number;
+  scanDepth?: number;
   isEnabled?: boolean;
 }): Promise<WorldInfoEntry> {
   const db = await getDatabase();
@@ -1121,9 +1215,16 @@ export async function saveWorldInfoEntry(input: {
   const name = requiredText(input.name, "世界书条目名称");
   const content = input.content?.trim() ?? "";
   validateChapterContent(content);
-  const keywordsJson = input.keywords?.length ? JSON.stringify(input.keywords) : null;
   const now = new Date().toISOString();
   const existing = await db.getFirstAsync<WorldInfoEntryRow>("SELECT * FROM world_info_entries WHERE id = ?", id);
+  // 触发条件：调用方没传就沿用这一条原值（新建用默认），避免只改内容时把触发条件清空。
+  const keywords = input.keywords ?? parseStringArray(existing?.keywords_json);
+  const keywordsJson = keywords.length ? JSON.stringify(keywords) : null;
+  const secondaryKeywords = input.secondaryKeywords ?? parseStringArray(existing?.secondary_keywords_json);
+  const secondaryKeywordsJson = secondaryKeywords.length ? JSON.stringify(secondaryKeywords) : null;
+  const isConstant = input.isConstant ?? existing?.is_constant === 1;
+  const probability = clampProbability(input.probability ?? existing?.probability ?? 100);
+  const scanDepth = Math.max(0, Math.round(input.scanDepth ?? existing?.scan_depth ?? DEFAULT_WORLD_SCAN_DEPTH));
   let uid = existing?.uid;
   let order = existing?.entry_order;
   if (uid === undefined || order === undefined) {
@@ -1134,13 +1235,16 @@ export async function saveWorldInfoEntry(input: {
     uid = next?.next_uid ?? 1;
     order = uid;
   }
+  const isEnabled = input.isEnabled !== false;
   await db.runAsync(`
-    INSERT INTO world_info_entries(id, world_info_id, uid, name, entry_order, content, token_count, keywords_json, is_enabled, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO world_info_entries(id, world_info_id, uid, name, entry_order, content, token_count, keywords_json, secondary_keywords_json, is_constant, probability, scan_depth, is_enabled, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, content = excluded.content,
       token_count = excluded.token_count, keywords_json = excluded.keywords_json,
+      secondary_keywords_json = excluded.secondary_keywords_json, is_constant = excluded.is_constant,
+      probability = excluded.probability, scan_depth = excluded.scan_depth,
       is_enabled = excluded.is_enabled, updated_at = excluded.updated_at
-  `, id, input.worldInfoId, uid, name, order, content, content.length, keywordsJson, input.isEnabled === false ? 0 : 1, existing?.created_at ?? now, now);
+  `, id, input.worldInfoId, uid, name, order, content, content.length, keywordsJson, secondaryKeywordsJson, isConstant ? 1 : 0, probability, scanDepth, isEnabled ? 1 : 0, existing?.created_at ?? now, now);
   return {
     id,
     worldInfoId: input.worldInfoId,
@@ -1149,8 +1253,12 @@ export async function saveWorldInfoEntry(input: {
     order,
     content,
     tokenCount: content.length,
-    keywords: input.keywords?.length ? [...input.keywords] : [],
-    isEnabled: input.isEnabled !== false,
+    keywords,
+    secondaryKeywords,
+    isConstant,
+    probability,
+    scanDepth,
+    isEnabled,
     createdAt: existing?.created_at ?? now,
     updatedAt: now,
   };

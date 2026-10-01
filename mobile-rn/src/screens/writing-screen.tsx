@@ -26,13 +26,16 @@ import {
   createChapter,
   createVolume,
   deleteChapter,
+  deleteChapterVersion,
   deleteVolume,
   getProject,
   getSetting,
+  listChapterVersions,
   listChapters,
   listVolumes,
   renameChapter,
   renameVolume,
+  restoreChapterVersion,
   saveChapter,
   listProjects,
 } from "@/data/repositories";
@@ -51,9 +54,32 @@ import { editorFontFamily, readEditorPrefs, type EditorFontId } from "@/settings
 import { evolveAuthorStyle } from "@/settings/lorn-style-plugin";
 import { useAppStore } from "@/store/app-store";
 import { colors, radius, spacing } from "@/theme";
-import type { Chapter, ChapterDraftSnapshot, Project, StyleProfile, Volume } from "@/types";
+import type { Chapter, ChapterDraftSnapshot, ChapterVersion, Project, StyleProfile, Volume } from "@/types";
 
 const AUTO_SAVE_DELAY_MS = 1_000;
+
+/** 历史版本时间戳：今天只显示时分，跨天带月日。 */
+function formatVersionTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const time = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return date.toDateString() === new Date().toDateString()
+    ? time
+    : `${date.getMonth() + 1}月${date.getDate()}日 ${time}`;
+}
+
+/** 这一版是怎么留下来的。 */
+function versionReasonLabel(reason: string): string {
+  if (reason === "restore") return "恢复前留存";
+  if (reason === "manual") return "手动保存";
+  return "自动保存";
+}
+
+/** 列表行摘要：正文压成一行，够认出是哪一版就行。 */
+function versionSummary(content: string): string {
+  const flat = content.replace(/\s+/g, " ").trim();
+  return flat ? (flat.length > 46 ? `${flat.slice(0, 46)}…` : flat) : "（空正文）";
+}
 
 type DraftState = {
   chapterId: string;
@@ -111,6 +137,11 @@ export function WritingScreen() {
   const [pendingEvolution, setPendingEvolution] = useState<ChapterDraftSnapshot | null>(null);
   const [evolvingStyle, setEvolvingStyle] = useState(false);
   const [fontReadyTick, setFontReadyTick] = useState(0);
+  const [historyVisible, setHistoryVisible] = useState(false);
+  const [historyList, setHistoryList] = useState<ChapterVersion[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyPreview, setHistoryPreview] = useState<ChapterVersion | null>(null);
+  const [restoringVersion, setRestoringVersion] = useState(false);
   const draftRef = useRef<DraftState>({ chapterId: "", title: "", content: "", dirty: false, version: 0 });
   const savingRef = useRef(false);
   const persistDraftRef = useRef<(force: boolean) => Promise<boolean>>(async () => true);
@@ -557,6 +588,76 @@ export function WritingScreen() {
     }
   };
 
+  const openChapterHistory = async () => {
+    const chapter = activeChapter;
+    if (!chapter) return;
+    setHeaderMenuVisible(false);
+    setHistoryPreview(null);
+    setHistoryList([]);
+    setHistoryVisible(true);
+    setHistoryLoading(true);
+    setError(null);
+    try {
+      setHistoryList(await listChapterVersions(chapter.id));
+    } catch (historyError) {
+      setError(historyError instanceof Error ? historyError.message : String(historyError));
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const restoreVersion = (version: ChapterVersion) => {
+    Alert.alert(
+      "恢复这一版",
+      `「${activeChapter?.title ?? "本章"}」的正文会替换为 ${formatVersionTime(version.createdAt)}（${version.characterCount} 字）那一版；当前正文会先留一版历史。`,
+      [
+        { text: "取消", style: "cancel" },
+        {
+          text: "恢复",
+          onPress: () => {
+            void (async () => {
+              setRestoringVersion(true);
+              setError(null);
+              try {
+                // 编辑器里还没落盘的字先保存，否则恢复会把这部分盖掉
+                await persistDraft(true);
+                const restored = await restoreChapterVersion(version.id);
+                setChapters((current) => current.map((chapter) => chapter.id === restored.id ? restored : chapter));
+                setTitle(restored.title);
+                setContent(restored.content);
+                setSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+                setDirty(false);
+                setEditing(true);
+                draftRef.current = {
+                  chapterId: restored.id,
+                  title: restored.title,
+                  content: restored.content,
+                  dirty: false,
+                  version: draftRef.current.version + 1,
+                };
+                setHistoryList(await listChapterVersions(restored.id));
+                setHistoryPreview(null);
+              } catch (restoreError) {
+                setError(restoreError instanceof Error ? restoreError.message : String(restoreError));
+              } finally {
+                setRestoringVersion(false);
+              }
+            })();
+          },
+        },
+      ],
+    );
+  };
+
+  const removeVersion = (version: ChapterVersion) => {
+    void deleteChapterVersion(version.id)
+      .then(() => {
+        setHistoryList((current) => current.filter((item) => item.id !== version.id));
+        setHistoryPreview((current) => (current?.id === version.id ? null : current));
+      })
+      .catch((deleteError) => setError(deleteError instanceof Error ? deleteError.message : String(deleteError)));
+  };
+
   const nameDialogTitle = nameDialog?.kind === "create-volume"
     ? "新建卷"
     : nameDialog?.kind === "rename-volume"
@@ -619,6 +720,15 @@ export function WritingScreen() {
             >
               <Ionicons name="document-text-outline" size={20} color={colors.primary} />
               <Text style={styles.headerMenuText}>新建章节</Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel="章节历史版本"
+              disabled={!activeChapter}
+              onPress={() => { void openChapterHistory(); }}
+              style={({ pressed }) => [styles.headerMenuRow, pressed && styles.headerMenuRowPressed]}
+            >
+              <Ionicons name="time-outline" size={20} color={activeChapter ? colors.primary : colors.textMuted} />
+              <Text style={[styles.headerMenuText, !activeChapter && styles.headerMenuTextDisabled]}>历史版本</Text>
             </Pressable>
           </View>
         </>
@@ -865,6 +975,82 @@ export function WritingScreen() {
         </SheetBackdrop>
       </Modal>
 
+      <Modal visible={historyVisible} transparent animationType="slide" onRequestClose={() => setHistoryVisible(false)}>
+        <SheetBackdrop onPress={() => setHistoryVisible(false)}>
+          <View style={styles.directorySheet}>
+            <View style={styles.sheetHeader}>
+              <View style={styles.historyHeaderCopy}>
+                <Text style={styles.sheetTitle}>{historyPreview ? "版本预览" : "历史版本"}</Text>
+                <Text numberOfLines={1} style={styles.styleSheetMeta}>
+                  {(activeChapter?.title ?? "未选择章节") + " · 每章保留最近 30 版"}
+                </Text>
+              </View>
+              <View style={styles.sheetHeaderActions}>
+                {historyPreview ? (
+                  <Pressable accessibilityLabel="返回历史版本列表" onPress={() => setHistoryPreview(null)} style={styles.iconButton}>
+                    <Ionicons name="arrow-back" size={22} color={colors.primary} />
+                  </Pressable>
+                ) : null}
+                <Pressable accessibilityLabel="关闭历史版本" onPress={() => setHistoryVisible(false)} style={styles.iconButton}>
+                  <Ionicons name="close" size={24} color={colors.textMuted} />
+                </Pressable>
+              </View>
+            </View>
+            {historyPreview ? (
+              <>
+                <ScrollView style={styles.historyScroll} contentContainerStyle={styles.historyPreviewContent} showsVerticalScrollIndicator>
+                  <Text style={styles.historyPreviewMeta}>
+                    {formatVersionTime(historyPreview.createdAt) + " · " + historyPreview.characterCount + " 字 · " + versionReasonLabel(historyPreview.reason)}
+                  </Text>
+                  <Text style={styles.historyPreviewTitle}>{historyPreview.title}</Text>
+                  <Text selectable style={[styles.historyPreviewText, editorTextStyle]}>
+                    {historyPreview.content || "这一版正文为空。"}
+                  </Text>
+                </ScrollView>
+                <View style={styles.historyFooter}>
+                  <Button
+                    label={restoringVersion ? "恢复中" : "恢复这一版"}
+                    onPress={() => restoreVersion(historyPreview)}
+                    loading={restoringVersion}
+                  />
+                </View>
+              </>
+            ) : historyLoading ? (
+              <View style={styles.loading}><ActivityIndicator color={colors.primary} /></View>
+            ) : (
+              <ScrollView style={styles.historyScroll} contentContainerStyle={styles.historyList} showsVerticalScrollIndicator>
+                {historyList.length ? historyList.map((version) => (
+                  <Pressable
+                    key={version.id}
+                    onPress={() => setHistoryPreview(version)}
+                    style={({ pressed }) => [styles.historyRow, pressed && styles.rowPressed]}
+                  >
+                    <View style={styles.historyRowCopy}>
+                      <View style={styles.historyRowTitleLine}>
+                        <Text style={styles.historyRowTime}>{formatVersionTime(version.createdAt)}</Text>
+                        <Text style={styles.historyRowBadge}>{versionReasonLabel(version.reason)}</Text>
+                      </View>
+                      <Text numberOfLines={1} style={styles.historyRowSummary}>{versionSummary(version.content)}</Text>
+                      <Text style={styles.historyRowMeta}>{version.characterCount + " 字"}</Text>
+                    </View>
+                    <Pressable
+                      accessibilityLabel="删除这一版历史"
+                      onPress={(event) => { event.stopPropagation(); removeVersion(version); }}
+                      hitSlop={8}
+                      style={styles.iconButton}
+                    >
+                      <Ionicons name="trash-outline" size={19} color={colors.textMuted} />
+                    </Pressable>
+                  </Pressable>
+                )) : (
+                  <EmptyState title="还没有历史版本" />
+                )}
+              </ScrollView>
+            )}
+          </View>
+        </SheetBackdrop>
+      </Modal>
+
       <Modal visible={exportPickerVisible} transparent animationType="fade" onRequestClose={() => setExportPickerVisible(false)}>
         <SheetBackdrop onPress={() => setExportPickerVisible(false)}>
           <View style={styles.actionSheet}>
@@ -1013,6 +1199,32 @@ const styles = StyleSheet.create({
   headerMenuRow: { minHeight: 46, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md },
   headerMenuRowPressed: { backgroundColor: colors.surfaceMuted },
   headerMenuText: { color: colors.text, fontSize: 14, fontWeight: "600" },
+  headerMenuTextDisabled: { color: colors.textMuted },
+  historyHeaderCopy: { flex: 1, minWidth: 0, gap: 2 },
+  rowPressed: { backgroundColor: colors.surfaceMuted },
+  historyScroll: { flex: 1 },
+  historyList: { paddingBottom: spacing.lg },
+  historyRow: {
+    minHeight: 76,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingLeft: spacing.lg,
+    paddingRight: spacing.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  historyRowCopy: { flex: 1, minWidth: 0, gap: 3 },
+  historyRowTitleLine: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  historyRowTime: { color: colors.text, fontSize: 15, fontWeight: "700" },
+  historyRowBadge: { color: colors.primary, fontSize: 11, fontWeight: "600", paddingHorizontal: 6, paddingVertical: 1, borderRadius: radius.sm, backgroundColor: "#E6F3EF", overflow: "hidden" },
+  historyRowSummary: { color: colors.textMuted, fontSize: 13 },
+  historyRowMeta: { color: colors.textMuted, fontSize: 11 },
+  historyPreviewContent: { padding: spacing.lg, paddingBottom: spacing.xl, gap: spacing.sm },
+  historyPreviewMeta: { color: colors.textMuted, fontSize: 12 },
+  historyPreviewTitle: { color: colors.text, fontSize: 19, fontWeight: "700" },
+  historyPreviewText: { color: colors.text },
+  historyFooter: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   chapterPicker: {
     minHeight: 56,
     flexDirection: "row",

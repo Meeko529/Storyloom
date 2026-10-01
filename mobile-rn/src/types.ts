@@ -36,6 +36,19 @@ export interface Chapter {
   updatedAt: string;
 }
 
+/** 章节历史版本（时间机器）：被覆盖前的那一版正文。 */
+export interface ChapterVersion {
+  id: string;
+  chapterId: string;
+  projectId: string;
+  title: string;
+  content: string;
+  characterCount: number;
+  /** autosave = 自动保存覆盖前留存；manual = 手动保存覆盖前留存；restore = 恢复旧版前留存 */
+  reason: string;
+  createdAt: string;
+}
+
 /** 笔记的归属层级：两个外键都为空是整书，只有卷是卷级，有章是章级。 */
 export type NoteScope = "project" | "volume" | "chapter";
 
@@ -239,8 +252,16 @@ export interface WorldInfoEntry {
   order: number;
   content: string;
   tokenCount: number;
-  /** 触发关键词：导入 SillyTavern 世界书时保留原 key[]；写作与对话时供模型按需检索。 */
+  /** 主触发关键词：导入 SillyTavern 世界书时保留原 key[]；写作与对话时供模型按需检索。 */
   keywords: string[];
+  /** 次要触发关键词（SillyTavern 的 keysecondary[]）：与主关键词配合判断条目是否该被读到。 */
+  secondaryKeywords: string[];
+  /** 常驻条目（SillyTavern 的 constant）：不看关键词，任何时候都该被读到。 */
+  isConstant: boolean;
+  /** 触发概率 0–100（SillyTavern 的 probability）；100 表示必定触发。 */
+  probability: number;
+  /** 扫描深度：往前回看多少条对话里找关键词；0 表示不限制。 */
+  scanDepth: number;
   isEnabled: boolean;
   createdAt: string;
   updatedAt: string;
