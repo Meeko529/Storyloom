@@ -905,10 +905,8 @@ export function AssistantScreen() {
           if (isCurrentRequest()) setRetryRequest({ sessionId, userMessage, history: nextHistory, sourceMessageId: retry?.sourceMessageId ?? "", modelId: retryModelId, agentId: retry?.agentId ?? activeAgentId });
         }
       }
-      if (isCurrentRequest()) {
-        setLiveTrace(null);
-        setInput(content);
-      }
+      // 失败时不回填输入框：原话已经在消息列表里，重发走那条消息下方的「重试」。
+      if (isCurrentRequest()) setLiveTrace(null);
     } finally {
       if (isCurrentRequest()) setSending(false);
     }
@@ -1016,14 +1014,66 @@ export function AssistantScreen() {
           inverted
           maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 120 }}
           contentContainerStyle={messages.length ? styles.messages : styles.emptyMessages}
-          ListHeaderComponent={sending || liveTrace ? (
+          ListHeaderComponent={sending || liveTrace || writeCard ? (
             <View style={styles.liveTimeline}>
-              <View style={styles.liveHeader}>
-                <ActivityIndicator size="small" color={colors.primary} />
-                <Text style={styles.liveHeaderText}>处理中 · 已处理 {thinkingSeconds}s</Text>
-              </View>
-              {liveReasoning.trim() ? <ReasoningBlock text={liveReasoning} live /> : null}
-              {liveTrace ? <AgentTraceView trace={liveTrace} defaultExpanded inline /> : null}
+              {sending || liveTrace ? (
+                <>
+                  <View style={styles.liveHeader}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={styles.liveHeaderText}>处理中 · 已处理 {thinkingSeconds}s</Text>
+                  </View>
+                  {liveReasoning.trim() ? <ReasoningBlock text={liveReasoning} live /> : null}
+                  {liveTrace ? <AgentTraceView trace={liveTrace} defaultExpanded inline /> : null}
+                </>
+              ) : null}
+              {writeCard ? (
+                <View style={styles.writeCard}>
+                  <View style={styles.writeCardHeader}>
+                    <Text style={styles.writeCardTitle}>写入确认</Text>
+                    <Text numberOfLines={1} style={styles.writeCardTarget}>{writeCard.target ?? writeCard.name}</Text>
+                    <Text style={styles.writeBadge}>待确认</Text>
+                  </View>
+                  {writeCard.before !== undefined && writeCard.after !== undefined ? (() => {
+                    const stats = diffLineStats(writeCard.before, writeCard.after);
+                    const afterLines = writeCard.after.split("\n").filter((line) => line.trim().length > 0);
+                    const beforeLines = writeCard.before.split("\n").filter((line) => line.trim().length > 0);
+                    return (
+                      <>
+                        <View style={styles.writeStats}>
+                          <Text style={styles.writeStatAdd}>+{stats.added} 行</Text>
+                          <Text style={styles.writeStatDel}>−{stats.removed} 行</Text>
+                        </View>
+                        {writeDiffExpanded ? (
+                          <ScrollView style={styles.writeDiffScroll} nestedScrollEnabled>
+                            {beforeLines.slice(0, 120).map((line, idx) => (
+                              <Text key={"b" + idx} style={styles.writeDiffDel} numberOfLines={2}>− {line}</Text>
+                            ))}
+                            {afterLines.slice(0, 120).map((line, idx) => (
+                              <Text key={"a" + idx} style={styles.writeDiffAdd} numberOfLines={2}>+ {line}</Text>
+                            ))}
+                          </ScrollView>
+                        ) : (
+                          <View style={styles.writeDiff}>
+                            {afterLines.slice(0, 3).map((line, idx) => (
+                              <Text key={"a" + idx} style={styles.writeDiffAdd} numberOfLines={1}>+ {line}</Text>
+                            ))}
+                          </View>
+                        )}
+                        <Pressable accessibilityRole="button" onPress={() => setWriteDiffExpanded((value) => !value)} style={styles.writeDiffToggle}>
+                          <Text style={styles.writeDiffToggleText}>{writeDiffExpanded ? "收起变更" : `展开全部 ${stats.added + stats.removed} 行变更`}</Text>
+                          <Ionicons name={writeDiffExpanded ? "chevron-up" : "chevron-down"} size={15} color={colors.textMuted} />
+                        </Pressable>
+                      </>
+                    );
+                  })() : writeCard.details ? (
+                    <Text style={styles.writeCardDetails}>{writeCard.details}</Text>
+                  ) : null}
+                  <View style={styles.writeCardActions}>
+                    <Button label="驳回" variant="secondary" onPress={() => { writeCard.resolve(false); setWriteCard(null); }} />
+                    <Button label="接受" onPress={() => { writeCard.resolve(true); setWriteCard(null); }} />
+                  </View>
+                </View>
+              ) : null}
             </View>
           ) : null}
           ListEmptyComponent={models.length ? (
@@ -1272,58 +1322,6 @@ export function AssistantScreen() {
         </SheetBackdrop>
       </Modal>
 
-      <Modal visible={writeCard !== null} transparent animationType="fade" onRequestClose={() => { writeCard?.resolve(false); setWriteCard(null); }}>
-        <SheetBackdrop onPress={() => { writeCard?.resolve(false); setWriteCard(null); }}>
-          <View style={styles.sheet}>
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sessionTitle}>写入确认</Text>
-              <Text style={styles.sheetRowMeta} numberOfLines={1}>{writeCard?.target ?? writeCard?.name ?? ""}</Text>
-              <Text style={styles.writeBadge}>待确认</Text>
-            </View>
-            {writeCard?.before !== undefined && writeCard?.after !== undefined ? (() => {
-              const stats = diffLineStats(writeCard.before, writeCard.after);
-              const afterLines = writeCard.after.split("\n").filter((line) => line.trim().length > 0);
-              const beforeLines = writeCard.before.split("\n").filter((line) => line.trim().length > 0);
-              return (
-                <>
-                  <View style={styles.writeStats}>
-                    <Text style={styles.writeStatAdd}>+{stats.added} 行</Text>
-                    <Text style={styles.writeStatDel}>−{stats.removed} 行</Text>
-                    <Text style={styles.writeDiffToggleHint}>{writeCard?.target ?? writeCard?.name ?? ""}</Text>
-                  </View>
-                  {writeDiffExpanded ? (
-                    <ScrollView style={styles.writeDiffScroll} nestedScrollEnabled>
-                      {beforeLines.map((line, idx) => (
-                        <Text key={"b" + idx} style={styles.writeDiffDel} numberOfLines={2}>− {line}</Text>
-                      ))}
-                      {afterLines.map((line, idx) => (
-                        <Text key={"a" + idx} style={styles.writeDiffAdd} numberOfLines={2}>+ {line}</Text>
-                      ))}
-                    </ScrollView>
-                  ) : (
-                    <View style={styles.writeDiff}>
-                      {afterLines.slice(0, 3).map((line, idx) => (
-                        <Text key={"a" + idx} style={styles.writeDiffAdd} numberOfLines={1}>+ {line}</Text>
-                      ))}
-                    </View>
-                  )}
-                  <Pressable accessibilityRole="button" accessibilityLabel={writeDiffExpanded ? "收起全部变更" : "展开全部变更"} onPress={() => setWriteDiffExpanded((value) => !value)} style={styles.writeDiffToggle}>
-                    <Text style={styles.writeDiffToggleText}>{writeDiffExpanded ? "收起变更" : `展开全部 ${stats.added + stats.removed} 行变更`}</Text>
-                    <Ionicons name={writeDiffExpanded ? "chevron-up" : "chevron-down"} size={15} color={colors.textMuted} />
-                  </Pressable>
-                </>
-              );
-            })() : writeCard?.details ? (
-              <Text style={styles.sheetRowMeta}>{writeCard.details}</Text>
-            ) : null}
-            <View style={styles.renameActions}>
-              <Button label="驳回" variant="secondary" onPress={() => { writeCard?.resolve(false); setWriteCard(null); }} />
-              <Button label="接受" onPress={() => { writeCard?.resolve(true); setWriteCard(null); }} />
-            </View>
-          </View>
-        </SheetBackdrop>
-      </Modal>
-
       <Modal visible={renaming !== null} transparent animationType="fade" onRequestClose={() => setRenaming(null)}>
         <SheetBackdrop onPress={() => setRenaming(null)}>
           <View style={styles.sheet}>
@@ -1553,7 +1551,13 @@ const styles = StyleSheet.create({
   failureRetryText: { color: colors.danger, fontSize: 12, fontWeight: "700" },
   composerWrap: { marginHorizontal: spacing.md, marginBottom: spacing.sm, gap: 6 },
   composer: { flexDirection: "row", alignItems: "center", gap: 6, paddingLeft: 6, paddingRight: 6, paddingVertical: 6, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 999, ...shadow.card },
-  writeBadge: { color: colors.primary, fontSize: 11, fontWeight: "800", backgroundColor: "rgba(23,107,87,0.12)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, overflow: "hidden" },
+  writeBadge: { marginLeft: "auto", color: colors.primary, fontSize: 11, fontWeight: "800", backgroundColor: "rgba(23,107,87,0.12)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, overflow: "hidden" },
+  writeCard: { marginTop: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  writeCardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  writeCardTitle: { color: colors.text, fontSize: 14, fontWeight: "700" },
+  writeCardTarget: { flexShrink: 1, minWidth: 0, color: colors.textMuted, fontSize: 12 },
+  writeCardDetails: { marginTop: spacing.xs, color: colors.text, fontSize: 12, lineHeight: 18 },
+  writeCardActions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, marginTop: spacing.sm },
   writeStats: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md, paddingVertical: spacing.xs },
   writeStatAdd: { color: "#1B7F4D", fontSize: 12, fontWeight: "800" },
   writeStatDel: { color: colors.danger, fontSize: 12, fontWeight: "800" },

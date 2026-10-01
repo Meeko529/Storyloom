@@ -38,7 +38,9 @@ const WRITE_TOOLS = new Set([
 export interface WritePreview {
   /** 被改动对象的名字，用于提示"要动哪一章/哪条设定" */
   target: string;
+  /** 改前内容：**完整正文**，不做截断 —— 它同时充当撤销快照。 */
   before: string;
+  /** 改后内容：**完整正文**，不做截断 —— 截断会让 diff 统计失真。 */
   after: string;
 }
 
@@ -58,10 +60,14 @@ function text(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
-function truncate(value: string, limit = 600): string {
-  const trimmed = value.trim();
-  if (trimmed.length <= limit) return trimmed;
-  return `${trimmed.slice(0, limit)}…（共 ${trimmed.length} 字）`;
+/**
+ * 预览用文本：只做 trim。
+ * 🔴 这里曾按 600 字截断，两个后果：①长章节里改动落在 600 字之后时，改动前后一模一样，
+ * 差值统计恒为「+0 行 −0 行」；②before 同时是撤销快照，截断后点撤销会把整章正文写成那 600 字。
+ * 预览该显示多少行由界面决定，不在这一层丢信息。
+ */
+function previewText(value: string): string {
+  return value.trim();
 }
 
 /** 生成改动预览；非写入类工具或找不到目标时返回 null（此时按原逻辑只确认工具名）。 */
@@ -72,8 +78,8 @@ export async function buildWritePreview(name: string, args: Record<string, unkno
     const chapter = id ? await getChapter(id) : null;
     return {
       target: chapter ? `章节《${chapter.title}》` : "章节",
-      before: truncate(chapter?.content ?? ""),
-      after: truncate(text(args.content)),
+      before: previewText(chapter?.content ?? ""),
+      after: previewText(text(args.content)),
     };
   }
   if (name === "write_note" || name === "edit_note") {
@@ -81,26 +87,26 @@ export async function buildWritePreview(name: string, args: Record<string, unkno
     const note = id ? await getNote(id) : null;
     return {
       target: note ? `笔记《${note.title}》` : "笔记",
-      before: truncate(note?.content ?? ""),
-      after: truncate(text(args.content)),
+      before: previewText(note?.content ?? ""),
+      after: previewText(text(args.content)),
     };
   }
   if (name === "create_character" || name === "edit_character" || name === "delete_character") {
     const id = text(args.characterId ?? args.character_id);
     const character = id ? await getCharacter(id) : null;
-    const after = name === "delete_character" ? "（该角色将被删除）" : truncate(text(args.description));
+    const after = name === "delete_character" ? "（该角色将被删除）" : previewText(text(args.description));
     return {
       target: character ? `角色「${character.name}」` : "角色",
-      before: truncate(character?.description ?? ""),
+      before: previewText(character?.description ?? ""),
       after,
     };
   }
   const id = text(args.entryId ?? args.entry_id);
   const entry = id ? await getWorldInfoEntry(id) : null;
-  const after = name === "delete_world_entry" ? "（该条目将被删除）" : truncate(text(args.content));
+  const after = name === "delete_world_entry" ? "（该条目将被删除）" : previewText(text(args.content));
   return {
     target: entry ? `世界书条目「${entry.name}」` : "世界书条目",
-    before: truncate(entry?.content ?? ""),
+    before: previewText(entry?.content ?? ""),
     after,
   };
 }

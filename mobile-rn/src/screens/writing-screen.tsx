@@ -698,6 +698,14 @@ export function WritingScreen() {
           <Pressable accessibilityLabel="关闭更多操作" onPress={() => setHeaderMenuVisible(false)} style={styles.headerMenuBackdrop} />
           <View style={styles.headerMenuCard}>
             <Pressable
+              accessibilityLabel="作品目录"
+              onPress={() => { setHeaderMenuVisible(false); setChapterPickerVisible(true); }}
+              style={({ pressed }) => [styles.headerMenuRow, pressed && styles.headerMenuRowPressed]}
+            >
+              <Ionicons name="list-outline" size={20} color={colors.primary} />
+              <Text style={styles.headerMenuText}>作品目录</Text>
+            </Pressable>
+            <Pressable
               accessibilityLabel="导出作品"
               onPress={() => { setHeaderMenuVisible(false); setExportPickerVisible(true); }}
               style={({ pressed }) => [styles.headerMenuRow, pressed && styles.headerMenuRowPressed]}
@@ -735,13 +743,6 @@ export function WritingScreen() {
       ) : null}
             {/* behavior=height 会按键盘高度设置容器高度；键盘收起后偶发拿到过期高度，导致编辑器整体变矮（footer 悬在页面中部）。padding 型只加内边距，收起即恢复。 */}
       <KeyboardAvoidingView style={styles.flex} behavior="padding" automaticOffset>
-        <Pressable accessibilityRole="button" onPress={() => setChapterPickerVisible(true)} style={styles.chapterPicker}>
-          <View style={styles.chapterPickerTextGroup}>
-            <Text numberOfLines={1} style={styles.chapterPickerVolume}>{activeVolume?.title ?? "作品目录"}</Text>
-            <Text numberOfLines={1} style={styles.chapterPickerText}>{activeChapter?.title ?? "选择章节"}</Text>
-          </View>
-          <Ionicons name="chevron-down" size={18} color={colors.textMuted} />
-        </Pressable>
         <Pressable accessibilityRole="button" onPress={() => setStylePickerVisible(true)} style={styles.styleSelector}>
           <Ionicons name="color-wand-outline" size={17} color={activeStyleProfile ? colors.primary : colors.textMuted} />
           <Text numberOfLines={1} style={[styles.styleSelectorText, activeStyleProfile && styles.styleSelectorTextActive]}>
@@ -783,6 +784,7 @@ export function WritingScreen() {
               <View style={styles.preview}>
                 <View style={styles.previewHeader}>
                   <View style={styles.previewHeading}>
+                    <Text numberOfLines={1} style={styles.previewVolume}>{activeVolume?.title ?? "作品目录"}</Text>
                     <Text style={styles.previewTitle}>{title || "未命名章节"}</Text>
                     <Text style={styles.previewMeta}>{content.replace(/\s/g, "").length + " 字" + (savedAt ? " · " + savedAt + " 已保存" : "")}</Text>
                   </View>
@@ -1225,18 +1227,6 @@ const styles = StyleSheet.create({
   historyPreviewTitle: { color: colors.text, fontSize: 19, fontWeight: "700" },
   historyPreviewText: { color: colors.text },
   historyFooter: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-  chapterPicker: {
-    minHeight: 56,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  chapterPickerTextGroup: { flex: 1, minWidth: 0, gap: 2 },
-  chapterPickerVolume: { color: colors.textMuted, fontSize: 12, fontWeight: "600" },
-  chapterPickerText: { color: colors.text, fontSize: 15, fontWeight: "700" },
   styleSelector: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   styleSelectorText: { flex: 1, color: colors.textMuted, fontSize: 13, fontWeight: "600" },
   styleSelectorTextActive: { color: colors.primary },
@@ -1245,6 +1235,7 @@ const styles = StyleSheet.create({
   preview: { flex: 1, gap: spacing.md },
   previewHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingBottom: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   previewHeading: { flex: 1, minWidth: 0, gap: spacing.xs },
+  previewVolume: { color: colors.textMuted, fontSize: 12 },
   previewTitle: { color: colors.text, fontSize: 23, fontWeight: "700" },
   previewMeta: { color: colors.textMuted, fontSize: 12 },
   editButton: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.sm },
