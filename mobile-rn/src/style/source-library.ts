@@ -240,7 +240,7 @@ function extractMarkupText(value: string): string {
   return normalizeText(fallbackMarkupText(value));
 }
 
-function extractEpub(bytes: Uint8Array): { title: string | null; text: string } {
+export function extractEpub(bytes: Uint8Array): { title: string | null; text: string } {
   let totalTextBytes = 0;
   const entries = unzipSync(bytes, {
     filter: (entry) => {

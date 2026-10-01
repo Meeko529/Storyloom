@@ -9,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { appendBreadcrumb } from "@/lib/crash-log";
+import { importProjectFromFile } from "@/lib/doc-import";
 import { downsampleToFile } from "@/lib/media-downsample";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
@@ -31,6 +32,8 @@ export function ProjectsScreen() {
   const [showCreate, setShowCreate] = useState(false);
   /** 操作面板对应的作品；null 表示面板未打开 */
   const [menuProject, setMenuProject] = useState<Project | null>(null);
+  const [shelfMenuVisible, setShelfMenuVisible] = useState(false);
+  const [importing, setImporting] = useState(false);
   /** 「编辑信息」面板 */
   const [infoProject, setInfoProject] = useState<Project | null>(null);
   const [infoTitle, setInfoTitle] = useState("");
@@ -122,6 +125,22 @@ export function ProjectsScreen() {
   };
 
   /** 打开作品操作面板（封面与删除统一收在这里，避免误触直接删）。 */
+  const runShelfImport = async () => {
+    if (importing) return;
+    setImporting(true);
+    try {
+      const project = await importProjectFromFile();
+      setShelfMenuVisible(false);
+      if (!project) return;
+      await loadProjects();
+      openProject(project);
+    } catch (importError) {
+      Alert.alert("导入失败", importError instanceof Error ? importError.message : String(importError));
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const openProjectMenu = (project: Project) => setMenuProject(project);
 
 /** 把书架列表按每行 4 本分块，行下面渲染整条书架板。 */
@@ -244,15 +263,11 @@ function coverColor(title: string): string {
         title="Storyloom"
         action={
           <View style={styles.headerActions}>
-            <Pressable
-              accessibilityLabel={viewMode === "grid" ? "切换为列表视图" : "切换为网格视图"}
-              onPress={toggleViewMode}
-              style={styles.iconButton}
-            >
-              <Ionicons name={viewMode === "grid" ? "list-outline" : "grid-outline"} size={22} color={colors.primary} />
-            </Pressable>
             <Pressable accessibilityLabel="新建作品" onPress={() => setShowCreate(true)} style={styles.iconButton}>
               <Ionicons name="add" size={26} color={colors.primary} />
+            </Pressable>
+            <Pressable accessibilityLabel="书架菜单" onPress={() => setShelfMenuVisible(true)} style={styles.iconButton}>
+              <Ionicons name="ellipsis-horizontal" size={22} color={colors.primary} />
             </Pressable>
           </View>
         }
@@ -398,6 +413,49 @@ function coverColor(title: string): string {
         </KeyboardAvoidingView>
       </Modal>
 
+      <Modal visible={shelfMenuVisible} transparent animationType="slide" onRequestClose={() => setShelfMenuVisible(false)}>
+        <Pressable onPress={() => setShelfMenuVisible(false)} style={styles.menuBackdrop}>
+          <View style={styles.menuSheet}>
+            <Text style={styles.menuTitle}>书架</Text>
+            <Pressable
+              accessibilityLabel="本机导入"
+              disabled={importing}
+              onPress={() => void runShelfImport()}
+              style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+            >
+              {importing
+                ? <ActivityIndicator size={20} color={colors.primary} />
+                : <Ionicons name="document-outline" size={20} color={colors.primary} />}
+              <Text style={styles.menuRowText}>本机导入</Text>
+              <Text style={styles.menuRowHint}>TXT · Markdown · Word · EPUB</Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel={viewMode === "grid" ? "书架样式：切换为列表" : "书架样式：切换为网格"}
+              onPress={() => { toggleViewMode(); setShelfMenuVisible(false); }}
+              style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+            >
+              <Ionicons name={viewMode === "grid" ? "list-outline" : "grid-outline"} size={20} color={colors.primary} />
+              <Text style={styles.menuRowText}>书架样式</Text>
+              <Text style={styles.menuRowHint}>{viewMode === "grid" ? "网格" : "列表"}</Text>
+            </Pressable>
+            <View style={[styles.menuRow, styles.menuRowDisabled]}>
+              <Ionicons name="folder-open-outline" size={20} color={colors.textMuted} />
+              <Text style={styles.menuRowText}>分类管理</Text>
+              <Text style={styles.menuRowHint}>未开放</Text>
+            </View>
+            <View style={[styles.menuRow, styles.menuRowDisabled]}>
+              <Ionicons name="albums-outline" size={20} color={colors.textMuted} />
+              <Text style={styles.menuRowText}>在书架上显示分类</Text>
+              <Text style={styles.menuRowHint}>未开放</Text>
+            </View>
+            <View style={[styles.menuRow, styles.menuRowDisabled]}>
+              <Ionicons name="swap-vertical-outline" size={20} color={colors.textMuted} />
+              <Text style={styles.menuRowText}>书架排序</Text>
+              <Text style={styles.menuRowHint}>未开放</Text>
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
       <Modal visible={menuProject !== null} transparent animationType="slide" onRequestClose={() => setMenuProject(null)}>
         <Pressable onPress={() => setMenuProject(null)} style={styles.menuBackdrop}>
           <View style={styles.menuSheet}>
@@ -502,6 +560,8 @@ const styles = StyleSheet.create({
   menuTitle: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xs, color: colors.textMuted, fontSize: 13 },
   menuRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 52, paddingHorizontal: spacing.lg },
   menuRowPressed: { backgroundColor: colors.surfaceMuted },
+  menuRowDisabled: { opacity: 0.55 },
+  menuRowHint: { marginLeft: "auto", color: colors.textMuted, fontSize: 12 },
   menuRowText: { color: colors.text, fontSize: 15, fontWeight: "600" },
   menuRowDanger: { color: colors.danger },
   infoSheet: { padding: spacing.lg, gap: spacing.sm, borderTopLeftRadius: radius.md, borderTopRightRadius: radius.md, backgroundColor: colors.background },
