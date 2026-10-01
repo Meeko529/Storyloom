@@ -204,6 +204,18 @@ const OPTIONAL_RESOURCE_DESCRIPTIONS: Array<{
   purpose: string;
 }> = [
   {
+    id: "novelist-skill",
+    title: "中文小说创作技能包",
+    sizeMb: 0.1,
+    purpose: SKILL_PACK_INFO.purpose,
+  },
+  {
+    id: "font-wenkai",
+    title: "正文字体：霞鹜文楷 GB Lite",
+    sizeMb: Math.round(FONT_PACK_INFO.bytes / 1024 / 1024),
+    purpose: "下载后可在「编辑器 → 正文字体」选择「文楷」，Android 上楷体不再回落系统默认字体。OFL 开源许可，允许随应用分发。",
+  },
+  {
     id: "lorn-style",
     title: "Lorn 原版文风 Skill",
     sizeMb: 1,
