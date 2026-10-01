@@ -400,7 +400,7 @@ function coverColor(title: string): string {
           </View>
         </>
       ) : null}
-      {shelfMenuVisible ? (
+      {shelfMenuVisible && shelfMenuView === "main" ? (
         <>
           <Pressable accessibilityLabel="关闭书架菜单" onPress={() => setShelfMenuVisible(false)} style={styles.shelfMenuBackdrop} />
           <View style={styles.shelfMenuCard}>
