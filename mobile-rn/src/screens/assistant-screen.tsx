@@ -1024,6 +1024,7 @@ export function AssistantScreen() {
                     <Text numberOfLines={1} style={styles.writeCardTarget}>{writeCard.target ?? writeCard.name}</Text>
                     <Text style={styles.writeBadge}>待确认</Text>
                   </View>
+                  <ScrollView style={styles.writeCardScroll} nestedScrollEnabled>
                   {writeCard.before !== undefined && writeCard.after !== undefined ? (() => {
                     const stats = diffLineStats(writeCard.before, writeCard.after);
                     const afterLines = writeCard.after.split("\n").filter((line) => line.trim().length > 0);
@@ -1056,9 +1057,10 @@ export function AssistantScreen() {
                         </Pressable>
                       </>
                     );
-                  })() : writeCard.details ? (
+                  })(                  ) : writeCard.details ? (
                     <Text style={styles.writeCardDetails}>{writeCard.details}</Text>
                   ) : null}
+                  </ScrollView>
                   <View style={styles.writeCardActions}>
                     <Button label="驳回" variant="secondary" onPress={() => { writeCard.resolve(false); setWriteCard(null); }} />
                     <Button label="接受" onPress={() => { writeCard.resolve(true); setWriteCard(null); }} />
@@ -1533,7 +1535,20 @@ const styles = StyleSheet.create({
   composerWrap: { marginHorizontal: spacing.md, marginBottom: spacing.sm, gap: 6 },
   composer: { flexDirection: "row", alignItems: "center", gap: 6, paddingLeft: 6, paddingRight: 6, paddingVertical: 6, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 999, ...shadow.card },
   writeBadge: { marginLeft: "auto", color: colors.primary, fontSize: 11, fontWeight: "800", backgroundColor: "rgba(23,107,87,0.12)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, overflow: "hidden" },
-  writeCard: { marginTop: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  writeCard: {
+    alignSelf: "flex-start",
+    maxWidth: "88%",
+    maxHeight: 420,
+    overflow: "hidden",
+    marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    backgroundColor: "#EFF3F0",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  writeCardScroll: { maxHeight: 300 },
   writeCardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   writeCardTitle: { color: colors.text, fontSize: 14, fontWeight: "700" },
   writeCardTarget: { flexShrink: 1, minWidth: 0, color: colors.textMuted, fontSize: 12 },
