@@ -14,10 +14,50 @@ import type {
   Volume,
   WorldInfo,
   WorldInfoEntry,
+  Category,
 } from "@/types";
 import { MAX_CONFIGURED_OUTPUT_TOKENS } from "@/llm/limits";
 
 import { getDatabase } from "./database";
+
+/** ── 书架分类 ── */
+
+export async function listCategories(): Promise<Category[]> {
+  const db = await getDatabase();
+  return (await db.getAllAsync<CategoryRow>("SELECT * FROM categories ORDER BY order_index")).map(mapCategory);
+}
+
+export async function createCategory(name: string): Promise<Category> {
+  const db = await getDatabase();
+  const id = createId();
+  const now = new Date().toISOString();
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    const orderRow = await txn.getFirstAsync<{ next_order: number }>(
+      "SELECT COALESCE(MAX(order_index), 0) + 1 AS next_order FROM categories",
+    );
+    await txn.runAsync("INSERT INTO categories(id, name, order_index) VALUES (?, ?, ?)", id, name, orderRow?.next_order ?? 1);
+  });
+  return { id, name, orderIndex: 0 };
+}
+
+export async function renameCategory(id: string, name: string): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync("UPDATE categories SET name = ? WHERE id = ?", name, id);
+}
+
+/** 删除分类：名下作品全部回到「未分类」，分类本身删除，不可恢复由确认弹窗保证。 */
+export async function deleteCategory(id: string): Promise<void> {
+  const db = await getDatabase();
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    await txn.runAsync("UPDATE projects SET category_id = NULL WHERE category_id = ?", id);
+    await txn.runAsync("DELETE FROM categories WHERE id = ?", id);
+  });
+}
+
+export async function setProjectCategory(projectId: string, categoryId: string | null): Promise<void> {
+  const db = await getDatabase();
+  await db.runAsync("UPDATE projects SET category_id = ?, updated_at = ? WHERE id = ?", categoryId, new Date().toISOString(), projectId);
+}
 
 const MAX_EDITOR_CONTENT_CHARACTERS = 100_000;
 const MAX_EDITOR_CONTENT_LINES = 2_000;
@@ -27,9 +67,11 @@ type ProjectRow = {
   title: string;
   description: string;
   cover_path?: string | null;
+  category_id?: string | null;
   created_at: string;
   updated_at: string;
 };
+type CategoryRow = { id: string; name: string; order_index: number };
 type VolumeRow = { id: string; project_id: string; title: string; order_index: number };
 type ChapterRow = { id: string; project_id: string; volume_id: string; title: string; content: string; order_index: number; updated_at: string };
 type ProviderRow = { id: string; name: string; type: ProviderType; base_url: string; api_key_ref: string; created_at: string };
@@ -87,7 +129,11 @@ type WorldInfoEntryRow = {
 const mapProject = (row: ProjectRow): Project => ({
   id: row.id, title: row.title, description: row.description,
   coverPath: row.cover_path ?? null,
+  categoryId: row.category_id ?? null,
   createdAt: row.created_at, updatedAt: row.updated_at,
+});
+const mapCategory = (row: CategoryRow): Category => ({
+  id: row.id, name: row.name, orderIndex: row.order_index,
 });
 const mapVolume = (row: VolumeRow): Volume => ({
   id: row.id, projectId: row.project_id, title: row.title, orderIndex: row.order_index,
@@ -218,7 +264,7 @@ export async function createProject(title: string, description = ""): Promise<Pr
       chapterId, id, "第一章",
     );
   });
-  return { id, title: normalizedTitle, description: normalizedDescription, coverPath: null, createdAt: now, updatedAt: now };
+  return { id, title: normalizedTitle, description: normalizedDescription, coverPath: null, categoryId: null, createdAt: now, updatedAt: now };
 }
 
 /** 更新作品名称与简介；名称不允许为空。 */

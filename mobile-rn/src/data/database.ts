@@ -319,6 +319,18 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
   await migrateChatSessions(database);
   await migrateModelCapabilities(database);
   await migrateProjectCover(database);
+  await migrateCategories(database);
+}
+
+/** 作品分类：分类表 + 作品表补 category_id（可空，空 = 未分类）。 */
+async function migrateCategories(database: SQLite.SQLiteDatabase): Promise<void> {
+  await database.execAsync(
+    "CREATE TABLE IF NOT EXISTS categories (id TEXT PRIMARY KEY, name TEXT NOT NULL, order_index INTEGER NOT NULL);",
+  );
+  const columns = await database.getAllAsync<{ name: string }>("PRAGMA table_info(projects)");
+  if (!columns.some((column) => column.name === "category_id")) {
+    await database.execAsync("ALTER TABLE projects ADD COLUMN category_id TEXT;");
+  }
 }
 
 /** 作品封面：老库补一列，封面图片本身存在应用私有目录，不落库。 */

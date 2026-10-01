@@ -6,22 +6,22 @@ import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import { useCallback, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, Image, ImageBackground, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { useCallback, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, FlatList, Image, ImageBackground, Modal, Pressable, ScrollView, StyleSheet, TextInput, Text, View } from "react-native";
 import { appendBreadcrumb } from "@/lib/crash-log";
 import { importProjectFromFile } from "@/lib/doc-import";
 import { downsampleToFile } from "@/lib/media-downsample";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 import { Button, EmptyState, ErrorNotice, Field, Header, Screen } from "@/components/ui";
-import { createProject, deleteProject, getProjectStats, getProjectStatsMap, getSetting, listProjects, setSetting, updateProjectCover, updateProjectInfo, type ProjectStats } from "@/data/repositories";
+import { createCategory, createProject, deleteCategory, deleteProject, getProjectStats, getProjectStatsMap, getSetting, listCategories, listProjects, renameCategory, setProjectCategory, setSetting, updateProjectCover, updateProjectInfo, type ProjectStats } from "@/data/repositories";
 import type { RootStackParamList, RootTabParamList } from "@/navigation/types";
 import { useAppStore } from "@/store/app-store";
+import { colors, radius, shadow, spacing } from "@/theme";
+import type { Category, Project } from "@/types";
 
 const PLANK_IMAGE = require("../../assets/images/shelf-plank.png");
 const BOOK_SHADOW = require("../../assets/images/book-shadow.png");
-import { colors, radius, shadow, spacing } from "@/theme";
-import type { Project } from "@/types";
 
 export function ProjectsScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList>>();
@@ -37,6 +37,17 @@ export function ProjectsScreen() {
   const [menuProject, setMenuProject] = useState<Project | null>(null);
   const [shelfMenuVisible, setShelfMenuVisible] = useState(false);
   const [importing, setImporting] = useState(false);
+  /** 分类与排序 */
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [shelfSort, setShelfSort] = useState<"recent" | "created" | "title" | "words">("recent");
+  /** 当前显示的分组；null = 全部。存设置时用 "all" 表示全部 */
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [categoryPanelVisible, setCategoryPanelVisible] = useState(false);
+  const [shelfMenuView, setShelfMenuView] = useState<"main" | "sort">("main");
+  const [categoryManagerVisible, setCategoryManagerVisible] = useState(false);
+  const [assignTarget, setAssignTarget] = useState<Project | null>(null);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [renamingCategory, setRenamingCategory] = useState<{ id: string; name: string } | null>(null);
   /** 「编辑信息」面板 */
   const [infoProject, setInfoProject] = useState<Project | null>(null);
   const [infoTitle, setInfoTitle] = useState("");
@@ -54,8 +65,15 @@ export function ProjectsScreen() {
     try {
       setProjects(await listProjects());
       setStats(await getProjectStatsMap());
+      setCategories(await listCategories());
       void getSetting("general.shelfView")
         .then((value) => setViewMode(value === "list" ? "list" : "grid"))
+        .catch(() => {});
+      void getSetting("general.shelfSort")
+        .then((value) => setShelfSort(value === "created" || value === "title" || value === "words" ? value : "recent"))
+        .catch(() => {});
+      void getSetting("general.shelfCategory")
+        .then((value) => setSelectedCategoryId(value && value !== "all" ? value : null))
         .catch(() => {});
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : String(loadError));
@@ -80,6 +98,82 @@ export function ProjectsScreen() {
     setCurrentProject(project.id);
     navigation.navigate("Writing");
   };
+
+  /** 排序：改设置即生效；分类开关同理。 */
+  const applyShelfSort = (rule: "recent" | "created" | "title" | "words") => {
+    setShelfSort(rule);
+    setShelfMenuView("main");
+    void setSetting("general.shelfSort", rule);
+  };
+  /** 选择书架当前显示的分组（持久化；分类被删时回落「全部」）。 */
+  const selectShelfCategory = (categoryId: string | null) => {
+    setSelectedCategoryId(categoryId);
+    setCategoryPanelVisible(false);
+    void setSetting("general.shelfCategory", categoryId ?? "all");
+  };
+  const addCategory = async () => {
+    const name = newCategoryName.trim();
+    if (!name) return;
+    await createCategory(name);
+    setNewCategoryName("");
+    setCategories(await listCategories());
+  };
+  const saveCategoryRename = async () => {
+    if (!renamingCategory || !renamingCategory.name.trim()) return;
+    await renameCategory(renamingCategory.id, renamingCategory.name.trim());
+    setRenamingCategory(null);
+    setCategories(await listCategories());
+  };
+  const removeCategory = (category: Category) => {
+    Alert.alert("删除分类", `删除「${category.name}」？名下作品将回到未分类。`, [
+      { text: "取消", style: "cancel" },
+      {
+        text: "删除",
+        style: "destructive",
+        onPress: () => {
+          void (async () => {
+            await deleteCategory(category.id);
+            setCategories(await listCategories());
+            await loadProjects();
+          })();
+        },
+      },
+    ]);
+  };
+  const assignToCategory = async (categoryId: string | null) => {
+    if (!assignTarget) return;
+    await setProjectCategory(assignTarget.id, categoryId);
+    setCategoryManagerVisible(false);
+    setAssignTarget(null);
+    await loadProjects();
+  };
+
+  /** 排序后的作品列表。 */
+  const sortedProjects = useMemo(() => {
+    const list = [...projects];
+    if (shelfSort === "created") list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    else if (shelfSort === "title") list.sort((a, b) => a.title.localeCompare(b.title, "zh"));
+    else if (shelfSort === "words") list.sort((a, b) => (stats[b.id]?.characters ?? 0) - (stats[a.id]?.characters ?? 0));
+    else list.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return list;
+  }, [projects, shelfSort, stats]);
+
+  /** 渲染条目：只显示当前选中的分组；「全部」平铺。 */
+  const currentCategoryName = selectedCategoryId
+    ? categories.find((category) => category.id === selectedCategoryId)?.name ?? "全部"
+    : "全部";
+  const hasUncategorized = projects.some((project) => !project.categoryId || !categories.some((category) => category.id === project.categoryId));
+  const shelfItems = useMemo(() => {
+    const visible = !selectedCategoryId
+      ? sortedProjects
+      : sortedProjects.filter((project) => selectedCategoryId === "uncategorized"
+        ? !project.categoryId || !categories.some((category) => category.id === project.categoryId)
+        : project.categoryId === selectedCategoryId);
+    const items: Array<{ kind: "row"; row: Project[] } | { kind: "project"; project: Project }> = [];
+    if (viewMode === "grid") for (const row of chunkProjects(visible, 4)) items.push({ kind: "row", row });
+    else for (const project of visible) items.push({ kind: "project", project });
+    return items;
+  }, [projects, sortedProjects, categories, selectedCategoryId, viewMode]);
 
   const submit = async () => {
     if (!title.trim()) return;
@@ -263,7 +357,16 @@ function coverColor(title: string): string {
   return (
     <Screen>
       <Header
-        title="Storyloom"
+        title={
+          categories.length ? (
+            <Pressable accessibilityLabel="选择分组" onPress={() => setCategoryPanelVisible((value) => !value)} style={styles.shelfTitleButton}>
+              <Text style={styles.shelfTitleText}>{currentCategoryName}</Text>
+              <Ionicons name={categoryPanelVisible ? "chevron-up" : "chevron-down"} size={16} color={colors.text} />
+            </Pressable>
+          ) : (
+            "全部"
+          )
+        }
         action={
           <View style={styles.headerActions}>
             <Pressable accessibilityLabel="新建作品" onPress={() => setShowCreate(true)} style={styles.iconButton}>
@@ -275,6 +378,26 @@ function coverColor(title: string): string {
           </View>
         }
       />
+      {categoryPanelVisible ? (
+        <>
+          <Pressable accessibilityLabel="关闭分组面板" onPress={() => setCategoryPanelVisible(false)} style={styles.shelfMenuBackdrop} />
+          <View style={styles.categoryPanel}>
+            <Pressable onPress={() => selectShelfCategory(null)} style={[styles.shelfChip, !selectedCategoryId && styles.shelfChipActive]}>
+              <Text style={[styles.shelfChipText, !selectedCategoryId && styles.shelfChipTextActive]}>全部</Text>
+            </Pressable>
+            {categories.map((category) => (
+              <Pressable key={category.id} onPress={() => selectShelfCategory(category.id)} style={[styles.shelfChip, selectedCategoryId === category.id && styles.shelfChipActive]}>
+                <Text style={[styles.shelfChipText, selectedCategoryId === category.id && styles.shelfChipTextActive]}>{category.name}</Text>
+              </Pressable>
+            ))}
+            {hasUncategorized ? (
+              <Pressable onPress={() => selectShelfCategory("uncategorized")} style={[styles.shelfChip, selectedCategoryId === "uncategorized" && styles.shelfChipActive]}>
+                <Text style={[styles.shelfChipText, selectedCategoryId === "uncategorized" && styles.shelfChipTextActive]}>未分类</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </>
+      ) : null}
       {shelfMenuVisible ? (
         <>
           <Pressable accessibilityLabel="关闭书架菜单" onPress={() => setShelfMenuVisible(false)} style={styles.shelfMenuBackdrop} />
@@ -300,28 +423,57 @@ function coverColor(title: string): string {
               <Text style={styles.menuRowText}>书架样式</Text>
               <Text style={styles.menuRowHint}>{viewMode === "grid" ? "网格" : "列表"}</Text>
             </Pressable>
-            <View style={[styles.menuRow, styles.menuRowDisabled]}>
-              <Ionicons name="folder-open-outline" size={20} color={colors.textMuted} />
+            <Pressable
+              accessibilityLabel="分类管理"
+              onPress={() => { setShelfMenuVisible(false); setCategoryManagerVisible(true); }}
+              style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+            >
+              <Ionicons name="folder-open-outline" size={20} color={colors.primary} />
               <Text style={styles.menuRowText}>分类管理</Text>
-              <Text style={styles.menuRowHint}>未开放</Text>
-            </View>
-            <View style={[styles.menuRow, styles.menuRowDisabled]}>
-              <Ionicons name="albums-outline" size={20} color={colors.textMuted} />
-              <Text style={styles.menuRowText}>在书架上显示分类</Text>
-              <Text style={styles.menuRowHint}>未开放</Text>
-            </View>
-            <View style={[styles.menuRow, styles.menuRowDisabled]}>
-              <Ionicons name="swap-vertical-outline" size={20} color={colors.textMuted} />
+              <Text style={styles.menuRowHint}>{categories.length} 个分类</Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel="书架排序"
+              onPress={() => setShelfMenuView("sort")}
+              style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+            >
+              <Ionicons name="swap-vertical-outline" size={20} color={colors.primary} />
               <Text style={styles.menuRowText}>书架排序</Text>
-              <Text style={styles.menuRowHint}>未开放</Text>
-            </View>
+              <Text style={styles.menuRowHint}>{
+                shelfSort === "recent" ? "最近更新" : shelfSort === "created" ? "创建时间" : shelfSort === "title" ? "书名" : "字数"
+              }</Text>
+            </Pressable>
+          </View>
+        </>
+      ) : null}
+      {shelfMenuVisible && shelfMenuView === "sort" ? (
+        <>
+          <Pressable accessibilityLabel="关闭排序选择" onPress={() => { setShelfMenuView("main"); setShelfMenuVisible(false); }} style={styles.shelfMenuBackdrop} />
+          <View style={styles.shelfMenuCard}>
+            <Text style={styles.menuTitle}>书架排序</Text>
+            {([
+              { id: "recent", label: "最近更新" },
+              { id: "created", label: "创建时间" },
+              { id: "title", label: "书名" },
+              { id: "words", label: "字数" },
+            ] as const).map((option) => (
+              <Pressable
+                key={option.id}
+                accessibilityLabel={`排序方式：${option.label}`}
+                onPress={() => applyShelfSort(option.id)}
+                style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+              >
+                <Text style={styles.menuRowText}>{option.label}</Text>
+                {shelfSort === option.id ? <Ionicons name="checkmark" size={20} color={colors.primary} /> : null}
+              </Pressable>
+            ))}
           </View>
         </>
       ) : null}
       <FlatList
         key={viewMode}
-        data={(viewMode === "grid" ? chunkProjects(projects, 4) : projects) as unknown as Project[]}
-        keyExtractor={(item, index) => (viewMode === "grid" ? `row-${index}` : (item as Project).id)}
+        data={shelfItems}
+        keyExtractor={(item, index) => (item.kind === "row" ? `row-${index}` : item.project.id)}
         contentContainerStyle={projects.length ? styles.list : styles.emptyList}
         ItemSeparatorComponent={viewMode === "grid" ? () => null : () => <View style={styles.separator} />}
         ListHeaderComponent={
@@ -359,13 +511,30 @@ function coverColor(title: string): string {
                 <Text style={styles.quickActionText}>文风库</Text>
               </Pressable>
             </View>
+            {categories.length ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={styles.shelfChipsRow} contentContainerStyle={styles.shelfChipsContent}>
+                <Pressable onPress={() => selectShelfCategory(null)} style={({ pressed }) => [styles.shelfChip, !selectedCategoryId && styles.shelfChipActive]}>
+                  <Text style={[styles.shelfChipText, !selectedCategoryId && styles.shelfChipTextActive]}>全部</Text>
+                </Pressable>
+                {categories.map((category) => (
+                  <Pressable key={category.id} onPress={() => selectShelfCategory(category.id)} style={({ pressed }) => [styles.shelfChip, selectedCategoryId === category.id && styles.shelfChipActive]}>
+                    <Text style={[styles.shelfChipText, selectedCategoryId === category.id && styles.shelfChipTextActive]}>{category.name}</Text>
+                  </Pressable>
+                ))}
+                {hasUncategorized ? (
+                  <Pressable onPress={() => selectShelfCategory("uncategorized")} style={({ pressed }) => [styles.shelfChip, selectedCategoryId === "uncategorized" && styles.shelfChipActive]}>
+                    <Text style={[styles.shelfChipText, selectedCategoryId === "uncategorized" && styles.shelfChipTextActive]}>未分类</Text>
+                  </Pressable>
+                ) : null}
+              </ScrollView>
+            ) : null}
             {error ? <View style={styles.errorWrap}><ErrorNotice message={error} onRetry={() => void loadProjects()} /></View> : null}
           </View>
         }
         ListEmptyComponent={loading ? <ActivityIndicator color={colors.primary} /> : <EmptyState title="还没有作品" action={<Button label="新建作品" onPress={() => setShowCreate(true)} />} />}
         renderItem={({ item }) => {
           if (viewMode === "grid") {
-            const row = item as unknown as Project[];
+            const row = item.kind === "row" ? item.row : [];
             return (
               <View style={styles.shelfRow}>
                 <View style={styles.shelfBooks}>
@@ -406,28 +575,29 @@ function coverColor(title: string): string {
               </View>
             );
           }
-          const statsLine = (() => { const st = stats[item.id]; return st ? `${st.volumes} 卷 · ${st.chapters} 章 · ${(st.characters / 10000).toFixed(1)} 万字` : "…"; })();
-          const progress = Math.min(100, Math.round(((stats[item.id]?.characters ?? 0) / 100000) * 100));
+          const project = item.kind === "project" ? item.project : (item as unknown as Project);
+          const statsLine = (() => { const st = stats[project.id]; return st ? `${st.volumes} 卷 · ${st.chapters} 章 · ${(st.characters / 10000).toFixed(1)} 万字` : "…"; })();
+          const progress = Math.min(100, Math.round(((stats[project.id]?.characters ?? 0) / 100000) * 100));
           const coverNode = (
-            <View style={[styles.cover, { backgroundColor: coverColor(item.title) }]}>
-              {item.coverPath ? (
-                <Image source={{ uri: item.coverPath }} style={styles.coverImage} resizeMethod="resize" />
+            <View style={[styles.cover, { backgroundColor: coverColor(project.title) }]}>
+              {project.coverPath ? (
+                <Image source={{ uri: project.coverPath }} style={styles.coverImage} resizeMethod="resize" />
               ) : (
-                <Text style={styles.coverText}>{item.title.slice(0, 1)}</Text>
+                <Text style={styles.coverText}>{project.title.slice(0, 1)}</Text>
               )}
             </View>
           );
           const menu = (
-            <Pressable accessibilityLabel={`《${item.title}》的操作`} onPress={(event) => { event.stopPropagation(); openProjectMenu(item); }} hitSlop={8} style={styles.rowAction}>
+            <Pressable accessibilityLabel={`《${project.title}》的操作`} onPress={(event) => { event.stopPropagation(); openProjectMenu(project); }} hitSlop={8} style={styles.rowAction}>
               <Ionicons name="ellipsis-horizontal" size={20} color={colors.textMuted} />
             </Pressable>
           );
           return (
-            <Pressable onPress={() => openProject(item)} onLongPress={() => openProjectMenu(item)} style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
+            <Pressable onPress={() => openProject(project)} onLongPress={() => openProjectMenu(project)} style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
               {coverNode}
               <View style={styles.rowText}>
-                <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
-                <Text style={styles.description} numberOfLines={1}>{item.description || "暂无简介"}</Text>
+                <Text style={styles.title} numberOfLines={1}>{project.title}</Text>
+                <Text style={styles.description} numberOfLines={1}>{project.description || "暂无简介"}</Text>
                 <View style={styles.statsRow}>
                   <View style={styles.meter}>
                     <View style={[styles.meterFill, { width: `${progress}%` }]} />
@@ -490,6 +660,21 @@ function coverColor(title: string): string {
                 <Text style={styles.menuRowText}>移除封面</Text>
               </Pressable>
             ) : null}
+            {categories.length ? (
+              <Pressable
+                accessibilityLabel="归入分类"
+                onPress={() => {
+                  const target = menuProject;
+                  setMenuProject(null);
+                  if (target) { setAssignTarget(target); setCategoryManagerVisible(true); }
+                }}
+                style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+              >
+                <Ionicons name="folder-outline" size={20} color={colors.primary} />
+                <Text style={styles.menuRowText}>归入分类…</Text>
+                <Text style={styles.menuRowHint}>{categories.find((category) => category.id === menuProject?.categoryId)?.name ?? "未分类"}</Text>
+              </Pressable>
+            ) : null}
             <Pressable
               accessibilityLabel="删除作品"
               onPress={() => {
@@ -504,6 +689,74 @@ function coverColor(title: string): string {
             </Pressable>
           </View>
         </Pressable>
+      </Modal>
+
+      <Modal visible={categoryManagerVisible} transparent animationType="slide" onRequestClose={() => { setCategoryManagerVisible(false); setRenamingCategory(null); }}>
+        <KeyboardAvoidingView style={styles.menuBackdrop} behavior="height" automaticOffset>
+          <View style={styles.menuSheet}>
+            <Text style={styles.menuTitle}>{assignTarget ? "归入分类" : "分类管理"}</Text>
+            {assignTarget ? (
+              <>
+                <Text style={styles.categorySectionHint}>将《{assignTarget.title}》归入：</Text>
+                <Pressable
+                  accessibilityLabel="归入未分类"
+                  onPress={() => void assignToCategory(null)}
+                  style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+                >
+                  <Ionicons name="albums-outline" size={20} color={colors.textMuted} />
+                  <Text style={styles.menuRowText}>未分类</Text>
+                </Pressable>
+                {categories.map((category) => (
+                  <Pressable
+                    key={category.id}
+                    accessibilityLabel={`归入${category.name}`}
+                    onPress={() => void assignToCategory(category.id)}
+                    style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+                  >
+                    <Ionicons name="folder-outline" size={20} color={colors.primary} />
+                    <Text style={styles.menuRowText}>{category.name}</Text>
+                    {assignTarget.categoryId === category.id ? <Ionicons name="checkmark" size={20} color={colors.primary} /> : null}
+                  </Pressable>
+                ))}
+              </>
+            ) : (
+              <>
+                <Field label="新建分类" value={newCategoryName} onChangeText={setNewCategoryName} />
+                <Button label="创建分类" onPress={() => void addCategory()} disabled={!newCategoryName.trim()} />
+                {categories.map((category) => {
+                  const count = projects.filter((project) => project.categoryId === category.id).length;
+                  const renaming = renamingCategory?.id === category.id;
+                  return renaming ? (
+                    <View key={category.id} style={styles.categoryEditRow}>
+                      <Field label="分类名" value={renamingCategory.name} onChangeText={(value) => setRenamingCategory({ id: category.id, name: value })} />
+                      <View style={styles.categoryActions}>
+                        <Button label="取消" variant="secondary" onPress={() => setRenamingCategory(null)} />
+                        <Button label="保存" onPress={() => void saveCategoryRename()} disabled={!renamingCategory.name.trim()} />
+                      </View>
+                    </View>
+                  ) : (
+                    <View key={category.id} style={styles.categoryRow}>
+                      <View style={[styles.categoryRow, { flex: 1 }]}>
+                        <Text style={[styles.title, { fontSize: 14 }]}>{category.name}</Text>
+                        <Text style={styles.categoryMeta}>{count} 部作品</Text>
+                      </View>
+                      <Pressable accessibilityLabel={`重命名 ${category.name}`} onPress={() => setRenamingCategory({ id: category.id, name: category.name })} style={styles.iconButton}>
+                        <Ionicons name="create-outline" size={19} color={colors.textMuted} />
+                      </Pressable>
+                      <Pressable accessibilityLabel={`删除 ${category.name}`} onPress={() => removeCategory(category)} style={styles.iconButton}>
+                        <Ionicons name="trash-outline" size={19} color={colors.textMuted} />
+                      </Pressable>
+                    </View>
+                  );
+                })}
+                {!categories.length ? <Text style={styles.categorySectionHint}>还没有分类，先创建一个。</Text> : null}
+              </>
+            )}
+            <View style={styles.modalActions}>
+              <Button label="关闭" variant="secondary" onPress={() => { setCategoryManagerVisible(false); setRenamingCategory(null); }} />
+            </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={showCreate} transparent animationType="fade" onRequestClose={() => setShowCreate(false)}>
@@ -568,6 +821,21 @@ const styles = StyleSheet.create({
   menuRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 52, paddingHorizontal: spacing.lg },
   menuRowPressed: { backgroundColor: colors.surfaceMuted },
   menuRowDisabled: { opacity: 0.55 },
+  shelfTitleButton: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  shelfTitleText: { color: colors.text, fontSize: 16, fontWeight: "700" },
+  categoryPanel: { position: "absolute", top: 104, left: 16, right: 16, backgroundColor: colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border, padding: spacing.sm, flexDirection: "row", flexWrap: "wrap", gap: 8, zIndex: 10, elevation: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 10 },
+  shelfChipsRow: { marginTop: 2 },
+  shelfChipsContent: { flexDirection: "row", gap: 8, paddingHorizontal: 14, paddingVertical: 4 },
+  shelfChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  shelfChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  shelfChipText: { color: colors.text, fontSize: 13 },
+  shelfChipTextActive: { color: "#FFFFFF" },
+  categoryRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm },
+  categoryEditRow: { paddingVertical: spacing.sm },
+  categoryHint: { marginLeft: "auto", color: colors.textMuted, fontSize: 12 },
+  categorySectionHint: { color: colors.textMuted, fontSize: 13, lineHeight: 19, paddingVertical: 6 },
+  categoryActions: { flexDirection: "row", gap: 10, marginTop: 8 },
+  categoryMeta: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
   menuRowHint: { marginLeft: "auto", color: colors.textMuted, fontSize: 12 },
   menuRowText: { color: colors.text, fontSize: 15, fontWeight: "600" },
   menuRowDanger: { color: colors.danger },

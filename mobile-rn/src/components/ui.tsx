@@ -32,7 +32,7 @@ export function Screen({ children, scroll = false }: PropsWithChildren<{ scroll?
   );
 }
 
-export function Header({ title, action, onBack }: { title: string; action?: ReactNode; onBack?: () => void }) {
+export function Header({ title, action, onBack }: { title?: ReactNode; action?: ReactNode; onBack?: () => void }) {
   return (
     <View style={styles.header}>
       <View style={styles.headerLeading}>

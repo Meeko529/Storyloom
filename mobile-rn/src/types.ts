@@ -6,8 +6,17 @@ export interface Project {
   description: string;
   /** 封面图片的本地路径；未设置封面时为 null */
   coverPath: string | null;
+  /** 所属分类；未分类时为 null */
+  categoryId: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** 书架作品分类 */
+export interface Category {
+  id: string;
+  name: string;
+  orderIndex: number;
 }
 
 export interface Volume {
