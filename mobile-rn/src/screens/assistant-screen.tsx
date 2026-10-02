@@ -1326,18 +1326,13 @@ export function AssistantScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      <Modal visible={contextSheetVisible} transparent animationType="slide" onRequestClose={() => setContextSheetVisible(false)}>
-        <SheetBackdrop onPress={() => setContextSheetVisible(false)}>
-          <View style={styles.sheet}>
-            <View style={styles.sheetHeader}>
-              <View style={styles.sheetTitleWrap}>
-                <Text style={styles.sheetTitle}>上下文占用</Text>
-                <Text style={styles.sheetSubtitle}>按字符估算，供观察趋势，非精确计费</Text>
-              </View>
-              <Pressable accessibilityLabel="关闭上下文占用" onPress={() => setContextSheetVisible(false)} style={styles.iconButton}>
-                <Ionicons name="close" size={24} color={colors.textMuted} />
-              </Pressable>
-            </View>
+      <Modal visible={contextSheetVisible} transparent animationType="fade" onRequestClose={() => setContextSheetVisible(false)}>
+        <TopSheet
+          title="上下文占用"
+          subtitle="按字符估算，供观察趋势，非精确计费"
+          onClose={() => setContextSheetVisible(false)}
+        >
+          <View style={styles.contextBody}>
             <View style={styles.contextMeter}>
               <View style={[styles.contextMeterFill, {
                 width: `${Math.min(100, Math.round(contextUsage.ratio * 100))}%`,
@@ -1371,7 +1366,7 @@ export function AssistantScreen() {
               估算含约 1500 Token 的固定开销（系统提示、技能说明与工具定义）。实际占用随模型分词器不同会有偏差。
             </Text>
           </View>
-        </SheetBackdrop>
+        </TopSheet>
       </Modal>
 
       <Modal visible={projectPickerVisible} transparent animationType="slide" onRequestClose={() => setProjectPickerVisible(false)}>
@@ -1793,6 +1788,8 @@ const styles = StyleSheet.create({
   sheetRowLabel: { color: colors.textMuted, fontSize: 13 },
   sheetRowValue: { color: colors.text, fontSize: 13, fontWeight: "600" },
   contextNote: { marginTop: spacing.sm, marginHorizontal: spacing.lg, color: colors.textMuted, fontSize: 12, lineHeight: 18 },
+  // 面板最后一条说明不贴下沿。
+  contextBody: { paddingBottom: spacing.xl },
   contextNoteWarning: { color: colors.danger },
   capabilityNotice: { flexDirection: "row", alignItems: "flex-start", gap: 6, marginHorizontal: spacing.md, marginBottom: spacing.xs, padding: spacing.sm, borderRadius: 8, backgroundColor: "#FCEBEB" },
   capabilityNoticeText: { flex: 1, color: colors.danger, fontSize: 12, lineHeight: 18 },
