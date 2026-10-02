@@ -14,6 +14,8 @@ import {
   Text,
   TextInput,
   View,
+  type StyleProp,
+  type TextStyle,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
@@ -80,6 +82,59 @@ function versionSummary(content: string): string {
   return flat ? (flat.length > 46 ? `${flat.slice(0, 46)}…` : flat) : "（空正文）";
 }
 
+/** 统计非空白字符数：预览态与编辑态共用，避免各处重复写正则。 */
+function countCharacters(text: string): number {
+  let characters = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    if (!/\s/.test(text.charAt(index))) characters += 1;
+  }
+  return characters;
+}
+
+/**
+ * 编辑态正文输入框：value 存在组件自己的 state 里，输入时不把正文塞进父级。
+ *
+ * 写作页父组件持有作品、卷章、文风、弹层等几十个 state，正文一动就整页重渲染；
+ * 父级每次重渲染还要对正文做一遍 `replace(/\s/g,"")` 统计字数，长章节下每按一键
+ * 就是一次全文扫描 —— 这正是"能滑动但发涩"的来源。
+ *
+ * 所以这里只回调两件小事：正文进 `draftRef`（落盘与切章都从它读，不丢稿），
+ * 字数交给父级去抖后写 state。换章用 `key` 重挂载，不做值同步。
+ */
+function ChapterContentInput({
+  initialContent,
+  editorStyle,
+  onChangeContent,
+  onCharacters,
+}: {
+  initialContent: string;
+  editorStyle?: StyleProp<TextStyle>;
+  onChangeContent: (value: string) => void;
+  onCharacters: (characters: number) => void;
+}) {
+  const [value, setValue] = useState(initialContent);
+  // 换章由调用方给的 key 处理（key 变了组件整体重挂载）。
+
+  const handleChange = (next: string) => {
+    setValue(next);
+    onChangeContent(next);
+    onCharacters(countCharacters(next));
+  };
+
+  return (
+    <TextInput
+      value={value}
+      onChangeText={handleChange}
+      style={[styles.contentInput, editorStyle]}
+      placeholder="开始写作..."
+      placeholderTextColor={colors.textMuted}
+      multiline
+      textAlignVertical="top"
+      autoCorrect
+    />
+  );
+}
+
 type DraftState = {
   chapterId: string;
   title: string;
@@ -110,6 +165,22 @@ export function WritingScreen() {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  /**
+   * 字数：编辑期间由输入框算好送进来，但要去抖后才写入 state。
+   * 直接跟 content 走会让「每按一键就整页重渲染并全文统计字数」。
+   */
+  const [characterCount, setCharacterCount] = useState(0);
+  const characterCountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * 草稿修订号的可观察副本。
+   *
+   * 自动保存原本靠 `content` 变化续期定时器；正文改成局部 state 后 `content`
+   * 不再随打字变化，若不另给信号，自动保存会在第一次触发后不再续期 ——
+   * 表现为「继续打字也不自动存」。这里用去抖的 tick 补上：停止输入后才置位，
+   * 打字期间不重渲染父级。
+   */
+  const [draftTick, setDraftTick] = useState(0);
+  const draftTickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -239,6 +310,7 @@ export function WritingScreen() {
     if (!activeChapter || (draftRef.current.chapterId === activeChapter.id && draftRef.current.dirty)) return;
     setTitle(activeChapter.title);
     setContent(activeChapter.content);
+    setCharacterCount(countCharacters(activeChapter.content));
     setSavedAt(null);
     setDirty(false);
     draftRef.current = {
@@ -260,6 +332,7 @@ export function WritingScreen() {
   const clearDraft = () => {
     setTitle("");
     setContent("");
+    setCharacterCount(0);
     setSavedAt(null);
     setDirty(false);
     draftRef.current = {
@@ -289,6 +362,8 @@ export function WritingScreen() {
         : chapter));
       if (draftRef.current.chapterId === draft.chapterId && draftRef.current.version === draft.version) {
         setTitle(nextTitle);
+        setContent(draft.content);
+        setCharacterCount(countCharacters(draft.content));
         draftRef.current = { ...draftRef.current, title: nextTitle, dirty: false };
         setDirty(false);
       }
@@ -314,7 +389,7 @@ export function WritingScreen() {
       void persistDraft(false);
     }, autoSaveDelay);
     return () => clearTimeout(timeout);
-  }, [dirty, title, content, activeChapter?.id, autoSaveDelay, saving]);
+  }, [dirty, title, draftTick, activeChapter?.id, autoSaveDelay, saving]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextState) => {
@@ -331,6 +406,7 @@ export function WritingScreen() {
     setContent(nextContent);
     setSavedAt(null);
     setDirty(true);
+    scheduleDraftTick();
     draftRef.current = {
       chapterId: activeChapter?.id ?? draftRef.current.chapterId,
       title: nextTitle,
@@ -339,6 +415,46 @@ export function WritingScreen() {
       version: draftRef.current.version + 1,
     };
   };
+
+  /**
+   * 正文变化的轻量通道：只更新草稿与"未保存"标记，不把正文塞进 state。
+   * 退出编辑态时 `saveAndPreview` 会把 `draftRef` 的正文一次性同步回 state。
+   */
+  const updateContentDraft = (nextContent: string) => {
+    setSavedAt(null);
+    setDirty(true);
+    scheduleDraftTick();
+    draftRef.current = {
+      chapterId: activeChapter?.id ?? draftRef.current.chapterId,
+      title: draftRef.current.title,
+      content: nextContent,
+      dirty: true,
+      version: draftRef.current.version + 1,
+    };
+  };
+
+  /** 草稿 tick 去抖：与字数同一节奏，停止输入 400ms 后通知父级"草稿变了"。 */
+  const scheduleDraftTick = () => {
+    if (draftTickTimerRef.current) clearTimeout(draftTickTimerRef.current);
+    draftTickTimerRef.current = setTimeout(() => {
+      draftTickTimerRef.current = null;
+      setDraftTick((value) => value + 1);
+    }, 400);
+  };
+
+  /** 字数去抖：停止输入 400ms 后才写 state，间隔内的重复统计会被合并。 */
+  const scheduleCharacterCount = (characters: number) => {
+    if (characterCountTimerRef.current) clearTimeout(characterCountTimerRef.current);
+    characterCountTimerRef.current = setTimeout(() => {
+      characterCountTimerRef.current = null;
+      setCharacterCount(characters);
+    }, 400);
+  };
+
+  useEffect(() => () => {
+    if (characterCountTimerRef.current) clearTimeout(characterCountTimerRef.current);
+    if (draftTickTimerRef.current) clearTimeout(draftTickTimerRef.current);
+  }, []);
 
   const selectChapter = async (chapterId: string) => {
     if (chapterId === activeChapter?.id) {
@@ -612,6 +728,7 @@ export function WritingScreen() {
                 setChapters((current) => current.map((chapter) => chapter.id === restored.id ? restored : chapter));
                 setTitle(restored.title);
                 setContent(restored.content);
+                setCharacterCount(countCharacters(restored.content));
                 setSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
                 setDirty(false);
                 setEditing(true);
@@ -728,14 +845,16 @@ export function WritingScreen() {
           </View>
         </>
       ) : null}
-            {/* behavior=height 会按键盘高度设置容器高度；键盘收起后偶发拿到过期高度，导致编辑器整体变矮（footer 悬在页面中部）。padding 型只加内边距，收起即恢复。 */}
-      <KeyboardAvoidingView style={styles.flex} behavior="padding" automaticOffset>
+            {/* 键盘避让用位移而非改内边距：改 padding 会让整棵子树重新布局，
+            长正文下键盘弹出与收起各触发一次，走 UI 线程的位移只做合成。
+            顶栏在容器之外，不会被一起顶走。 */}
+      <KeyboardAvoidingView style={styles.flex} behavior="translate-with-padding" automaticOffset>
         {activeChapter && !editing ? (
           <View style={styles.chapterBar}>
             <View style={styles.previewHeading}>
               <Text numberOfLines={1} style={styles.previewVolume}>{activeVolume?.title ?? "作品目录"}</Text>
               <Text style={styles.previewTitle}>{title || "未命名章节"}</Text>
-              <Text style={styles.previewMeta}>{content.replace(/\s/g, "").length + " 字" + (savedAt ? " · " + savedAt + " 已保存" : "")}</Text>
+              <Text style={styles.previewMeta}>{characterCount + " 字" + (savedAt ? " · " + savedAt + " 已保存" : "")}</Text>
             </View>
             <Pressable accessibilityLabel="编辑章节" onPress={() => setEditing(true)} style={styles.editButton}>
               <Ionicons name="create-outline" size={22} color={colors.primary} />
@@ -756,19 +875,18 @@ export function WritingScreen() {
                   placeholderTextColor={colors.textMuted}
                   maxLength={200}
                 />
-                <TextInput
-                  value={content}
-                  onChangeText={(value) => updateDraft(title, value)}
-                  style={[styles.contentInput, editorTextStyle]}
-                  placeholder="开始写作..."
-                  placeholderTextColor={colors.textMuted}
-                  multiline
-                  textAlignVertical="top"
-                  autoCorrect
+                <ChapterContentInput
+                  // 换章时重挂载：局部 value 里的正文必须整份换掉，
+                  // 靠 useEffect 同步在"外部值恰好等于上次记录值"时会漏。
+                  key={activeChapter.id}
+                  initialContent={content}
+                  editorStyle={editorTextStyle}
+                  onChangeContent={updateContentDraft}
+                  onCharacters={scheduleCharacterCount}
                 />
                 <View style={styles.editorFooter}>
                   <Text style={styles.counter}>
-                    {content.replace(/\s/g, "").length + " 字" + (dirty ? " · 未保存" : savedAt ? " · " + savedAt + " 已保存" : "")}
+                    {characterCount + " 字" + (dirty ? " · 未保存" : savedAt ? " · " + savedAt + " 已保存" : "")}
                   </Text>
                   <Button label={saving ? "保存中" : "保存并预览"} onPress={() => { void saveAndPreview(); }} disabled={saving} loading={saving} />
                 </View>
