@@ -1,14 +1,15 @@
 // 本文件基于 OpenFicM（Apache-2.0）修改
 // 改动说明见仓库根目录 docs/上游来源与改动清单.md
 import { Ionicons } from "@expo/vector-icons";
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { createBottomTabNavigator, type BottomTabBarButtonProps } from "@react-navigation/bottom-tabs";
 import { NavigationContainer } from "@react-navigation/native";
+import { PlatformPressable } from "@react-navigation/elements";
 import { appendBreadcrumb } from "@/lib/crash-log";
 import { checkAppUpdate, downloadAndInstallUpdate, type AppUpdateInfo } from "@/settings/app-update";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Linking, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Alert, Animated, Linking, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -33,6 +34,32 @@ installCrashLogger();
 const Tab = createBottomTabNavigator<RootTabParamList>();
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+/**
+ * 底部 tab 的按压反馈：按下去整体轻微缩小，松手弹回。
+ *
+ * 库默认用的是 Android 无边界水波纹（颜色固定 32% 黑），从手指处扩散出一整个
+ * 灰圆压在图标上。把波纹色设为透明关掉它，改用缩放 —— 有"按下去"的实体感，
+ * 且不溢出按钮范围。
+ */
+function TabPressButton({ style, ...props }: BottomTabBarButtonProps) {
+  const scale = useRef(new Animated.Value(1)).current;
+  return (
+    <PlatformPressable
+      {...props}
+      android_ripple={{ color: "transparent" }}
+      onPressIn={(event) => {
+        Animated.spring(scale, { toValue: 0.94, speed: 40, useNativeDriver: true }).start();
+        props.onPressIn?.(event);
+      }}
+      onPressOut={(event) => {
+        Animated.spring(scale, { toValue: 1, friction: 4, useNativeDriver: true }).start();
+        props.onPressOut?.(event);
+      }}
+      style={[style, { transform: [{ scale }] }]}
+    />
+  );
+}
+
 function MainTabs() {
   const insets = useSafeAreaInsets();
 
@@ -50,6 +77,7 @@ function MainTabs() {
             paddingTop: 4,
           },
           tabBarHideOnKeyboard: true,
+          tabBarButton: (props) => <TabPressButton {...props} />,
           tabBarLabelStyle: { fontSize: 11 },
           tabBarIcon: ({ color, size }) => {
             const icons: Record<keyof RootTabParamList, keyof typeof Ionicons.glyphMap> = {
