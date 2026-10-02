@@ -21,6 +21,7 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, SheetBackdrop, TopSheet, TopSheetScroll } from "@/components/ui";
 import { ensureEditorFontLoaded } from "@/settings/font-loader";
+import { debounce } from "@/lib/debounce";
 import { exportNovel, type ExportScope, type NovelExportFormat } from "@/lib/export";
 import { countNotesUnder, deleteNotesUnder } from "@/data/note-repositories";
 import {
@@ -170,17 +171,6 @@ export function WritingScreen() {
    * 直接跟 content 走会让「每按一键就整页重渲染并全文统计字数」。
    */
   const [characterCount, setCharacterCount] = useState(0);
-  const characterCountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /**
-   * 草稿修订号的可观察副本。
-   *
-   * 自动保存原本靠 `content` 变化续期定时器；正文改成局部 state 后 `content`
-   * 不再随打字变化，若不另给信号，自动保存会在第一次触发后不再续期 ——
-   * 表现为「继续打字也不自动存」。这里用去抖的 tick 补上：停止输入后才置位，
-   * 打字期间不重渲染父级。
-   */
-  const [draftTick, setDraftTick] = useState(0);
-  const draftTickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -214,6 +204,8 @@ export function WritingScreen() {
   const draftRef = useRef<DraftState>({ chapterId: "", title: "", content: "", dirty: false, version: 0 });
   const savingRef = useRef(false);
   const persistDraftRef = useRef<(force: boolean) => Promise<boolean>>(async () => true);
+  /** 供事件监听与卸载清理使用：那里的闭包不会随 render 更新（与 persistDraftRef 同理）。 */
+  const flushAutoSaveRef = useRef<() => void>(() => {});
 
   // 每次回到写作页都重读一次编辑器设置：
   // 原先只在挂载时读（useEffect + 空依赖），导致在设置里改了字号／字体后切回来不生效。
@@ -381,23 +373,37 @@ export function WritingScreen() {
 
   useEffect(() => {
     persistDraftRef.current = persistDraft;
+    flushAutoSaveRef.current = flushAutoSave;
   });
 
-  useEffect(() => {
-    if (!dirty || saving) return;
-    const timeout = setTimeout(() => {
-      void persistDraft(false);
-    }, autoSaveDelay);
-    return () => clearTimeout(timeout);
-  }, [dirty, title, draftTick, activeChapter?.id, autoSaveDelay, saving]);
+  /**
+   * 自动保存：草稿一变就排一次，停止输入后落盘。
+   *
+   * 关键点是**保存不依赖任何 React 状态的变化**。早先的写法是 `useEffect` 盯着
+   * `dirty / title / content`，正文不再进 state 之后这套依赖就失灵了，只能再造假
+   * state 补住 —— 那是绕路。现在的做法是：改动时直接排一次去抖，落盘时自己去读
+   * `draftRef`，与渲染链路无关。
+   *
+   * 去抖器用 `useMemo` 按等待时长缓存：时长来自设置，改设置才重建。
+   * 若每次 render 都新建，连续打字会排出多个互不取消的定时器。
+   */
+  const autoSave = useMemo(
+    () => debounce(() => { void persistDraftRef.current(false); }, autoSaveDelay),
+    [autoSaveDelay],
+  );
+  const scheduleAutoSave = () => { autoSave(); };
+  /** 立刻落盘挂起的改动 —— 切后台、失焦、关页面时用，不等去抖窗口。 */
+  const flushAutoSave = () => { autoSave.flush(); };
+
+  useEffect(() => () => { autoSave.cancel(); }, [autoSave]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextState) => {
-      if (nextState !== "active") void persistDraftRef.current(false);
+      if (nextState !== "active") flushAutoSaveRef.current();
     });
     return () => {
       subscription.remove();
-      void persistDraftRef.current(false);
+      flushAutoSaveRef.current();
     };
   }, []);
 
@@ -406,7 +412,6 @@ export function WritingScreen() {
     setContent(nextContent);
     setSavedAt(null);
     setDirty(true);
-    scheduleDraftTick();
     draftRef.current = {
       chapterId: activeChapter?.id ?? draftRef.current.chapterId,
       title: nextTitle,
@@ -414,6 +419,8 @@ export function WritingScreen() {
       dirty: true,
       version: draftRef.current.version + 1,
     };
+    // 排在草稿写入之后：去抖读的是 draftRef，顺序颠倒就成了"存上一版"。
+    scheduleAutoSave();
   };
 
   /**
@@ -423,7 +430,6 @@ export function WritingScreen() {
   const updateContentDraft = (nextContent: string) => {
     setSavedAt(null);
     setDirty(true);
-    scheduleDraftTick();
     draftRef.current = {
       chapterId: activeChapter?.id ?? draftRef.current.chapterId,
       title: draftRef.current.title,
@@ -431,30 +437,19 @@ export function WritingScreen() {
       dirty: true,
       version: draftRef.current.version + 1,
     };
+    scheduleAutoSave();
   };
 
-  /** 草稿 tick 去抖：与字数同一节奏，停止输入 400ms 后通知父级"草稿变了"。 */
-  const scheduleDraftTick = () => {
-    if (draftTickTimerRef.current) clearTimeout(draftTickTimerRef.current);
-    draftTickTimerRef.current = setTimeout(() => {
-      draftTickTimerRef.current = null;
-      setDraftTick((value) => value + 1);
-    }, 400);
-  };
+  /**
+   * 字数：停止输入后再写入 state。打字的每一帧都统计全文，写 state 只会让整页
+   * 重渲染 —— 而重渲染正是这批要消除的开销。
+   */
+  const scheduleCharacterCount = useMemo(
+    () => debounce((characters: number) => { setCharacterCount(characters); }, 300),
+    [],
+  );
 
-  /** 字数去抖：停止输入 400ms 后才写 state，间隔内的重复统计会被合并。 */
-  const scheduleCharacterCount = (characters: number) => {
-    if (characterCountTimerRef.current) clearTimeout(characterCountTimerRef.current);
-    characterCountTimerRef.current = setTimeout(() => {
-      characterCountTimerRef.current = null;
-      setCharacterCount(characters);
-    }, 400);
-  };
-
-  useEffect(() => () => {
-    if (characterCountTimerRef.current) clearTimeout(characterCountTimerRef.current);
-    if (draftTickTimerRef.current) clearTimeout(draftTickTimerRef.current);
-  }, []);
+  useEffect(() => () => { scheduleCharacterCount.cancel(); }, [scheduleCharacterCount]);
 
   const selectChapter = async (chapterId: string) => {
     if (chapterId === activeChapter?.id) {
