@@ -1072,8 +1072,20 @@ export function AssistantScreen() {
                   ) : null}
                   </AdaptiveScroll>
                   <View style={styles.writeCardActions}>
-                    <Button label="驳回" variant="secondary" onPress={() => { writeCard.resolve(false); setWriteCard(null); }} />
-                    <Button label="接受" onPress={() => { writeCard.resolve(true); setWriteCard(null); }} />
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => { writeCard.resolve(false); setWriteCard(null); }}
+                      style={styles.writeCardButtonSecondary}
+                    >
+                      <Text style={styles.writeCardButtonSecondaryText}>驳回</Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => { writeCard.resolve(true); setWriteCard(null); }}
+                      style={styles.writeCardButtonPrimary}
+                    >
+                      <Text style={styles.writeCardButtonPrimaryText}>接受</Text>
+                    </Pressable>
                   </View>
                 </View>
               ) : null}
@@ -1564,6 +1576,25 @@ const styles = StyleSheet.create({
   writeCardTarget: { flexShrink: 1, minWidth: 0, color: colors.textMuted, fontSize: 12 },
   writeCardDetails: { marginTop: spacing.xs, color: colors.text, fontSize: 12, lineHeight: 18 },
   writeCardActions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, marginTop: spacing.sm },
+  // 与提问卡的两个按钮同一套尺寸（34 / 13），比共享 Button 小一档。
+  writeCardButtonSecondary: {
+    minHeight: 34,
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    backgroundColor: colors.background,
+  },
+  writeCardButtonSecondaryText: { color: colors.text, fontSize: 13, fontWeight: "600" },
+  writeCardButtonPrimary: {
+    minHeight: 34,
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.sm,
+    backgroundColor: colors.primary,
+  },
+  writeCardButtonPrimaryText: { color: "#FFFFFF", fontSize: 13, fontWeight: "600" },
   writeStats: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md, paddingVertical: spacing.xs },
   writeStatAdd: { color: "#1B7F4D", fontSize: 12, fontWeight: "800" },
   writeStatDel: { color: colors.danger, fontSize: 12, fontWeight: "800" },
