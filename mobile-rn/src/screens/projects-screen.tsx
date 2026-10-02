@@ -13,7 +13,7 @@ import { importProjectFromFile } from "@/lib/doc-import";
 import { downsampleToFile } from "@/lib/media-downsample";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
-import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, TopSheet } from "@/components/ui";
+import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, BottomSheet , TopSheet} from "@/components/ui";
 import { createCategory, createProject, deleteCategory, deleteProject, getProjectStats, getProjectStatsMap, getSetting, listCategories, listProjects, renameCategory, setProjectCategory, setSetting, updateProjectCover, updateProjectInfo, type ProjectStats } from "@/data/repositories";
 import type { RootStackParamList, RootTabParamList } from "@/navigation/types";
 import { useAppStore } from "@/store/app-store";
@@ -781,8 +781,12 @@ function coverColor(title: string): string {
         </KeyboardAvoidingView>
       </Modal>
 
-      <Modal visible={menuProject !== null} transparent animationType="fade" onRequestClose={() => setMenuProject(null)}>
-        <TopSheet title={menuProject?.title ?? ""} subtitle="作品操作" onClose={() => setMenuProject(null)}>
+      <BottomSheet
+        visible={menuProject !== null}
+        title={menuProject?.title ?? ""}
+        subtitle="作品操作"
+        onClose={() => setMenuProject(null)}
+      >
           <View style={menuSheetBody}>
             <Pressable
               accessibilityLabel="编辑信息"
@@ -838,16 +842,15 @@ function coverColor(title: string): string {
               <Text style={[styles.menuRowText, styles.menuRowDanger]}>删除作品</Text>
             </Pressable>
           </View>
-        </TopSheet>
-      </Modal>
+        </BottomSheet>
 
       <Modal visible={categoryManagerVisible} transparent animationType="fade" onRequestClose={closeCategoryManager}>
         <TopSheet
-          title={assignTarget ? "归入分类" : "分类管理"}
-          onClose={closeCategoryManager}
-          maxHeightRatio={0.7}
-          avoidKeyboard
+        title={assignTarget ? "归入分类" : "分类管理"}
+        onClose={closeCategoryManager}
+        avoidKeyboard
         >
+
           <PlainScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetScrollContent} keyboardShouldPersistTaps="handled">
             {assignTarget ? (
               <>
@@ -985,7 +988,7 @@ const styles = StyleSheet.create({
   shelfMenuBackdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9 },
   shelfMenuCard: { position: "absolute", top: 100, right: 18, width: 176, backgroundColor: colors.background, borderRadius: 12, borderWidth: 1, borderColor: colors.border, paddingVertical: 4, zIndex: 10, elevation: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 10 },
   menuBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay },
-  sheetScroll: { maxHeight: 460 },
+  sheetScroll: { flexShrink: 1 },
   sheetScrollContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg, gap: spacing.sm },
   sheetSectionTitle: { marginTop: spacing.xs, color: colors.textMuted, fontSize: 12, fontWeight: "700" },
   menuTitle: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xs, color: colors.textMuted, fontSize: 13 },
@@ -1001,16 +1004,16 @@ const styles = StyleSheet.create({
   shelfChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   shelfChipText: { color: colors.text, fontSize: 13 },
   shelfChipTextActive: { color: "#FFFFFF" },
-  categoryRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm },
+  categoryRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: 10},
   categoryEditRow: { paddingVertical: spacing.sm },
   categoryHint: { marginLeft: "auto", color: colors.textMuted, fontSize: 12 },
-  categorySectionHint: { color: colors.textMuted, fontSize: 13, lineHeight: 19, paddingVertical: 6 },
+  categorySectionHint: { color: colors.textMuted, fontSize: 13, lineHeight: 20, paddingVertical: 6 },
   categoryActions: { flexDirection: "row", gap: 10, marginTop: 8 },
   categoryMeta: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
   menuRowHint: { marginLeft: "auto", color: colors.textMuted, fontSize: 12 },
   menuRowText: { color: colors.text, fontSize: 15, fontWeight: "600" },
   menuRowDanger: { color: colors.danger },
-  infoSheet: { padding: spacing.lg, gap: spacing.sm, borderTopLeftRadius: radius.md, borderTopRightRadius: radius.md, backgroundColor: colors.background },
+  infoSheet: { maxHeight: "80%", padding: spacing.lg, gap: spacing.sm, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, backgroundColor: colors.background },
   infoDescription: { minHeight: 96 },
   infoStats: { color: colors.textMuted, fontSize: 13 },
   infoActions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm },

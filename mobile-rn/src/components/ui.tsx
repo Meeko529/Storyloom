@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Animated,
   KeyboardAvoidingView,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -132,10 +133,62 @@ export function SheetBackdrop({ onPress, children }: PropsWithChildren<{ onPress
   return (
     <View style={styles.sheetBackdrop}>
       <Pressable accessibilityLabel="关闭弹层" style={StyleSheet.absoluteFill} onPress={onPress} />
-      {/* 顶部把手：负下边距让它压进弹层上沿，zIndex 保证画在弹层之上。 */}
-      <View pointerEvents="none" style={styles.sheetHandle} />
       {children}
     </View>
+  );
+}
+
+/**
+ * 底部弹层。
+ *
+ * 全项目统一的底部弹层：面板贴屏幕左右两边、只有上沿两个圆角、从屏幕底部滑入。
+ * 高度上限按屏高折算；内容区由调用方给滚动容器，且**必须用 `flexShrink: 1`** ——
+ * 用 `flex: 1` 时父层高度由内容撑，会被算成 0；什么都不写则按内容撑满、被面板裁掉。
+ */
+export function BottomSheet({
+  visible,
+  title,
+  subtitle,
+  onClose,
+  avoidKeyboard = false,
+  maxHeightRatio = 0.8,
+  children,
+}: PropsWithChildren<{
+  visible: boolean;
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  /** 面板内有输入框时打开：键盘弹起时把面板整体顶上去，输入框不被盖住。 */
+  avoidKeyboard?: boolean;
+  maxHeightRatio?: number;
+}>) {
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const panel = (
+    <View style={[styles.sheet, { maxHeight: viewportHeight > 0 ? viewportHeight * maxHeightRatio : undefined }]}>
+      <View style={styles.sheetHeader}>
+        <View style={styles.sheetTitleWrap}>
+          <Text style={styles.sheetTitle} numberOfLines={1}>{title}</Text>
+          {subtitle ? <Text style={styles.sheetSubtitle} numberOfLines={1}>{subtitle}</Text> : null}
+        </View>
+        <Pressable accessibilityLabel={`关闭${title}`} onPress={onClose} style={styles.sheetClose}>
+          <Ionicons name="close" size={24} color={colors.textMuted} />
+        </Pressable>
+      </View>
+      {children}
+    </View>
+  );
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View
+        style={styles.sheetBackdrop}
+        onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
+      >
+        <Pressable accessibilityLabel="关闭弹层" style={StyleSheet.absoluteFill} onPress={onClose} />
+        {avoidKeyboard
+          ? <KeyboardAvoidingView behavior="padding" style={styles.sheetAvoid}>{panel}</KeyboardAvoidingView>
+          : panel}
+      </View>
+    </Modal>
   );
 }
 
@@ -153,7 +206,7 @@ export function TopSheet({
   title,
   subtitle,
   onClose,
-  maxHeightRatio = 0.78,
+  maxHeightRatio = 0.72,
   avoidKeyboard = false,
   children,
 }: PropsWithChildren<{
@@ -217,14 +270,14 @@ export function TopSheet({
 /**
  * 顶部下滑面板里的滚动区。
  *
- * `TopSheetScroll` 是 `PlainScrollView` 加上「占满面板剩余高度」的样式，
+ * `PanelScroll` 是 `PlainScrollView` 加上「占满面板剩余高度」的样式，
  * 让面板在内容超出一屏时能滚，而不是把面板撑到屏外。
  * `TopSheetPadScrollContent` 给内容加左右与底部留白；行自身已带内边距时用
  * `TopSheetPadBottomContent`，否则左侧会缩进两次。
  */
-export function TopSheetScroll({ contentStyle, children }: PropsWithChildren<{ contentStyle?: StyleProp<ViewStyle> }>) {
+export function PanelScroll({ contentStyle, children }: PropsWithChildren<{ contentStyle?: StyleProp<ViewStyle> }>) {
   return (
-    <PlainScrollView style={styles.topSheetScroll} contentContainerStyle={contentStyle}>
+    <PlainScrollView style={styles.panelScroll} contentContainerStyle={contentStyle}>
       {children}
     </PlainScrollView>
   );
@@ -269,11 +322,21 @@ export function PlainScrollView({
  *
  * 语义：内容高度 ≤ maxHeight 时高度等于内容高度（不撑开、不留空档）；超过上限才可滚动。
  *
- * 🔴 曾经在这里犯过一个反复出现的错：早先的实现按高度在两个分支间切换
- * `ScrollView` 与 `View`。两个分支的根元素**类型不同**，高度跨过阈值时 React 会把
- * 整棵子树卸载重建，容器内所有 `useState` 归零 —— 于是「展开」点了没反应、且在
- * 阈值附近来回抖动时明显卡顿。现在固定只用 `ScrollView`，靠 `onContentSizeChange`
- * 动态调 `maxHeight`，**永远不换根节点**。
+ * 这里踩过三个坑，都写下来免得再犯：
+ *
+ * 🔴 一、`ScrollView` 自带的底样式是 `flexGrow: 1`（见 react-native 的
+ * `ScrollView.js` 里 `styles.baseVertical`）。只写 `maxHeight` 时它会往上长到上限，
+ * 内容再少也占满 —— 表现为卡片下方一大片空白、按钮被推到卡底。所以这里必须显式
+ * 写回 `flexGrow: 0`，`maxHeight` 只是"上限"而不是"目标高度"。
+ *
+ * 🔴 二、不要用「先不夹、量到内容高再夹」的写法去绕上面那条：那会让展开的第一帧
+ * 按内容全高渲染（长轨迹上千 px），下一帧才夹到上限。这一帧的高度差足以让外层
+ * 列表整片重排，看起来就是文字叠在一起、或者跳到空白处。高度上限必须从第一帧
+ * 就成立，因此这里**不持有任何测量状态**。
+ *
+ * 🔴 三、早先还在按高度于 `ScrollView` / `View` 两个分支间切换，两个分支的根元素
+ * 类型不同，跨阈值时 React 会卸载重建整棵子树、内部 `useState` 全归零（点了没反应）。
+ * 现在固定只用 `ScrollView`，永远不换根节点。
  */
 export function AdaptiveScroll({
   maxHeight,
@@ -290,23 +353,33 @@ export function AdaptiveScroll({
   /**
    * 抢下手势：用在「倒置 FlatList 里内嵌的限高滚动」场景。
    * 外层列表是 inverted 的，两层滚动方向判定相反，触摸会先被外层吃掉 ——
-   * 表现为「想滑卡内内容，结果整条对话跟着滑」。让内层在触摸开始时就成为 responder
-   * 才能拿到手势。只在确实嵌套倒置列表时开，普通页面保持默认。
+   * 表现为「想滑卡内内容，结果整条对话跟着滑」。
+   *
+   * 只在**滑动**时抢，绝不在触摸开始就抢：`onStartShouldSetResponderCapture` 里
+   * 返回 true 会把展开区里所有可点元素一起吃掉（工具行、展开变更、提问选项），
+   * 表现为点了没反应。所以起手只记起点、返回 false，等位移超过阈值再抢。
    */
   claimGesture?: boolean;
 }>) {
-  // 内容实测高度；未测到时先按上限夹住，避免撑开一帧。
-  const [contentHeight, setContentHeight] = useState(0);
-  const clamped = contentHeight > maxHeight ? maxHeight : undefined;
+  const gestureStart = useRef<{ x: number; y: number } | null>(null);
   return (
     <ScrollView
       nestedScrollEnabled
       showsVerticalScrollIndicator={false}
       showsHorizontalScrollIndicator={false}
       keyboardShouldPersistTaps={keyboardShouldPersistTaps}
-      onStartShouldSetResponderCapture={claimGesture ? () => true : undefined}
-      onContentSizeChange={(_width, height) => setContentHeight(height)}
-      style={[style, { maxHeight: clamped }]}
+      onStartShouldSetResponderCapture={claimGesture ? (event) => {
+        gestureStart.current = { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY };
+        return false;
+      } : undefined}
+      onMoveShouldSetResponderCapture={claimGesture ? (event) => {
+        const start = gestureStart.current;
+        if (!start) return false;
+        const dx = event.nativeEvent.pageX - start.x;
+        const dy = event.nativeEvent.pageY - start.y;
+        return Math.abs(dy) > 6 && Math.abs(dy) >= Math.abs(dx);
+      } : undefined}
+      style={[styles.adaptiveScroll, style, { maxHeight }]}
       contentContainerStyle={contentContainerStyle}
     >
       {children}
@@ -316,12 +389,37 @@ export function AdaptiveScroll({
 
 const styles = StyleSheet.create({
   sheetBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay },
-  sheetHandle: { alignSelf: "center", width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(20,20,20,0.16)", marginBottom: -14, zIndex: 2 },
-  topSheetBackdrop: { flex: 1, backgroundColor: colors.overlay },
+  topSheetBackdrop: { flex: 1, backgroundColor: colors.overlaySoft },
   topSheetAvoid: { flex: 1 },
+  sheet: {
+    maxHeight: "80%",
+    paddingBottom: spacing.xl,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
+    backgroundColor: colors.background,
+  },
+  sheetHeader: {
+    minHeight: 64,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingLeft: spacing.lg,
+    paddingRight: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  sheetTitleWrap: { flex: 1, minWidth: 0 },
+  sheetTitle: { color: colors.text, fontSize: 18, fontWeight: "700" },
+  sheetSubtitle: { marginTop: 2, color: colors.textMuted, fontSize: 12 },
+  sheetClose: { width: 44, height: 44, alignItems: "flex-end", justifyContent: "center" },
+  sheetAvoid: { width: "100%" },
   topSheet: {
     flexShrink: 1,
+    // 左右留边让面板浮在页面之上，而不是贴屏幕两缘。
+    marginHorizontal: spacing.md,
     backgroundColor: colors.background,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
     borderBottomLeftRadius: radius.sheet,
     borderBottomRightRadius: radius.sheet,
     // 面板下沿要投一层轻影，否则与被遮住的页面之间没有分界，看着像浮在空中。
@@ -337,20 +435,18 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: spacing.md,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingTop: spacing.lg,
     paddingBottom: spacing.sm,
   },
   topSheetTitleWrap: { flex: 1, minWidth: 0 },
   topSheetTitle: { color: colors.text, fontSize: 17, fontWeight: "700" },
   topSheetSubtitle: { marginTop: 2, color: colors.textMuted, fontSize: 12 },
   topSheetClose: { width: 40, height: 40, alignItems: "flex-end", justifyContent: "flex-start" },
-  topSheetScroll: { flex: 1 },
-  topSheetPadScrollContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.xs, paddingBottom: spacing.xl },
+  panelScroll: { flexShrink: 1 },
+  // ScrollView 自带 flexGrow: 1，会被撑到 maxHeight；这里写回 0，让它是「上限」而不是「目标高度」。
+  adaptiveScroll: { flexGrow: 0 },
   // 行自带左右内边距时只补底部留白，否则左侧缩进两次。
-  topSheetPadBottomContent: { paddingBottom: spacing.xl },
   // 面板内容首行的动作入口（如「新建卷」），顶栏只留标题与关闭。
-  topSheetActionRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
-  topSheetActionText: { color: colors.primary, fontSize: 14, fontWeight: "600" },
   screen: { flex: 1, backgroundColor: colors.background },
   scroll: { paddingBottom: 40 },
   header: {

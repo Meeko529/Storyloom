@@ -13,7 +13,7 @@ import {
   View,
 } from "react-native";
 
-import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, SheetBackdrop, TopSheet } from "@/components/ui";
+import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, SheetBackdrop, BottomSheet } from "@/components/ui";
 import { getProject, listChapters, listVolumes } from "@/data/repositories";
 import { exportNotes, type NotesExportFormat } from "@/lib/export";
 import {
@@ -396,8 +396,12 @@ export function NotesScreen() {
           </View>
         </SheetBackdrop>
       </Modal>
-          <Modal visible={formatPickerVisible} transparent animationType="fade" onRequestClose={() => setFormatPickerVisible(false)}>
-        <TopSheet title="导出笔记" subtitle="选择导出格式" onClose={() => setFormatPickerVisible(false)}>
+          <BottomSheet
+        visible={formatPickerVisible}
+        title="导出笔记"
+        subtitle="选择导出格式"
+        onClose={() => setFormatPickerVisible(false)}
+      >
           <View style={notesFormatBody}>
             <Pressable onPress={() => { setFormatPickerVisible(false); void exportAllNotes("markdown"); }} style={styles.formatRow}>
               <Ionicons name="document-text-outline" size={20} color={colors.primary} />
@@ -421,8 +425,7 @@ export function NotesScreen() {
               </View>
             </Pressable>
           </View>
-        </TopSheet>
-      </Modal>
+        </BottomSheet>
 </Screen>
   );
 }
@@ -449,15 +452,15 @@ const styles = StyleSheet.create({
   noteRowPressed: { backgroundColor: colors.surfaceMuted },
   noteCopy: { flex: 1, minWidth: 0, gap: 3 },
   noteTitle: { color: colors.text, fontSize: 15, fontWeight: "600" },
-  noteMeta: { color: colors.textMuted, fontSize: 12, lineHeight: 17 },
+  noteMeta: { color: colors.textMuted, fontSize: 12, lineHeight: 18 },
   noteAction: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  sheet: { maxHeight: "88%", borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, backgroundColor: colors.background },
+  sheet: { maxHeight: "80%", borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, backgroundColor: colors.background },
   sheetScroll: { flexShrink: 1 },
-  sheetHeader: { minHeight: 70, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingLeft: spacing.lg, paddingRight: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  sheetHeader: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingLeft: spacing.lg, paddingRight: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   sheetTitleWrap: { flex: 1, minWidth: 0 },
-  sheetTitle: { color: colors.text, fontSize: 19, fontWeight: "700" },
-  formatRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12, borderRadius: 12, backgroundColor: colors.surfaceMuted, marginBottom: 6 },
+  sheetTitle: { color: colors.text, fontSize: 18, fontWeight: "700" },
+  formatRow: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12, marginBottom: 8},
   formatRowText: { flex: 1, minWidth: 0 },
   formatRowTitle: { color: colors.text, fontSize: 14, fontWeight: "600" },
   formatRowMeta: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
@@ -466,7 +469,7 @@ const styles = StyleSheet.create({
   contentInput: { minHeight: 260 },
   inlineActions: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   secondaryIconAction: { width: 46, height: 46, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, backgroundColor: colors.surface },
-  targetRow: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, backgroundColor: colors.surface },
+  targetRow: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, marginBottom: 8 },
   targetRowCurrent: { borderColor: colors.primary, backgroundColor: "#E6F3EF" },
   targetScope: { minWidth: 32, color: colors.textMuted, fontSize: 12 },
   targetLabel: { flex: 1, minWidth: 0, color: colors.text, fontSize: 14 },

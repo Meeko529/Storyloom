@@ -19,7 +19,7 @@ import {
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
-import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, SheetBackdrop, TopSheet, TopSheetScroll } from "@/components/ui";
+import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, SheetBackdrop, BottomSheet, PanelScroll , TopSheet} from "@/components/ui";
 import { ensureEditorFontLoaded } from "@/settings/font-loader";
 import { debounce } from "@/lib/debounce";
 import { exportNovel, type ExportScope, type NovelExportFormat } from "@/lib/export";
@@ -918,9 +918,12 @@ export function WritingScreen() {
         )}
       </KeyboardAvoidingView>
 
-      <Modal visible={projectPickerVisible} transparent animationType="fade" onRequestClose={() => setProjectPickerVisible(false)}>
-        <TopSheet title="切换作品" onClose={() => setProjectPickerVisible(false)}>
-          <TopSheetScroll contentStyle={topSheetPadContent}>
+      <BottomSheet
+        visible={projectPickerVisible}
+        title="切换作品"
+        onClose={() => setProjectPickerVisible(false)}
+      >
+          <PanelScroll contentStyle={panelPadContent}>
               {projectPickerList.map((item) => (
                 <Pressable
                   key={item.id}
@@ -937,16 +940,15 @@ export function WritingScreen() {
                   </View>
                 </Pressable>
               ))}
-          </TopSheetScroll>
-        </TopSheet>
-      </Modal>
+          </PanelScroll>
+        </BottomSheet>
 
-      <Modal visible={chapterPickerVisible} transparent animationType="fade" onRequestClose={() => setChapterPickerVisible(false)}>
-        <TopSheet
-          title="作品目录"
-          subtitle={project?.title ?? "当前作品"}
-          onClose={() => setChapterPickerVisible(false)}
-        >
+      <BottomSheet
+        visible={chapterPickerVisible}
+        title="作品目录"
+        subtitle={project?.title ?? "当前作品"}
+        onClose={() => setChapterPickerVisible(false)}
+      >
             {/* 面板顶栏只有标题与关闭，「新建卷」放在内容首行。 */}
             <Pressable
               accessibilityLabel="新建卷"
@@ -957,6 +959,7 @@ export function WritingScreen() {
               <Text style={topSheetActionText}>新建卷</Text>
             </Pressable>
             <SectionList
+              style={styles.panelScroll}
               sections={directorySections}
               keyExtractor={(item) => item.id}
               stickySectionHeadersEnabled={false}
@@ -1020,10 +1023,9 @@ export function WritingScreen() {
                 />
               )}
             />
-        </TopSheet>
-      </Modal>
+        </BottomSheet>
 
-      <Modal visible={historyVisible} transparent animationType="fade" onRequestClose={() => setHistoryVisible(false)}>
+      <Modal visible={historyVisible} transparent animationType="fade" onRequestClose={() => { setHistoryPreview(null); setHistoryVisible(false); }}>
         <TopSheet
           title={historyPreview ? "版本预览" : "历史版本"}
           subtitle={(activeChapter?.title ?? "未选择章节") + " · 每章保留最近 30 版"}
@@ -1040,7 +1042,7 @@ export function WritingScreen() {
                 <Ionicons name="arrow-back" size={18} color={colors.primary} />
                 <Text style={styles.historyBackText}>历史版本</Text>
               </Pressable>
-              <PlainScrollView style={styles.historyScroll} contentContainerStyle={styles.historyPreviewContent}>
+              <PlainScrollView style={styles.panelScroll} contentContainerStyle={styles.historyPreviewContent}>
                 <Text style={styles.historyPreviewMeta}>
                   {formatVersionTime(historyPreview.createdAt) + " · " + historyPreview.characterCount + " 字 · " + versionReasonLabel(historyPreview.reason)}
                 </Text>
@@ -1060,7 +1062,7 @@ export function WritingScreen() {
           ) : historyLoading ? (
             <View style={styles.loading}><ActivityIndicator color={colors.primary} /></View>
           ) : (
-            <PlainScrollView style={styles.historyScroll} contentContainerStyle={styles.historyList}>
+            <PlainScrollView style={styles.panelScroll} contentContainerStyle={styles.historyList}>
               {historyList.length ? historyList.map((version) => (
                 <Pressable
                   key={version.id}
@@ -1092,8 +1094,12 @@ export function WritingScreen() {
         </TopSheet>
       </Modal>
 
-      <Modal visible={exportPickerVisible} transparent animationType="fade" onRequestClose={() => setExportPickerVisible(false)}>
-        <TopSheet title="导出作品" subtitle={project?.title ?? "当前作品"} onClose={() => setExportPickerVisible(false)}>
+      <BottomSheet
+        visible={exportPickerVisible}
+        title="导出作品"
+        subtitle={project?.title ?? "当前作品"}
+        onClose={() => setExportPickerVisible(false)}
+      >
             <View style={styles.exportFormatRow}>
               <Pressable
                 accessibilityLabel="导出为 Markdown"
@@ -1148,8 +1154,7 @@ export function WritingScreen() {
               </View>
               <Ionicons name="chevron-forward" size={19} color={colors.textMuted} />
             </Pressable>
-        </TopSheet>
-      </Modal>
+        </BottomSheet>
       <Modal visible={Boolean(directoryTarget)} transparent animationType="slide" onRequestClose={() => setDirectoryTarget(null)}>
         <SheetBackdrop onPress={() => setDirectoryTarget(null)}>
           <View style={styles.actionSheet}>
@@ -1237,7 +1242,8 @@ const styles = StyleSheet.create({
   // 预览态退回列表的一行。顶栏只有标题与关闭两颗位置，入口放在内容首行。
   historyBackRow: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
   historyBackText: { color: colors.primary, fontSize: 14, fontWeight: "600" },
-  historyScroll: { flex: 1 },
+  // 弹层里的滚动区：高度上限由面板给，超出在这里滚。
+  panelScroll: { flexShrink: 1 },
   // 行自带左右内边距，列表层不再加，否则左侧会缩进两次。
   historyList: { paddingBottom: spacing.lg },
   historyRow: {
@@ -1323,7 +1329,7 @@ const styles = StyleSheet.create({
   exportFormatChipActive: { borderColor: colors.primary, backgroundColor: "#E6F3EF" },
   exportFormatText: { color: colors.textMuted, fontSize: 13, fontWeight: "600" },
   exportFormatTextActive: { color: colors.primary },
-  exportFormatHint: { paddingHorizontal: spacing.sm, paddingBottom: spacing.xs, color: colors.textMuted, fontSize: 12, lineHeight: 17 },
+  exportFormatHint: { paddingHorizontal: spacing.sm, paddingBottom: spacing.xs, color: colors.textMuted, fontSize: 12, lineHeight: 18 },
   exportOption: { minHeight: 66, flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   exportOptionDisabled: { opacity: 0.48 },
   exportOptionText: { flex: 1, minWidth: 0, gap: 2 },
@@ -1332,7 +1338,7 @@ const styles = StyleSheet.create({
   actionTitle: {
     color: colors.textMuted,
     fontSize: 13,
-    lineHeight: 19,
+    lineHeight: 20,
     paddingHorizontal: spacing.sm,
     paddingBottom: spacing.sm,
   },
@@ -1354,6 +1360,6 @@ const styles = StyleSheet.create({
 
 // 顶部面板的两处共用样式：内容留白与首行动作入口。放本地而非组件库，
 // 因为只有写作页的作品目录需要首行那颗「新建卷」。
-const topSheetPadContent = { paddingHorizontal: spacing.lg, paddingTop: spacing.xs, paddingBottom: spacing.xl } as const;
+const panelPadContent = { paddingHorizontal: spacing.lg, paddingTop: spacing.xs, paddingBottom: spacing.xl } as const;
 const topSheetActionRow = { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm } as const;
 const topSheetActionText = { color: colors.primary, fontSize: 14, fontWeight: "600" } as const;

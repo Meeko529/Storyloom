@@ -39,8 +39,9 @@ import {
 import { editorFontFamily, readChatPrefs } from "@/settings/editor-prefs";
 import { AgentQuestionSheet, AgentTraceView, ReasoningSegment } from "@/components/agent-run-view";
 import { appendCrashLog } from "@/lib/crash-log";
+import { throttle } from "@/lib/debounce";
 import { MessageActionBar } from "@/components/message-action-bar";
-import { AdaptiveScroll, Button, EmptyState, ErrorNotice, Field, Header, Screen, SheetBackdrop, TopSheet } from "@/components/ui";
+import { AdaptiveScroll, BottomSheet, Button, EmptyState, ErrorNotice, Field, Header, Screen, SheetBackdrop, TopSheet } from "@/components/ui";
 import {
   addMessage,
   createChatSession,
@@ -305,6 +306,17 @@ export function AssistantScreen() {
   const [updatingStyle, setUpdatingStyle] = useState(false);
   const [liveTrace, setLiveTrace] = useState<AgentRunTrace | null>(null);
   const [liveReasoning, setLiveReasoning] = useState("");
+  /**
+   * 流式思考的完整文本。
+   *
+   * 增量按 token 到达，先攒在这个 ref 里，再节流刷进 state。此前每个增量都直接
+   * setState —— 一段几千字的思考就是几千次整屏重渲染，界面按 token 卡。
+   * 攒文本不进 state，刷新的频率与模型吐字速度解耦。
+   */
+  const liveReasoningRef = useRef("");
+  const flushLiveReasoning = useMemo(() => throttle((text: string) => setLiveReasoning(text), 150), []);
+  // 离开页面时丢弃挂起的那一次刷新，不给已卸载的组件发 setState。
+  useEffect(() => () => flushLiveReasoning.cancel(), [flushLiveReasoning]);
   // 最近一次被接受的 AI 写入（撤销入口），null 表示当前没有可撤销的改动
   const [undoTarget, setUndoTarget] = useState<string | null>(null);
   // 待随下一条消息发送的文本附件
@@ -801,6 +813,8 @@ export function AssistantScreen() {
     setInput("");
     setLiveTrace(null);
     setLiveReasoning("");
+    liveReasoningRef.current = "";
+    flushLiveReasoning.cancel();
     let userMessage = retry?.userMessage ?? null;
     let nextHistory = retry?.history ?? [];
     let userMessageSaved = Boolean(userMessage);
@@ -873,7 +887,9 @@ export function AssistantScreen() {
         approveTool: (name, args, preview) => requestToolApproval(emitWriteCard, requestId, name, args, preview),
         askUser,
         onDelta: (delta) => {
-          if (delta.reasoning) setLiveReasoning((current) => current + delta.reasoning);
+          if (!delta.reasoning) return;
+          liveReasoningRef.current += delta.reasoning;
+          flushLiveReasoning(liveReasoningRef.current);
         },
         onTrace: (trace) => {
           // 实时时间线的数据源：把执行事件流同步到界面，否则只看得见计时。
@@ -901,6 +917,8 @@ export function AssistantScreen() {
       // 流式思考一并清掉：它与 trace.segments 同源，清了 trace 就得清这份，
       // 否则残留到下一次发送，时间线上会出现一段没有归属的思考。
       setLiveReasoning("");
+      liveReasoningRef.current = "";
+      flushLiveReasoning.cancel();
       setUndoTarget(undoLabel());
       setAttachments([]);
     } catch (sendError) {
@@ -940,6 +958,8 @@ export function AssistantScreen() {
       if (isCurrentRequest()) {
         setLiveTrace(null);
         setLiveReasoning("");
+        liveReasoningRef.current = "";
+        flushLiveReasoning.cancel();
       }
     } finally {
       if (isCurrentRequest()) setSending(false);
@@ -1048,8 +1068,12 @@ export function AssistantScreen() {
           style={styles.flex}
           data={reversedMessages}
           keyExtractor={(item) => item.id}
+          // 倒置列表：offset 0 恒为最新，打开 / 切换 / 发送天然落在最新。
+          // 不要再加 maintainVisibleContentPosition —— 它在每次内容尺寸变化时都会
+          // 调整滚动偏移，而这条列表的内容尺寸变得很频繁（列表头里的实时思考随字
+          // 增长、展开或收起执行轨迹也改高度），偏移被反复改写会把单元排到错误的
+          // 位置上，表现为文字堆在一起或滑到一片空白。
           inverted
-          maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 120 }}
           contentContainerStyle={messages.length ? styles.messages : styles.emptyMessages}
           ListHeaderComponent={sending || liveTrace || writeCard || pendingQuestion ? (
             <View style={styles.liveTimeline}>
@@ -1369,13 +1393,16 @@ export function AssistantScreen() {
         </TopSheet>
       </Modal>
 
-      <Modal visible={projectPickerVisible} transparent animationType="fade" onRequestClose={() => setProjectPickerVisible(false)}>
-        <TopSheet title="切换作品" onClose={() => setProjectPickerVisible(false)}>
+      <BottomSheet
+        visible={projectPickerVisible}
+        title="切换作品"
+        onClose={() => setProjectPickerVisible(false)}
+      >
           <FlatList
+            style={styles.panelList}
             data={projectsForPicker}
             keyExtractor={(item) => item.id}
-            style={styles.sheetList}
-            contentContainerStyle={styles.topSheetListBottom}
+            contentContainerStyle={styles.panelListBottom}
             renderItem={({ item }) => (
               <Pressable
                 onPress={() => {
@@ -1395,8 +1422,7 @@ export function AssistantScreen() {
               </Pressable>
             )}
           />
-        </TopSheet>
-      </Modal>
+        </BottomSheet>
 
       <Modal visible={renaming !== null} transparent animationType="slide" onRequestClose={() => setRenaming(null)}>
         <SheetBackdrop onPress={() => setRenaming(null)}>
@@ -1425,8 +1451,8 @@ export function AssistantScreen() {
           <FlatList
             data={sessions}
             keyExtractor={(item) => item.id}
-            style={styles.topSheetList}
-            contentContainerStyle={styles.topSheetListBottom}
+            style={styles.panelList}
+            contentContainerStyle={styles.panelListBottom}
             renderItem={({ item }) => {
               const sessionModelId = item.modelId ?? defaultModelId;
               const sessionModel = models.find((model) => model.id === sessionModelId);
@@ -1489,12 +1515,17 @@ export function AssistantScreen() {
         </TopSheet>
       </Modal>
 
-      <Modal visible={modelPickerVisible} transparent animationType="fade" onRequestClose={() => setModelPickerVisible(false)}>
-        <TopSheet title="选择模型" subtitle="仅用于当前对话" onClose={() => setModelPickerVisible(false)}>
+      <BottomSheet
+        visible={modelPickerVisible}
+        title="选择模型"
+        subtitle="仅用于当前对话"
+        onClose={() => setModelPickerVisible(false)}
+      >
           <FlatList
+              style={styles.panelList}
               data={models}
               keyExtractor={(item) => item.id}
-              contentContainerStyle={[styles.sheetList, styles.topSheetListBottom]}
+              contentContainerStyle={[styles.sheetList, styles.panelListBottom]}
               ListHeaderComponent={
                 <Pressable onPress={() => void chooseModel(null)} style={[styles.sheetRow, activeSession?.modelId === null && styles.sheetRowActive]}>
                   <Ionicons name={activeSession?.modelId === null ? "radio-button-on" : "radio-button-off"} size={20} color={activeSession?.modelId === null ? colors.primary : colors.textMuted} />
@@ -1518,14 +1549,18 @@ export function AssistantScreen() {
                 );
               }}
             />
-        </TopSheet>
-      </Modal>
-      <Modal visible={stylePickerVisible} transparent animationType="fade" onRequestClose={() => setStylePickerVisible(false)}>
-        <TopSheet title="选择创作文风" subtitle={project?.title ?? "当前作品"} onClose={() => setStylePickerVisible(false)}>
+        </BottomSheet>
+      <BottomSheet
+        visible={stylePickerVisible}
+        title="选择创作文风"
+        subtitle={project?.title ?? "当前作品"}
+        onClose={() => setStylePickerVisible(false)}
+      >
           <FlatList
+              style={styles.panelList}
               data={styleProfiles}
               keyExtractor={(item) => item.id}
-              contentContainerStyle={[styles.sheetList, styles.topSheetListBottom]}
+              contentContainerStyle={[styles.sheetList, styles.panelListBottom]}
               ListHeaderComponent={(
                 <Pressable onPress={() => void chooseStyle(null)} style={[styles.sheetRow, !activeStyleProfile && styles.sheetRowActive]}>
                   <Ionicons name={!activeStyleProfile ? "radio-button-on" : "radio-button-off"} size={20} color={!activeStyleProfile ? colors.primary : colors.textMuted} />
@@ -1548,8 +1583,7 @@ export function AssistantScreen() {
                 );
               }}
             />
-        </TopSheet>
-      </Modal>
+        </BottomSheet>
     </Screen>
   );
 }
@@ -1720,19 +1754,17 @@ const styles = StyleSheet.create({
   renameActions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm },
   // 历史对话行：左侧圆角图标块 + 标题与摘要 + 最右一个 ⋯。
   // 重命名与删除收进 ⋯ 的行内菜单，因此行内只留一颗按钮。
-  topSheetList: { flexGrow: 0 },
+  // 弹层里的列表：高度上限由面板给，超出在这里滚。
+  panelList: { flexShrink: 1 },
   // 列表容器：行自带左右内边距，这里只补底部留白，不重复缩进。
-  topSheetListBottom: { paddingBottom: spacing.xl },
+  panelListBottom: { paddingBottom: spacing.xl },
   sessionItem: {
-    paddingVertical: spacing.sm,
+    paddingVertical: 10,
     paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
+    marginBottom: 8,
   },
   sessionItemRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  sessionItemActive: { borderColor: colors.primary },
+  sessionItemActive: { backgroundColor: colors.surfaceMuted },
   sessionItemIcon: { width: 34, height: 34, borderRadius: radius.sm, alignItems: "center", justifyContent: "center", backgroundColor: "#E8F2EE" },
   sessionItemIconActive: { backgroundColor: colors.primary },
   sessionItemCopy: { flex: 1, minWidth: 0 },

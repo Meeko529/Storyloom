@@ -453,7 +453,6 @@ const styles = StyleSheet.create({
   trace: { alignSelf: "flex-start", flexShrink: 1, maxWidth: "88%" },
   traceInline: { borderWidth: 0, borderRadius: 0, backgroundColor: "transparent" },
   traceHeaderInline: { paddingHorizontal: 0 },
-  eventsInline: { borderTopWidth: 0 },
   traceHeader: {
     minHeight: 42,
     flexDirection: "row",
@@ -505,7 +504,7 @@ const styles = StyleSheet.create({
   eventTitleLine: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   eventTitle: { flexShrink: 1, color: colors.text, fontSize: 13, fontWeight: "700" },
   agentName: { flexShrink: 1, color: colors.textMuted, fontSize: 11 },
-  eventDetail: { marginTop: 3, color: colors.textMuted, fontSize: 12, lineHeight: 17 },
+  eventDetail: { marginTop: 3, color: colors.textMuted, fontSize: 12, lineHeight: 18 },
   payloads: { gap: spacing.xs, paddingHorizontal: spacing.sm, paddingBottom: spacing.sm },
   payload: { gap: spacing.xs, padding: spacing.xs, borderRadius: radius.sm, backgroundColor: colors.surfaceMuted },
   payloadLabel: { color: colors.textMuted, fontSize: 11, fontWeight: "700" },
@@ -543,7 +542,7 @@ const styles = StyleSheet.create({
   questions: { padding: spacing.md, paddingBottom: spacing.lg, gap: spacing.lg },
   question: { gap: spacing.sm },
   questionIndex: { color: colors.primary, fontSize: 11, fontWeight: "700" },
-  questionTitle: { color: colors.text, fontSize: 14, fontWeight: "700", lineHeight: 20 },
+  questionTitle: { color: colors.text, fontSize: 14, fontWeight: "700", lineHeight: 21 },
   questionDescription: { color: colors.textMuted, fontSize: 12, lineHeight: 18 },
   options: { gap: spacing.sm, marginTop: spacing.xs },
   option: {
@@ -562,7 +561,7 @@ const styles = StyleSheet.create({
   optionCopy: { flex: 1, minWidth: 0 },
   optionLabel: { color: colors.text, fontSize: 13, fontWeight: "600" },
   optionLabelSelected: { color: colors.primary },
-  optionDescription: { marginTop: 3, color: colors.textMuted, fontSize: 11.5, lineHeight: 16 },
+  optionDescription: { marginTop: 3, color: colors.textMuted, fontSize: 11.5, lineHeight: 17 },
   customInput: {
     minHeight: 88,
     maxHeight: 160,

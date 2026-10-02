@@ -13,7 +13,7 @@ import {
   View,
 } from "react-native";
 
-import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, TopSheet } from "@/components/ui";
+import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, BottomSheet } from "@/components/ui";
 import {
   createStyleProfileVersion,
   deleteStyleProfile,
@@ -400,13 +400,12 @@ export function StyleLibraryScreen() {
         )}
       />
 
-      <Modal visible={Boolean(selectedSource)} transparent animationType="fade" onRequestClose={closeSource}>
-        <TopSheet
-          title={editingSource ? "编辑参考书" : (selectedSource?.title ?? "")}
-          subtitle={selectedSource ? formatName(selectedSource) + " · " + formatBytes(selectedSource.sizeBytes) + " · " + selectedSource.characterCount.toLocaleString() + " 字" : ""}
-          onClose={closeSource}
-          avoidKeyboard
-        >
+      <BottomSheet
+        visible={Boolean(selectedSource)}
+        title={editingSource ? "编辑参考书" : (selectedSource?.title ?? "")}
+        subtitle={selectedSource ? formatName(selectedSource) + " · " + formatBytes(selectedSource.sizeBytes) + " · " + selectedSource.characterCount.toLocaleString() + " 字" : ""}
+        onClose={closeSource}
+      >
           {editingSource ? (
             <View style={styleSheetPad}>
               <Field label="参考书名称" value={sourceTitle} onChangeText={setSourceTitle} autoFocus />
@@ -488,16 +487,14 @@ export function StyleLibraryScreen() {
                 />
               )) : <Text style={styles.emptyHint}>还没有版本，点击“蒸馏文风”生成。</Text>}
             </PlainScrollView>
-        </TopSheet>
-      </Modal>
+        </BottomSheet>
 
-      <Modal visible={Boolean(selectedProfile)} transparent animationType="fade" onRequestClose={() => setSelectedProfile(null)}>
-        <TopSheet
-          title={selectedProfile ? selectedProfile.name + " V" + selectedProfile.version : ""}
-          subtitle={selectedProfile?.kind === "author" ? "作者文风版本" : "参考小说文风版本"}
-          onClose={() => setSelectedProfile(null)}
-          avoidKeyboard
-        >
+      <BottomSheet
+        visible={Boolean(selectedProfile)}
+        title={selectedProfile ? selectedProfile.name + " V" + selectedProfile.version : ""}
+        subtitle={selectedProfile?.kind === "author" ? "作者文风版本" : "参考小说文风版本"}
+        onClose={() => setSelectedProfile(null)}
+      >
             <PlainScrollView style={styles.sheetScroll} contentContainerStyle={styles.profileContent}>
               {selectedProfile?.kind === "author" && editingAuthorGuide ? (
                 <Field label="作者文风指南" value={authorGuide} onChangeText={setAuthorGuide} multiline style={styles.guideInput} maxLength={100000} />
@@ -527,8 +524,7 @@ export function StyleLibraryScreen() {
                 </Pressable>
               </View>
             </PlainScrollView>
-        </TopSheet>
-      </Modal>
+        </BottomSheet>
     </Screen>
   );
 }
@@ -594,13 +590,13 @@ const styles = StyleSheet.create({
   sourceCopy: { flex: 1, minWidth: 0, gap: 3 },
   sourceTitle: { color: colors.text, fontSize: 16, fontWeight: "700" },
   sourceMeta: { color: colors.textMuted, fontSize: 12 },
-  profileRow: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm, paddingLeft: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, backgroundColor: colors.surface },
+  profileRow: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: 8, paddingLeft: spacing.md},
   profileRowInset: { marginHorizontal: spacing.lg },
   profileRowActive: { borderColor: colors.primary, backgroundColor: "#E6F3EF" },
   profileMain: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm },
   profileCopy: { flex: 1, minWidth: 0, gap: 3 },
   profileName: { color: colors.text, fontSize: 14, fontWeight: "700" },
-  profileMeta: { color: colors.textMuted, fontSize: 12, lineHeight: 17 },
+  profileMeta: { color: colors.textMuted, fontSize: 12, lineHeight: 18 },
   useButton: { minWidth: 54, minHeight: 44, alignItems: "center", justifyContent: "center", marginRight: spacing.xs },
   useButtonText: { color: colors.primary, fontSize: 13, fontWeight: "700" },
   useButtonTextActive: { color: colors.textMuted },
@@ -618,7 +614,7 @@ const styles = StyleSheet.create({
   checkpointBox: { gap: spacing.xs, padding: spacing.md, borderWidth: 1, borderColor: colors.primary, borderRadius: radius.sm, backgroundColor: "#E6F3EF" },
   checkpointTitle: { color: colors.primary, fontSize: 13, fontWeight: "700" },
   checkpointText: { color: colors.textMuted, fontSize: 12, lineHeight: 18 },
-  emptyHint: { color: colors.textMuted, fontSize: 14, lineHeight: 20, paddingVertical: spacing.md },
-  guideText: { color: colors.text, fontSize: 14, lineHeight: 22 },
+  emptyHint: { color: colors.textMuted, fontSize: 14, lineHeight: 21, paddingVertical: spacing.md },
+  guideText: { color: colors.text, fontSize: 14, lineHeight: 21 },
   guideInput: { minHeight: 300 },
 });

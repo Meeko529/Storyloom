@@ -10,6 +10,8 @@ export const colors = {
   accent: "#D95D39",
   danger: "#B42318",
   overlay: "rgba(20, 21, 19, 0.48)",
+  /** 顶部浮卡用的浅遮罩：面板从顶栏下方浮出，页面仍要看得清、顶栏不压黑。 */
+  overlaySoft: "rgba(20, 21, 19, 0.25)",
 } as const;
 
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;

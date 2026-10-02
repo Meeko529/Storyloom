@@ -7,7 +7,7 @@ import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, BackHandler, FlatList, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { Button, ErrorNotice, Field, Header, PlainScrollView, Screen, TopSheet } from "@/components/ui";
+import { Button, ErrorNotice, Field, Header, PlainScrollView, Screen, BottomSheet } from "@/components/ui";
 import {
   deleteProvider,
   getProviderApiKey,
@@ -737,13 +737,12 @@ export function SettingsScreen() {
           <View style={{ height: spacing.md }} />
         </View>
       )}
-      <Modal
+      <BottomSheet
         visible={convSheetModel !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setConvSheetModel(null)}
+        title="对话设置"
+        subtitle={convSheetModel ? convSheetModel.name : ""}
+        onClose={() => setConvSheetModel(null)}
       >
-        <TopSheet title="对话设置" subtitle={convSheetModel ? convSheetModel.name : ""} onClose={() => setConvSheetModel(null)} avoidKeyboard>
             <View style={styles.segmented}>
               <Pressable onPress={() => setConvScope("model")} style={[styles.segment, convScope === "model" && styles.segmentActive]}>
                 <Text style={[styles.segmentText, convScope === "model" && styles.segmentTextActive]}>仅此模型</Text>
@@ -793,22 +792,15 @@ export function SettingsScreen() {
                 }
               }} />
             </View>
-        </TopSheet>
-      </Modal>
-      <Modal
+        </BottomSheet>
+      <BottomSheet
         visible={modelPickerProvider !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setModelPickerProvider(null)}
-      >
-        <TopSheet
-          title="选择模型"
-          subtitle={modelFilter.trim()
+        title="选择模型"
+        subtitle={modelFilter.trim()
             ? `${filteredRemoteModels.length} / ${remoteModels.length} 个模型`
             : `${remoteModels.length} 个可用模型`}
-          onClose={() => setModelPickerProvider(null)}
-          avoidKeyboard
-        >
+        onClose={() => setModelPickerProvider(null)}
+      >
             <View style={styles.modelFilterWrap}>
               <Field
                 label="查找模型"
@@ -820,6 +812,7 @@ export function SettingsScreen() {
               />
             </View>
             <FlatList
+              style={styles.panelList}
               data={filteredRemoteModels}
               keyExtractor={(item) => item.id}
               keyboardShouldPersistTaps="handled"
@@ -838,16 +831,14 @@ export function SettingsScreen() {
                 </Pressable>
               )}
             />
-        </TopSheet>
-      </Modal>
+        </BottomSheet>
 
-      <Modal
+      <BottomSheet
         visible={advancedTarget !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setAdvancedTarget(null)}
+        title="高级设置"
+        subtitle={advancedTarget ? advancedTarget.name : ""}
+        onClose={() => setAdvancedTarget(null)}
       >
-        <TopSheet title="高级设置" subtitle={advancedTarget ? advancedTarget.name : ""} onClose={() => setAdvancedTarget(null)} avoidKeyboard>
             <PlainScrollView
               style={styles.advancedSheetBody}
               contentContainerStyle={styles.advancedSheetContent}
@@ -856,8 +847,7 @@ export function SettingsScreen() {
               <AdvancedFields value={advancedDraft} onChange={setAdvancedDraft} />
               <Button label="保存高级设置" onPress={() => void saveAdvancedEditor()} />
             </PlainScrollView>
-        </TopSheet>
-      </Modal>
+        </BottomSheet>
     </Screen>
   );
 }
@@ -866,7 +856,7 @@ const styles = StyleSheet.create({
   categoryList: { paddingVertical: spacing.sm },
   groupHeader: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xs },
   groupTitle: { color: colors.textMuted, fontSize: 13, fontWeight: "700" },
-  groupHint: { color: colors.textMuted, fontSize: 12, lineHeight: 17, marginTop: 2 },
+  groupHint: { color: colors.textMuted, fontSize: 12, lineHeight: 18, marginTop: 2 },
   categoryRow: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   categoryRowPressed: { backgroundColor: colors.surfaceMuted },
   categoryIcon: { width: 36, height: 36, alignItems: "center", justifyContent: "center", borderRadius: radius.sm, backgroundColor: "#E6F3EF" },
@@ -888,11 +878,13 @@ const styles = StyleSheet.create({
   advancedToggle: { minHeight: 40, flexDirection: "row", alignItems: "center", gap: spacing.xs },
   advancedToggleText: { color: colors.primary, fontSize: 13, fontWeight: "700" },
   advancedGroup: { gap: spacing.md },
-  advancedSheetBody: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
+  // 弹层里的列表：高度上限由面板给，超出在这里滚。
+  panelList: { flexShrink: 1 },
+  advancedSheetBody: { flexShrink: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   advancedSheetContent: { gap: spacing.md, paddingBottom: spacing.xl },
   toggleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md },
   toggleRowOn: { borderColor: colors.primary, backgroundColor: "#E6F3EF" },
-  toggleText: { flex: 1, color: colors.text, fontSize: 13, lineHeight: 18 },
+  toggleText: { flex: 1, color: colors.text, fontSize: 13, lineHeight: 20 },
   defaultCard: { margin: spacing.md, marginBottom: spacing.sm, backgroundColor: colors.primary, borderRadius: radius.lg, padding: spacing.lg },
   defaultCardLabel: { color: "rgba(255,255,255,0.75)", fontSize: 10, letterSpacing: 1, marginBottom: 4 },
   defaultCardName: { color: "#FFFFFF", fontSize: 19, fontWeight: "800" },
@@ -920,6 +912,6 @@ const styles = StyleSheet.create({
   choiceText: { color: colors.textMuted, fontSize: 13 },
   choiceTextActive: { color: colors.primary, fontWeight: "700" },
   modelFilterWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
-  modelFilterEmpty: { padding: spacing.lg, color: colors.textMuted, fontSize: 14, lineHeight: 20 },
+  modelFilterEmpty: { padding: spacing.lg, color: colors.textMuted, fontSize: 14, lineHeight: 21 },
   remoteModelRow: { minHeight: 62, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
 });

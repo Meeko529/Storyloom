@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
   cardIcon: { width: 36, height: 36, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#E6F3EF" },
   cardText: { flex: 1 },
   cardTitle: { color: colors.text, fontSize: 15, fontWeight: "600" },
-  cardNote: { color: colors.textMuted, fontSize: 12, lineHeight: 17, marginTop: 2 },
+  cardNote: { color: colors.textMuted, fontSize: 12, lineHeight: 18, marginTop: 2 },
   cardBody: { gap: spacing.md, padding: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-  cardHint: { color: colors.textMuted, fontSize: 12, lineHeight: 17 },
+  cardHint: { color: colors.textMuted, fontSize: 12, lineHeight: 18 },
 });

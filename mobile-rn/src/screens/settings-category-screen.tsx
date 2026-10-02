@@ -17,7 +17,7 @@ import {
   View,
 } from "react-native";
 
-import { Button, ErrorNotice, Field, Header, PlainScrollView, Screen, TopSheet } from "@/components/ui";
+import { Button, ErrorNotice, Field, Header, PlainScrollView, Screen, BottomSheet } from "@/components/ui";
 import { MASCOT_OPTIONS, normalizeMascotKind } from "@/settings/mascots";
 import {
   getSetting,
@@ -1661,12 +1661,12 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       ) : null}
 
       {/* 技能详情：点技能行进来，只读看完整指令；内置的可复制成自己的副本再改。 */}
-      <Modal visible={Boolean(detailSkill)} transparent animationType="fade" onRequestClose={() => setDetailSkill(null)}>
-        <TopSheet
-          title={detailSkill?.name ?? ""}
-          subtitle={`${detailSkill?.source === "custom" ? "自定义技能" : detailSkill?.source === "plugin" ? "Lorn 文风插件" : detailSkill?.source === "remote" ? "oh-story 更新技能" : "Storyloom 基础包"} · ${detailSkill?.instructions.length ?? 0} 字`}
-          onClose={() => setDetailSkill(null)}
-        >
+      <BottomSheet
+        visible={Boolean(detailSkill)}
+        title={detailSkill?.name ?? ""}
+        subtitle={`${detailSkill?.source === "custom" ? "自定义技能" : detailSkill?.source === "plugin" ? "Lorn 文风插件" : detailSkill?.source === "remote" ? "oh-story 更新技能" : "Storyloom 基础包"} · ${detailSkill?.instructions.length ?? 0} 字`}
+        onClose={() => setDetailSkill(null)}
+      >
           <View style={skillSheetBody}>
             <PlainScrollView style={styles.skillSheetScroll} contentContainerStyle={styles.skillSheetScrollContent}>
               <Text style={styles.skillSheetBody}>{detailSkill?.instructions ?? ""}</Text>
@@ -1679,8 +1679,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
               )
             ) : null}
           </View>
-        </TopSheet>
-      </Modal>
+        </BottomSheet>
     </Screen>
   );
 }
@@ -1693,7 +1692,7 @@ const styles = StyleSheet.create({
   errorWrap: { padding: spacing.lg, paddingBottom: 0 },
   noticeWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
   noticeText: { color: colors.primary, fontSize: 13, fontWeight: "600" },
-  warnText: { color: colors.accent, fontSize: 13, lineHeight: 18 },
+  warnText: { color: colors.accent, fontSize: 13, lineHeight: 20 },
   section: { gap: spacing.md, padding: spacing.lg },
   subsectionTitle: { color: colors.text, fontSize: 17, fontWeight: "700" },
   mascotGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 6 },
@@ -1703,9 +1702,9 @@ const styles = StyleSheet.create({
   mascotLabel: { color: colors.text, fontSize: 12 },
   groupHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 7, paddingHorizontal: spacing.sm, marginTop: 0, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   searchInput: { minHeight: 42, marginBottom: spacing.sm, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, color: colors.text, fontSize: 14 },
-  skillSheetScroll: { alignSelf: "stretch" },
+  skillSheetScroll: { flexShrink: 1 },
   skillSheetScrollContent: { paddingVertical: spacing.sm },
-  skillSheetBody: { color: colors.text, fontSize: 13, lineHeight: 21 },
+  skillSheetBody: { color: colors.text, fontSize: 13, lineHeight: 20 },
   groupTitle: { marginTop: spacing.lg, marginBottom: spacing.xs, color: colors.text, fontSize: 14, fontWeight: "700" },
   groupCount: { color: colors.textMuted, fontSize: 12, fontWeight: "400" },
   subsectionDivider: { height: StyleSheet.hairlineWidth, marginVertical: spacing.sm, backgroundColor: colors.border },
@@ -1716,7 +1715,7 @@ const styles = StyleSheet.create({
   permissionRow: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   permissionText: { flex: 1, minWidth: 0 },
   permissionMode: { minWidth: 64, color: colors.primary, fontSize: 13, fontWeight: "700", textAlign: "right" },
-  manageRow: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: spacing.sm, marginVertical: 5, paddingVertical: spacing.sm, paddingLeft: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm },
+  manageRow: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: spacing.sm, marginVertical: 8, paddingVertical: spacing.sm, paddingLeft: spacing.md},
   activeRow: { borderColor: colors.primary, backgroundColor: "#E6F3EF" },
   manageText: { flex: 1, minWidth: 0, gap: spacing.xs },
   iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },

@@ -333,7 +333,7 @@ const styles = StyleSheet.create({
   name: { flex: 1, color: colors.text, fontSize: 16, fontWeight: "700" },
   description: { color: colors.textMuted, fontSize: 13, lineHeight: 19 },
   modalBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay },
-  modalBody: { maxHeight: "88%", padding: spacing.lg, borderTopLeftRadius: radius.md, borderTopRightRadius: radius.md, backgroundColor: colors.background },
+  modalBody: { maxHeight: "80%", padding: spacing.lg, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, backgroundColor: colors.background },
   modalHeader: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   modalTitle: { color: colors.text, fontSize: 20, fontWeight: "700" },
   form: { gap: spacing.lg, paddingVertical: spacing.sm },

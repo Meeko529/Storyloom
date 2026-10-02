@@ -57,6 +57,54 @@ export function debounce<T extends unknown[]>(fn: (...args: T) => void, wait: nu
 }
 
 /**
+ * 节流：窗口内最多执行一次，首次立刻执行，窗口内的后续调用合并到窗口结束时补一次。
+ *
+ * 与 `throttleRAF` 的差别在时间基准：那个按帧、约 16ms，这个按毫秒。流式文本用这个 ——
+ * 模型每秒能吐几十个增量，逐个 setState 会让整屏按 token 重渲染，长思考时明显卡。
+ */
+export function throttle<T extends unknown[]>(fn: (...args: T) => void, wait: number): Debounced<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let lastArgs: T | null = null;
+  let lastRunAt = 0;
+
+  const run = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    if (!lastArgs) return;
+    const args = lastArgs;
+    lastArgs = null;
+    lastRunAt = Date.now();
+    fn(...args);
+  };
+
+  const throttled = ((...args: T) => {
+    lastArgs = args;
+    const elapsed = Date.now() - lastRunAt;
+    if (elapsed >= wait) {
+      run();
+      return;
+    }
+    if (timer) return;
+    timer = setTimeout(() => {
+      timer = null;
+      run();
+    }, wait - elapsed);
+  }) as Debounced<T>;
+
+  throttled.flush = () => run();
+  throttled.cancel = () => {
+    if (timer) clearTimeout(timer);
+    timer = null;
+    lastArgs = null;
+  };
+  throttled.pending = () => timer !== null;
+
+  return throttled;
+}
+
+/**
  * 每帧最多执行一次：第一次调用立刻执行，帧内的后续调用合并到下一帧。
  *
  * 适合"跟着内容变、但不需要每个中间态都处理"的场合（如滚动联动高亮），
