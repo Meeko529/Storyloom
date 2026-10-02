@@ -964,10 +964,10 @@ export function AssistantScreen() {
               }}
               style={styles.iconButton}
             >
-              <Ionicons name="swap-horizontal-outline" size={22} color={colors.primary} />
+              <Ionicons name="swap-horizontal-outline" size={20} color={colors.primary} />
             </Pressable>
             <Pressable accessibilityLabel="更多操作" onPress={() => setHeaderMenuVisible((value) => !value)} style={styles.iconButton}>
-              <Ionicons name="ellipsis-horizontal" size={22} color={colors.primary} />
+              <Ionicons name="ellipsis-horizontal" size={20} color={colors.primary} />
             </Pressable>
           </View>
         }

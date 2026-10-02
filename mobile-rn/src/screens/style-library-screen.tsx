@@ -473,10 +473,10 @@ export function StyleLibraryScreen() {
                   <Text style={styles.progressText}>{distillationProgress} · {distillationPercent}%</Text>
                 </View>
               ) : (
+                // 覆盖进度与「继续蒸馏会向后跳」由上方 checkpointBox 负责，
+                // 这里只讲抽取方式，不重复同一件事。
                 <Text style={styles.helperText}>
-                  {coverageFinished
-                    ? `已覆盖全书（${distillationCoverage?.coveredUntil ?? 0}/${distillationCoverage?.totalUnits ?? 0} ${coverageUnitName}）。想继续积累样本，请点击「重新开始」重新扫描全书。`
-                    : `每轮抽取连续 24 ${coverageUnitName}、分 4 批分析后并入文风指南，不会上传整本小说。反复点击“继续蒸馏”会向后随机推进，逐步覆盖全书。`}
+                  每轮抽取连续 24 {coverageUnitName}、分 4 批分析后并入文风指南，不会上传整本小说。
                 </Text>
               )}
               <Text style={styles.helperText}>

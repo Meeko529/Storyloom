@@ -2,7 +2,7 @@
 // 改动说明见仓库根目录 docs/上游来源与改动清单.md
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -64,7 +64,8 @@ import {
   CONTEXT_WINDOW_KEY,
   DEFAULT_CONTEXT_WINDOW_TOKENS,
   normalizeContextWindow,
-} from "@/agent/context-usage";import { getLocalModelStatus, warmUpLocalModels } from "@/search/local-models";
+} from "@/agent/context-usage";
+import { warmUpLocalModels } from "@/search/local-models";
 import {
   ALL_OPTIONAL_RESOURCE_KINDS,
   FONT_PACK_INFO,
@@ -690,6 +691,17 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
     }
   };
 
+  /**
+   * 「当前加载状态」一行说清七类可选内容各自的装卸情况。
+   * 此前只写嵌入与重排两项，字体包、技能包、oh-story 装没装都要翻下面三张卡才知道。
+   */
+  const loadedResourceSummary = useMemo(() => {
+    if (!resourceState) return null;
+    return resourceState.items
+      .map((item) => `${item.label}：${item.status === "ready" ? "已安装" : "未安装"}`)
+      .join(" · ");
+  }, [resourceState]);
+
   /** 可选内容卡片：标题、体积、用途与下载按钮（busy 只作用在当前这一项上）。 */
   const renderOptionalResource = (entry: { id: OptionalResourceKind; title: string; sizeMb: number; purpose: string }) => {
     const item = resourceState?.items.find((candidate) => candidate.id === entry.id);
@@ -1234,15 +1246,9 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       ) : null}
       {category === "resources" ? (
         <View style={styles.section}>
-          <Text style={styles.subsectionTitle}>本地模型</Text>
-          <Text style={styles.sectionHint}>
-            语义检索所需，不随安装包分发；不装不影响写作与对话，仅影响检索增强。下载时会自动尝试国内镜像。
-          </Text>
-          <SettingRow
-            label="当前加载状态"
-            value={`嵌入：${getLocalModelStatus().embeddingLoaded ? "已加载" : "未加载"} · 重排：${getLocalModelStatus().rerankLoaded ? "已加载" : "未加载"}`}
-          />
-          <View style={styles.subsectionDivider} />
+          {/* 一行说清七类可选内容各自的装卸情况。嵌入与重排模型本身也在下面的卡片里，
+              不再单开「本地模型」小节 —— 那样同一件事要说两遍。 */}
+          <SettingRow label="当前加载状态" value={loadedResourceSummary ?? "尚未加载任何可选内容"} />
           <Text style={styles.subsectionTitle}>字体与技能包</Text>
           <Text style={styles.sectionHint}>
             未安装不影响写作与对话，仅影响对应的增强功能；下载时会自动尝试国内镜像。

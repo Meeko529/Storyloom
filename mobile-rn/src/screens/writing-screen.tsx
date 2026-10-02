@@ -132,7 +132,6 @@ export function WritingScreen() {
   const [editing, setEditing] = useState(false);
   const [styleProfiles, setStyleProfiles] = useState<StyleProfile[]>([]);
   const [activeStyleProfile, setActiveStyleProfileState] = useState<StyleProfile | null>(null);
-  const [stylePickerVisible, setStylePickerVisible] = useState(false);
   const [pendingEvolution, setPendingEvolution] = useState<ChapterDraftSnapshot | null>(null);
   const [evolvingStyle, setEvolvingStyle] = useState(false);
   const [fontReadyTick, setFontReadyTick] = useState(0);
@@ -525,17 +524,6 @@ export function WritingScreen() {
     if (await persistDraft(true)) setEditing(false);
   };
 
-  const chooseStyle = async (profile: StyleProfile | null) => {
-    if (!projectId || evolvingStyle) return;
-    setError(null);
-    try {
-      await setActiveStyleProfile(projectId, profile?.id ?? null);
-      setActiveStyleProfileState(profile);
-      setStylePickerVisible(false);
-    } catch (styleError) {
-      setError(styleError instanceof Error ? styleError.message : String(styleError));
-    }
-  };
 
   const evolveFromRevision = async () => {
     if (!projectId || !activeChapter || !pendingEvolution || evolvingStyle) return;
@@ -684,10 +672,10 @@ export function WritingScreen() {
               }}
               style={styles.iconButton}
             >
-              <Ionicons name="swap-horizontal-outline" size={22} color={colors.primary} />
+              <Ionicons name="swap-horizontal-outline" size={20} color={colors.primary} />
             </Pressable>
             <Pressable accessibilityLabel="更多操作" onPress={() => setHeaderMenuVisible((value) => !value)} style={styles.iconButton}>
-              <Ionicons name="ellipsis-horizontal" size={22} color={colors.primary} />
+              <Ionicons name="ellipsis-horizontal" size={20} color={colors.primary} />
             </Pressable>
           </View>
         )}
@@ -755,13 +743,6 @@ export function WritingScreen() {
             </Pressable>
           </View>
         ) : null}
-        <Pressable accessibilityRole="button" onPress={() => setStylePickerVisible(true)} style={styles.styleSelector}>
-          <Ionicons name="color-wand-outline" size={17} color={activeStyleProfile ? colors.primary : colors.textMuted} />
-          <Text numberOfLines={1} style={[styles.styleSelectorText, activeStyleProfile && styles.styleSelectorTextActive]}>
-            {activeStyleProfile ? activeStyleProfile.name + " V" + activeStyleProfile.version : "不使用创作文风"}
-          </Text>
-          <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
-        </Pressable>
         {error ? <View style={styles.errorWrap}><ErrorNotice message={error} /></View> : null}
         {activeChapter ? (
           <View style={styles.editor}>
@@ -850,43 +831,6 @@ export function WritingScreen() {
                   </View>
                 </Pressable>
               ))}
-            </PlainScrollView>
-          </View>
-        </SheetBackdrop>
-      </Modal>
-
-      <Modal visible={stylePickerVisible} transparent animationType="slide" onRequestClose={() => setStylePickerVisible(false)}>
-        <SheetBackdrop onPress={() => setStylePickerVisible(false)}>
-          <View style={styles.actionSheet}>
-            <View style={styles.exportHeader}>
-              <View>
-                <Text style={styles.sheetTitle}>选择创作文风</Text>
-                <Text style={styles.styleSheetMeta}>会用于助手后续生成或修改正文</Text>
-              </View>
-              <Pressable accessibilityLabel="关闭文风列表" onPress={() => setStylePickerVisible(false)} style={styles.iconButton}>
-                <Ionicons name="close" size={24} color={colors.textMuted} />
-              </Pressable>
-            </View>
-            <PlainScrollView style={styles.styleList} contentContainerStyle={styles.styleListContent}>
-              <Pressable onPress={() => void chooseStyle(null)} style={[styles.styleOption, !activeStyleProfile && styles.styleOptionActive]}>
-                <Ionicons name={!activeStyleProfile ? "radio-button-on" : "radio-button-off"} size={20} color={!activeStyleProfile ? colors.primary : colors.textMuted} />
-                <View style={styles.styleOptionCopy}>
-                  <Text style={styles.styleOptionTitle}>不使用文风</Text>
-                  <Text style={styles.styleOptionMeta}>只遵循本轮要求与作品设定</Text>
-                </View>
-              </Pressable>
-              {styleProfiles.map((profile) => {
-                const selected = profile.id === activeStyleProfile?.id;
-                return (
-                  <Pressable key={profile.id} onPress={() => void chooseStyle(profile)} style={[styles.styleOption, selected && styles.styleOptionActive]}>
-                    <Ionicons name={selected ? "radio-button-on" : "radio-button-off"} size={20} color={selected ? colors.primary : colors.textMuted} />
-                    <View style={styles.styleOptionCopy}>
-                      <Text style={styles.styleOptionTitle} numberOfLines={1}>{profile.name} V{profile.version}</Text>
-                      <Text style={styles.styleOptionMeta}>{profile.kind === "author" ? "当前作品作者文风" : "参考小说文风"}</Text>
-                    </View>
-                  </Pressable>
-                );
-              })}
             </PlainScrollView>
           </View>
         </SheetBackdrop>
@@ -1225,9 +1169,6 @@ const styles = StyleSheet.create({
   historyPreviewTitle: { color: colors.text, fontSize: 19, fontWeight: "700" },
   historyPreviewText: { color: colors.text },
   historyFooter: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-  styleSelector: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-  styleSelectorText: { flex: 1, color: colors.textMuted, fontSize: 13, fontWeight: "600" },
-  styleSelectorTextActive: { color: colors.primary },
   errorWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   editor: { flex: 1, padding: spacing.lg, gap: spacing.md },
   preview: { flex: 1, gap: spacing.md },
@@ -1268,14 +1209,6 @@ const styles = StyleSheet.create({
   },
   sheetHeaderActions: { flexDirection: "row", alignItems: "center" },
   sheetTitle: { color: colors.text, fontSize: 18, fontWeight: "700" },
-  styleSheetMeta: { marginTop: 2, color: colors.textMuted, fontSize: 12 },
-  styleList: { maxHeight: 420 },
-  styleListContent: { paddingBottom: spacing.sm },
-  styleOption: { minHeight: 62, flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-  styleOptionActive: { backgroundColor: colors.surfaceMuted },
-  styleOptionCopy: { flex: 1, minWidth: 0 },
-  styleOptionTitle: { color: colors.text, fontSize: 15, fontWeight: "600" },
-  styleOptionMeta: { marginTop: 3, color: colors.textMuted, fontSize: 12 },
   directoryList: { paddingBottom: spacing.lg },
   volumeHeader: {
     minHeight: 50,
