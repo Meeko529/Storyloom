@@ -50,6 +50,33 @@ function runStatus(trace: AgentRunTrace): { label: string; color: string } {
 }
 
 /**
+ * 组头标题跟随组内最后一步。
+ *
+ * 抄 DeepWrite 的 `workGroupActivityLabel`：正在读文件就写「读取章节」，正在想就写
+ * 「思考中」，跑完了写「处理完成」。比固定写「已完成」有信息量 —— 展开前就知道它
+ * 现在卡在哪一步。
+ */
+function activityLabel(
+  lines: ReadonlyArray<{ kind: "reasoning" | "event"; title?: string; running?: boolean }>,
+  trace: AgentRunTrace,
+): { label: string; color: string } {
+  if (trace.status === "error") return { label: "执行失败", color: colors.danger };
+  if (trace.events.some((event) => event.status === "waiting")) return { label: "等待你的操作", color: colors.accent };
+  const last = lines[lines.length - 1];
+  if (last?.kind === "reasoning") {
+    return last.running
+      ? { label: "思考中", color: colors.primary }
+      : { label: "处理完成", color: colors.primary };
+  }
+  if (last?.kind === "event" && last.title) {
+    return last.running
+      ? { label: last.title, color: colors.primary }
+      : { label: "处理完成", color: colors.primary };
+  }
+  return runStatus(trace);
+}
+
+/**
  * 组头摘要：只写「工具名 + 次数」的聚合。
  *
  * 刻意不写智能体名、不写"N 个智能体 / N 项工具 / N 个技能 / 已探索 N 项 / N 次提问"这类总数 ——
@@ -172,7 +199,6 @@ export function AgentTraceView({
   liveReasoning?: string;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded || trace.status === "running");
-  const status = runStatus(trace);
   const toolSummary = useMemo(() => summarizeTools(trace), [trace]);
 
   useEffect(() => {
@@ -182,25 +208,61 @@ export function AgentTraceView({
   // 段落的唯一来源：有 segments 就按它排；旧数据没有 segments 时把思考放最前兜底。
   const eventsById = useMemo(() => new Map(trace.events.map((event) => [event.id, event])), [trace.events]);
   const lines = useMemo(() => {
-    const collected: Array<{ kind: "reasoning"; text: string; seconds?: number; live?: boolean }
-      | { kind: "event"; id: string }> = [];
+    const collected: Array<{
+      kind: "reasoning" | "event";
+      id?: string;
+      text?: string;
+      title?: string;
+      running?: boolean;
+      seconds?: number;
+      live?: boolean;
+    }> = [];
     if (trace.segments?.length) {
       for (const segment of trace.segments) {
         if (segment.kind === "reasoning") {
           if (segment.text.trim()) collected.push({ kind: "reasoning", text: segment.text, seconds: segment.seconds });
         } else if (eventsById.has(segment.eventId)) {
-          collected.push({ kind: "event", id: segment.eventId });
+          const event = eventsById.get(segment.eventId)!;
+          collected.push({
+            kind: "event",
+            id: event.id,
+            title: event.title,
+            running: event.status === "running",
+          });
         }
       }
     } else {
       for (const segment of reasoningSegments ?? []) {
         if (segment.text.trim()) collected.push({ kind: "reasoning", text: segment.text, seconds: segment.seconds });
       }
-      for (const event of trace.events) collected.push({ kind: "event", id: event.id });
+      for (const event of trace.events) {
+        collected.push({ kind: "event", id: event.id, title: event.title, running: event.status === "running" });
+      }
     }
-    if (liveReasoning?.trim()) collected.push({ kind: "reasoning", text: liveReasoning, live: true });
+
+    // 流式思考与 segments 里的最后一段是**同一份内容**的两个来源
+    // （一段来自 onDelta 累积，一段来自该轮模型调用返回）。两者只能显示一次：
+    // 段末已经是思考段时不再追加，否则同段文字会连着出现两遍。
+    const tailIsReasoning = collected[collected.length - 1]?.kind === "reasoning";
+    if (!tailIsReasoning && liveReasoning?.trim()) {
+      collected.push({ kind: "reasoning", text: liveReasoning, live: true, running: true });
+    }
     return collected;
   }, [trace.segments, trace.events, eventsById, reasoningSegments, liveReasoning]);
+
+  // 末段思考已进过线，且它是模型给出正面前的最后一步 —— 抄 DeepWrite 的
+  // `processingItems` 结尾把最后一块 response 摘出去的做法：完成后的末段思考
+  // 不再留在时间线里，避免「时间线末尾一段思考」与「助手正文」两处重复表达。
+  // 流式期间（trace.status === "running"）不摘，那一段正是正在增长的思考。
+  const visibleLines = useMemo(() => {
+    if (trace.status === "running") return lines;
+    if (lines.length < 2) return lines;
+    const tail = lines[lines.length - 1];
+    if (tail.kind === "reasoning" && !tail.live) return lines.slice(0, -1);
+    return lines;
+  }, [lines, trace.status]);
+
+  const status = useMemo(() => activityLabel(visibleLines, trace), [visibleLines, trace]);
 
   return (
     <View style={styles.trace}>
@@ -220,7 +282,7 @@ export function AgentTraceView({
         {trace.status === "running" ? <ActivityIndicator size="small" color={colors.primary} /> : null}
         <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={18} color={colors.textMuted} />
       </Pressable>
-      {expanded && lines.length ? (
+      {expanded && visibleLines.length ? (
         <AdaptiveScroll maxHeight={340} claimGesture>
           {/* claimGesture：助手消息列表是 inverted FlatList，思考轨迹嵌在列表头里。
               不抢手势的话，想上下滑看轨迹内容时整条对话会先跟着滑走。 */}
@@ -231,11 +293,11 @@ export function AgentTraceView({
                 <Text style={styles.collaborationText}>此任务可按需调用专业子智能体协作</Text>
               </View>
             ) : null}
-            {lines.map((line, index) => {
+            {visibleLines.map((line, index) => {
               if (line.kind === "reasoning") {
-                return <ReasoningSegment key={`reasoning-${index}`} text={line.text} seconds={line.seconds} live={line.live} />;
+                return <ReasoningSegment key={`reasoning-${index}`} text={line.text ?? ""} seconds={line.seconds} live={line.live} />;
               }
-              const event = eventsById.get(line.id);
+              const event = line.id ? eventsById.get(line.id) : undefined;
               return event ? <TraceEventRow key={event.id} event={event} inline={inline} /> : null;
             })}
           </View>

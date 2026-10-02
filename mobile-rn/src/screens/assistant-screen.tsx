@@ -859,6 +859,9 @@ export function AssistantScreen() {
       });
       setRetryRequest(null);
       setLiveTrace(null);
+      // 流式思考一并清掉：它与 trace.segments 同源，清了 trace 就得清这份，
+      // 否则残留到下一次发送，时间线上会出现一段没有归属的思考。
+      setLiveReasoning("");
       setUndoTarget(undoLabel());
       setAttachments([]);
     } catch (sendError) {
@@ -895,7 +898,10 @@ export function AssistantScreen() {
         }
       }
       // 失败时不回填输入框：原话已经在消息列表里，重发走那条消息下方的「重试」。
-      if (isCurrentRequest()) setLiveTrace(null);
+      if (isCurrentRequest()) {
+        setLiveTrace(null);
+        setLiveReasoning("");
+      }
     } finally {
       if (isCurrentRequest()) setSending(false);
     }
