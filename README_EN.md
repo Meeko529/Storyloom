@@ -47,11 +47,11 @@ Storyloom **stands on OpenFicM's shoulders rather than rewriting it**: the UI, l
 - **Attachments**: send txt / md / json / csv and **Word (.docx)** files to the assistant; save them as project notes for long-term retrieval
 - **Conversation directory**: a directory-style panel — a "new conversation" button, per-conversation **rename**, message counts; new conversations ask for confirmation
 - **Mascot**: a little figure on the input box corner — six to choose from (cat / fox / paper crane / shiba / dragon / ink-drop), tinted by the theme
-- **Reasoning and prose stream in live**: all three protocols stream, so reasoning and text appear as they are generated instead of arriving in one block; while a request runs you see "working · Ns elapsed", with reasoning text and tool-execution events on one live timeline (the run process is the rows of that timeline), and finished run cards show "took Ns". Model reasoning (DeepSeek-R1 family, Zhipu reasoning, Gemini, Claude extended thinking) appears as a collapsible block
+- **Reasoning and prose stream in live**: all three protocols stream, so reasoning and text appear as they are generated instead of arriving in one block; while a request runs you see "working · Ns elapsed". One round is one disclosure: collapsed it is a single row (`Finished · N tools · Ns`), expanded the reasoning row and the tool rows sit on the same line with the reasoning body indented behind a thin left rule. Model reasoning (DeepSeek-R1 family, Zhipu reasoning, Gemini, Claude extended thinking) appears the same way
 - **Context usage**: open it from the "⋯ menu" to see the estimated share, message and character counts, and over-budget / over-window warnings
 - Live tool execution, with sub-agent delegation
 - A shared budget of 24 model requests per conversation (protects rate-limited relays)
-- **Built-in creation presets**: 3 agents (long-form / short-form / screenplay) + **25 built-in writing skills** (de-AI-flavor, dialogue polish, outline building, chapter beat-sheet writing, serial pacing quota & anti-resolution, screenplay scenes, audio drama scripts, long-form continuity audits, scene & atmosphere description, golden-finger design, fanfiction, poetry & lyrics, and more) — spanning long-form, short-form, screenplay and interactive fiction. Custom content can be exported/imported as JSON
+- **Built-in creation presets**: 3 agents (long-form / short-form / screenplay) + **27 built-in writing skills** (de-AI flavor in two layers — wording and narrative architecture — information gap & conflict ladder, dialogue polish, outline building, chapter beat-sheet writing, serial pacing quota & anti-resolution, screenplay scenes, audio drama scripts, long-form continuity audits, scene & atmosphere description, golden-finger design, fanfiction, poetry & lyrics, and more) — spanning long-form, short-form, screenplay and interactive fiction. Custom content can be exported/imported as JSON
 
 **Model integration** (the focus of this project)
 - Three protocols: OpenAI-compatible / Google Gemini / Anthropic
@@ -83,7 +83,7 @@ Upstream requires all 5 runtime resources before the app opens, including a **21
 
 Changes:
 
-- The base agent / skill content pack (478 KB, 16 skills + 8 agents) is **bundled into the APK**, SHA-256 matching the pinned upstream commit; Storyloom additionally bundles 25 self-written skills without modifying the pack (keeps the checksum intact)
+- The base agent / skill content pack (478 KB, 16 skills + 8 agents) is **bundled into the APK**, SHA-256 matching the pinned upstream commit; Storyloom additionally bundles 27 self-written skills without modifying the pack (keeps the checksum intact)
 - Resources split into **required / optional**: only the built-in pack is required; Lorn style, oh-story pack, embedding and reranking models are all optional
 - The launch page gains "skip and enter the app" — it can never lock you out
 - Local models warm up **silently in the background**; a failed warm-up does not block entry
@@ -149,7 +149,7 @@ Changed: a **fixed signing certificate** (configured in repo Secrets), so every 
 ### 10. Settings grouping & built-in creation presets
 
 - 14 entries in five groups (Basics / Connection & Models / Creation System / Knowledge / System); list shows names only, explanations at sub-page tops
-- Built-in long-form / short-form / screenplay agents plus **25 self-written skills** (self-written, not translated or copied from external sources), merged with the remote content pack by id — upstream content is never overwritten; **both read paths merge** these extensions
+- Built-in long-form / short-form / screenplay agents plus **27 self-written skills** (self-written, not translated or copied from external sources), merged with the remote content pack by id — upstream content is never overwritten; **both read paths merge** these extensions
 - **Models page**: default-model card + provider rows (fetch models / advanced / delete) + radio to switch default + long-press for per-model conversation settings + "clean duplicates" in the corner
 - **Model capabilities page**: temperature / max tokens / tool calls / image input per model
 - **Connection page**: request timeout; provider advanced settings live behind each row's button on the Models page

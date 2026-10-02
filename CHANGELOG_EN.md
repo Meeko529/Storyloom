@@ -8,6 +8,26 @@ Important changes to this project. Format based on [Keep a Changelog](https://ke
 
 ---
 
+## [0.1.34] — 2026-10-02
+
+### Added
+
+- **Reasoning and execution now form one line**: a single round is one disclosure — collapsed it is a single row (`Finished · N tools · Ns`); expanded, the reasoning row and the tool rows sit on the same line, with the reasoning body indented behind a thin left rule. The run card lost its border and fill so it lines up with the reasoning row
+- **Adaptive scroll container**: content shorter than the cap keeps its natural height (no empty gap); only taller content scrolls inside the card. Wired into the write-confirmation card, the question card, the update notes and the run-process body
+- **Two new skills**: "De-AI · narrative architecture" (structure before wording, three calibration rules, two-stage protocol, deletion over addition) and "Information gap & conflict ladder" (set / use / reveal / renew, a 2–4 step conflict ladder, the three elements of a scene card); the existing "De-AI flavor" skill gained the three calibration rules and the two-stage protocol. Self-written skills 25 → 27
+- **Clickable language switch in the docs**: both READMEs now link both sides of the language switch
+
+### Fixed
+
+- **Question card colours and type size**: the white button bar and the mismatched header icon block are unified with the card body; type dropped one step and both buttons are smaller
+- **The two boxes on the write-confirmation card**: the plain block (collapsed) and the bordered block (expanded) are both gone
+- **Write-confirmation card now shows "before"**: the collapsed state only rendered the new text; it now shows labelled before / after
+- **Write-confirmation buttons are smaller**: matching the two buttons on the question card
+- **Six sets of pure-white surfaces** (bottom tab bar, the four resource entries, the ⋯ dropdown on all three screens, the category panel, empty-state chips, the composer) brought down to the page background
+- **"Clear current project index" moved**: out of "Advanced → Backup & restore" into "Knowledge → Index", next to "Rebuild current project index"
+
+---
+
 ## [0.1.33] — 2026-10-02
 
 ### Added
