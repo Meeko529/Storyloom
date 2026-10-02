@@ -21,7 +21,7 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { mascotSource, normalizeMascotKind } from "@/settings/mascots";
 
 import { AgentRunError, runAgent } from "@/agent/runtime";
-import { undoLastWrite, undoLabel, type WritePreview } from "@/agent/write-review";
+import { isDestructiveTool, undoLastWrite, undoLabel, type WritePreview } from "@/agent/write-review";
 import {
   attachmentContextBlock,
   MAX_ATTACHMENTS_PER_MESSAGE,
@@ -67,7 +67,7 @@ import {
   setActiveStyleProfile,
 } from "@/data/style-repositories";
 import type { RootTabParamList } from "@/navigation/types";
-import { getAgentDefinitions } from "@/settings/config";
+import { getAgentDefinitions, getWriteApproval, saveWriteApproval, type WriteApprovalMode } from "@/settings/config";
 import { useAppStore } from "@/store/app-store";
 import { colors, radius, shadow, spacing } from "@/theme";
 import type {
@@ -139,13 +139,23 @@ function diffLineStats(before: string, after: string): { added: number; removed:
  * `requestToken` 带在卡上 —— 用户在确认期间切换对话或取消后，卡片上的令牌就与
  * 当前请求不符，两颗按钮会拒绝 resolve，不会把已经作废的改动写进作品。
  */
+/** 写入审批方式的两档。说明行讲清这一档会怎么做，不带警示语气。 */
+const APPROVAL_MODES: Array<{ id: WriteApprovalMode; label: string; hint: string }> = [
+  { id: "ask", label: "请求批准", hint: "写入前展示改动内容，确认后写入文件。" },
+  { id: "auto", label: "替我审批", hint: "跳过确认卡直接写入，写入后可撤销。" },
+];
+
 function requestToolApproval(
   emit: ((req: WriteCardRequest) => void) | null,
   requestToken: number,
   name: string,
   args: Record<string, unknown>,
   preview: WritePreview | null,
+  mode: WriteApprovalMode,
 ): Promise<boolean> {
+  // 替我审批：跳过的是"等你点这一下"，不是记录 —— 预览与撤销快照在本函数被调用
+  // 之前就已备好，自动放行时同样入撤销栈。删除类例外：掉了的东西撤不回来。
+  if (mode === "auto" && !isDestructiveTool(name)) return Promise.resolve(true);
   if (!preview) {
     const details = JSON.stringify(args, null, 2).slice(0, 1_200);
     return new Promise((resolve) => {
@@ -330,6 +340,10 @@ export function AssistantScreen() {
   }, [liveTrace]);
   // 最近一次被接受的 AI 写入（撤销入口），null 表示当前没有可撤销的改动
   const [undoTarget, setUndoTarget] = useState<string | null>(null);
+  // 写入审批方式：过了工具权限那道门之后，是等你点一下，还是直接放行。默认等你点。
+  const [writeApproval, setWriteApproval] = useState<WriteApprovalMode>("ask");
+  // 输入框「+」上的菜单：null 关闭 / "root" 附件与权限 / "approval" 权限的两档。
+  const [composerMenu, setComposerMenu] = useState<null | "root" | "approval">(null);
   // 待随下一条消息发送的文本附件
   const [attachments, setAttachments] = useState<TextAttachment[]>([]);
   const [writeCard, setWriteCard] = useState<WriteCardRequest | null>(null);
@@ -373,6 +387,7 @@ export function AssistantScreen() {
         agents,
         nextStyleProfiles,
         nextActiveStyleProfile,
+        approvalMode,
       ] = await Promise.all([
         getProject(activeProjectId),
         listChatSessions(activeProjectId),
@@ -384,6 +399,7 @@ export function AssistantScreen() {
         getAgentDefinitions(),
         listStyleProfiles(activeProjectId),
         getActiveStyleProfile(activeProjectId),
+        getWriteApproval(),
       ]);
       if (!nextProject) throw new Error("作品不存在");
       const activeAgent = agents.find((agent) => agent.id === activeAgentId && agent.enabled && agent.kind === "primary")
@@ -422,6 +438,7 @@ export function AssistantScreen() {
       setSessions(nextSessions);
       setActiveSession(nextSession);
       setMessages(nextMessages);
+      setWriteApproval(approvalMode);
             const lastFailed = [...nextMessages].reverse().find((message) => message.role === "assistant" && (message.metadata?.taskStatus === "failed" || message.metadata?.agentTrace?.status === "error"));
       setRetryRequest(lastFailed ? retryRequestForMessage(lastFailed, nextMessages, nextSession, nextSelection, activeAgent?.id ?? null) : null);
       setModels(nextModels);
@@ -782,6 +799,24 @@ export function AssistantScreen() {
     })();
   };
 
+  /** 从「+」菜单里选附件：先收起菜单再走原来的选文件流程。 */
+  const pickAttachment = () => {
+    setComposerMenu(null);
+    void handlePickAttachment();
+  };
+
+  /**
+   * 切换写入审批方式。输入框菜单与设置页共用同一份持久化，改一处两处同时生效。
+   *
+   * 它只决定"过了权限那道门之后等不等你点"：工具被禁用的仍然不执行，删除类
+   * 在任何一档下都等你点。
+   */
+  const changeWriteApproval = async (mode: WriteApprovalMode) => {
+    setWriteApproval(mode);
+    setComposerMenu(null);
+    await saveWriteApproval(mode);
+  };
+
   const askUser = useCallback((request: AgentClarificationRequest) => new Promise<AgentClarificationResponse>((resolve) => {
     questionResolverRef.current?.({ answers: [], cancelled: true });
     questionResolverRef.current = resolve;
@@ -894,7 +929,8 @@ export function AssistantScreen() {
         selection: runSelection,
         history: runHistory,
         agentId: retry?.agentId ?? activeAgentId,
-        approveTool: (name, args, preview) => requestToolApproval(emitWriteCard, requestId, name, args, preview),
+        approveTool: (name, args, preview) =>
+          requestToolApproval(emitWriteCard, requestId, name, args, preview, writeApproval),
         askUser,
         onTrace: (trace) => {
           // 实时时间线唯一的数据源：思考增量与执行事件都在这同一份轨迹里，
@@ -1279,6 +1315,9 @@ export function AssistantScreen() {
             </Text>
           </View>
         ) : null}
+        {composerMenu ? (
+          <Pressable accessibilityLabel="关闭菜单" style={styles.composerMenuScrim} onPress={() => setComposerMenu(null)} />
+        ) : null}
         {/* 吉祥物挂件：坐在输入框上沿，纯装饰不响应点击。可在设置里换/关（外观主题批）。 */}
         <View style={styles.composerWrap}>
           {mascotEnabled ? (
@@ -1317,19 +1356,71 @@ export function AssistantScreen() {
               </Pressable>
             </View>
           ) : null}
+          {composerMenu ? (
+            <View style={styles.composerMenu}>
+              {composerMenu === "root" ? (
+                <>
+                  <Pressable
+                    accessibilityLabel="添加附件"
+                    disabled={attachments.length >= MAX_ATTACHMENTS_PER_MESSAGE}
+                    onPress={pickAttachment}
+                    style={({ pressed }) => [styles.composerMenuRow, pressed && styles.composerMenuRowPressed,
+                      attachments.length >= MAX_ATTACHMENTS_PER_MESSAGE && styles.composerMenuRowDisabled]}
+                  >
+                    <Ionicons name="attach-outline" size={16} color={colors.textMuted} />
+                    <Text style={styles.composerMenuText}>附件</Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityLabel="写入权限"
+                    onPress={() => setComposerMenu("approval")}
+                    style={({ pressed }) => [styles.composerMenuRow, pressed && styles.composerMenuRowPressed]}
+                  >
+                    <Ionicons name="lock-closed-outline" size={16} color={colors.textMuted} />
+                    <Text style={styles.composerMenuText}>权限</Text>
+                    <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+                  </Pressable>
+                </>
+              ) : (
+                <>
+                  <Pressable accessibilityLabel="返回" onPress={() => setComposerMenu("root")} style={styles.composerMenuBack}>
+                    <Ionicons name="chevron-back" size={13} color={colors.textMuted} />
+                    <Text style={styles.composerMenuBackText}>权限</Text>
+                  </Pressable>
+                  <Text style={styles.composerMenuHint}>写入正文前的确认方式</Text>
+                  {APPROVAL_MODES.map((mode) => (
+                    <Pressable
+                      key={mode.id}
+                      accessibilityLabel={mode.label}
+                      onPress={() => void changeWriteApproval(mode.id)}
+                      style={[styles.approvalOption, writeApproval === mode.id && styles.approvalOptionActive]}
+                    >
+                      <View style={styles.approvalCopy}>
+                        <Text style={[styles.approvalTitle, writeApproval === mode.id && styles.approvalTitleActive]}>
+                          {mode.label}
+                        </Text>
+                        <Text style={styles.approvalHint}>{mode.hint}</Text>
+                      </View>
+                      {writeApproval === mode.id ? <Ionicons name="checkmark" size={15} color={colors.primary} /> : null}
+                    </Pressable>
+                  ))}
+                </>
+              )}
+            </View>
+          ) : null}
           <View style={styles.composer}>
             <Pressable
-              accessibilityLabel={attachments.length ? `已添加附件 ${attachments.length} 份，继续添加` : "添加附件"}
-              disabled={sending || attachments.length >= MAX_ATTACHMENTS_PER_MESSAGE}
-              onPress={() => void handlePickAttachment()}
+              accessibilityLabel="打开输入菜单"
+              disabled={sending}
+              onPress={() => setComposerMenu((current) => (current ? null : "root"))}
               style={({ pressed }) => [styles.attachButton, (pressed || sending) && styles.sendDisabled]}
             >
-              <Ionicons name="add" size={24} color={colors.primary} />
+              <Ionicons name={composerMenu ? "close" : "add"} size={24} color={colors.primary} />
             </Pressable>
             <TextInput
               ref={composerRef}
               value={input}
               onChangeText={setInput}
+              onFocus={() => setComposerMenu(null)}
               style={styles.composerInput}
               placeholder={editingMessageId ? "修改后重新发送" : "输入创作任务"}
               placeholderTextColor={colors.textMuted}
@@ -1650,6 +1741,31 @@ const styles = StyleSheet.create({
   failureRetryDisabled: { opacity: 0.5 },
   failureRetryText: { color: colors.danger, fontSize: 12, fontWeight: "700" },
   composerWrap: { marginHorizontal: spacing.md, marginBottom: spacing.sm, gap: 6 },
+  composerMenuScrim: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(20,21,19,0.05)" },
+  composerMenu: {
+    marginLeft: 6,
+    marginBottom: spacing.xs,
+    width: 236,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingVertical: spacing.xs,
+    ...shadow.card,
+  },
+  composerMenuRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 40, paddingHorizontal: spacing.md },
+  composerMenuRowPressed: { backgroundColor: colors.surfaceMuted },
+  composerMenuRowDisabled: { opacity: 0.55 },
+  composerMenuText: { flex: 1, color: colors.text, fontSize: 14 },
+  composerMenuBack: { flexDirection: "row", alignItems: "center", gap: 2, minHeight: 26, paddingHorizontal: spacing.md },
+  composerMenuBackText: { color: colors.textMuted, fontSize: 11 },
+  composerMenuHint: { paddingHorizontal: spacing.md, paddingBottom: spacing.xs, color: colors.textMuted, fontSize: 11 },
+  approvalOption: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm, marginHorizontal: spacing.xs, borderRadius: radius.sm, padding: spacing.sm },
+  approvalOptionActive: { backgroundColor: colors.surfaceMuted },
+  approvalCopy: { flex: 1 },
+  approvalTitle: { color: colors.text, fontSize: 13 },
+  approvalTitleActive: { color: colors.primary },
+  approvalHint: { marginTop: 2, color: colors.textMuted, fontSize: 11, lineHeight: 16 },
   composer: { flexDirection: "row", alignItems: "center", gap: 6, paddingLeft: 6, paddingRight: 6, paddingVertical: 6, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, borderRadius: 999, ...shadow.card },
   writeBadge: { marginLeft: "auto", color: colors.primary, fontSize: 11, fontWeight: "800", backgroundColor: "rgba(23,107,87,0.12)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, overflow: "hidden" },
   writeCard: {

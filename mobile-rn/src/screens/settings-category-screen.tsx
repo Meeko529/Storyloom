@@ -33,12 +33,15 @@ import {
   getAgentSkills,
   getIndexSettings,
   getToolPermissions,
+  getWriteApproval,
   saveAgentDefinitions,
   saveAgentRules,
   saveAgentSkills,
   saveIndexSettings,
   saveToolPermissions,
+  saveWriteApproval,
   TOOL_CATALOG,
+  type WriteApprovalMode,
   type AgentDefinition,
   type AgentRule,
   type AgentSkill,
@@ -143,6 +146,12 @@ const PERMISSION_MODES: Array<{ id: ToolPermissionMode; label: string }> = [
   { id: "allow", label: "允许" },
   { id: "ask", label: "每次询问" },
   { id: "deny", label: "禁止" },
+];
+
+/** 写入审批方式：过了工具权限那道门之后，是等你点一下还是直接放行。 */
+const APPROVAL_MODES: Array<{ id: WriteApprovalMode; label: string }> = [
+  { id: "ask", label: "请求批准" },
+  { id: "auto", label: "替我审批" },
 ];
 
 type IndexNumberKey = "chunkSize" | "chunkOverlap" | "retrievalTopK" | "rerankTopK";
@@ -283,6 +292,8 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
   const [availableModels, setAvailableModels] = useState<Model[]>([]);
   const [permissions, setPermissions] = useState<Record<string, ToolPermissionMode>>({});
+  // 写入审批方式：与输入框「+」菜单里的那一处是同一份，改一处两处同时生效。
+  const [writeApproval, setWriteApproval] = useState<WriteApprovalMode>("ask");
   const [activeAgentId, setActiveAgentId] = useState("");
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
@@ -555,12 +566,13 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
     setLoading(true);
     setError(null);
     try {
-      const [nextIndex, nextRules, nextSkills, nextAgents, nextPermissions, active, history, compress, autoSave, fontSize, fontFamily, chatFontSizeRaw, chatFontFamilyRaw, contextWindowRaw, timeout, nextModels, nextOhStoryState, nextResourceState] = await Promise.all([
+      const [nextIndex, nextRules, nextSkills, nextAgents, nextPermissions, nextWriteApproval, active, history, compress, autoSave, fontSize, fontFamily, chatFontSizeRaw, chatFontFamilyRaw, contextWindowRaw, timeout, nextModels, nextOhStoryState, nextResourceState] = await Promise.all([
         getIndexSettings(),
         getAgentRules(),
         getAgentSkills(),
         getAgentDefinitions(),
         getToolPermissions(),
+        getWriteApproval(),
         getSetting("agent.activeDefinitionId"),
         getSetting("context.historyLimit"),
         getSetting("context.compressSystemPrompts"),
@@ -582,6 +594,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       setSkills(nextSkills);
       setAgents(nextAgents);
       setPermissions(nextPermissions);
+      setWriteApproval(nextWriteApproval);
       const activeAgent = nextAgents.find((agent) => agent.id === active && agent.enabled && agent.kind === "primary")
         ?? nextAgents.find((agent) => agent.id === "builtin-agent--build" && agent.enabled)
         ?? nextAgents.find((agent) => agent.enabled && agent.kind === "primary");
@@ -943,6 +956,12 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
     await persistManagedState({ ...permissions, [key]: mode }, saveToolPermissions, setPermissions);
   };
 
+  /** 切换写入审批方式。禁用类权限与删除类操作不受它影响，照旧拦。 */
+  const changeWriteApproval = async (mode: WriteApprovalMode) => {
+    setWriteApproval(mode);
+    await saveWriteApproval(mode);
+  };
+
   /** 批量设定全部工具权限。 */
   const setAllPermissions = async (mode: ToolPermissionMode) => {
     const next: Record<string, ToolPermissionMode> = {};
@@ -1289,7 +1308,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       ) : null}
       {category === "agent-tools" ? (
         <View style={styles.section}>
-          <Text style={styles.sectionHint}>控制助手能否读写你的内容。设为「每次询问」时，助手调用前会先征求同意。</Text>
+          <Text style={styles.sectionHint}>控制助手能否读写你的内容。设为「每次询问」时，助手调用前会先征求同意。写入类工具没有「允许」档；确认时等不等你点，由输入框「+」菜单里或本页助手分类下的「正文修改权限」决定。</Text>
           <View style={styles.presetRow}>
             {/* 写入类工具只留「每次询问」与「禁止」两档：设成「允许」等于关掉写入确认。
                 预设按钮同理，写入类那一批不参与「全部允许」。 */}
@@ -1486,6 +1505,25 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       {category === "agents" ? (
         <View style={styles.section}>
           <Text style={styles.sectionHint}>智能体决定写作的分工与流程：由谁执笔、按什么步骤产出。当前启用的主智能体负责接收你的请求。带锁图标的是内置或在线更新的智能体，只能开关；用下方「添加智能体」自建的，随时可以查看、编辑与删除。</Text>
+          <View style={styles.permissionCard}>
+            <View style={styles.manageText}>
+              <Text style={styles.settingLabel}>正文修改权限</Text>
+              <Text style={styles.settingValue}>写入正文前的确认方式。删除类操作在任何一档下都会等你确认。</Text>
+            </View>
+            <View style={styles.modeChoices}>
+              {APPROVAL_MODES.map((mode) => (
+                <Pressable
+                  key={mode.id}
+                  onPress={() => void changeWriteApproval(mode.id)}
+                  style={[styles.modeChip, writeApproval === mode.id && styles.modeChipActive]}
+                >
+                  <Text style={[styles.modeChipText, writeApproval === mode.id && styles.modeChipTextActive]}>
+                    {mode.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
           {(["primary", "subagent"] as const).map((kind) => {
             const items = agents.filter((agent) => agent.kind === kind);
             if (!items.length) return null;

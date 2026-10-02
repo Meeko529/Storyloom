@@ -197,6 +197,29 @@ export async function saveToolPermissions(permissions: Record<string, ToolPermis
   await writeJson("agent.toolPermissions", normalized);
 }
 
+/** 写入审批方式：过了权限这道门之后，是等你点一下，还是直接放行。 */
+export type WriteApprovalMode = "ask" | "auto";
+
+/**
+ * 读取写入审批方式。
+ *
+ * 它与工具权限是**两道串联的门**，不是两个并列开关：
+ *   第一道（设置页 · 工具权限）：`deny` 不执行；`ask` 才进第二道。写入类工具没有
+ *     `allow` 档（见上一个函数的收敛），所以不存在"那边放行、这边又问"的冲突。
+ *   第二道（输入框 + → 权限）：`ask` 弹确认卡等你点；`auto` 自动放行，但预览与
+ *     撤销快照照常生成 —— 跳过的是"等你点这一下"，不是记录。
+ *
+ * `deny` 优先于一切：它在授权环节先抛错，根本走不到第二道。
+ */
+export async function getWriteApproval(): Promise<WriteApprovalMode> {
+  const value = await readJson("agent.writeApproval");
+  return value === "auto" ? "auto" : "ask";
+}
+
+export async function saveWriteApproval(mode: WriteApprovalMode): Promise<void> {
+  await writeJson("agent.writeApproval", mode === "auto" ? "auto" : "ask");
+}
+
 function parseRules(value: unknown): AgentRule[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {

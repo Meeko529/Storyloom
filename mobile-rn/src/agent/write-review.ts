@@ -85,6 +85,18 @@ interface UndoEntry {
   restore: () => Promise<void>;
 }
 
+/**
+ * 删除类工具。
+ *
+ * 它们与其他写入工具的区别是：改动无法用快照还原 —— 撤销依赖"改前内容"，
+ * 而删掉的对象连目标都要重新找回来。所以这类工具在任何审批方式下都等你点。
+ */
+const DESTRUCTIVE_TOOLS = new Set(["delete_note", "delete_character", "delete_world_entry"]);
+
+export function isDestructiveTool(name: string): boolean {
+  return DESTRUCTIVE_TOOLS.has(name);
+}
+
 export function isWriteTool(name: string): boolean {
   return WRITE_TOOLS.has(name);
 }
