@@ -8,6 +8,28 @@ Important changes to this project. Format based on [Keep a Changelog](https://ke
 
 ---
 
+## [0.1.35] — 2026-10-02
+
+### Added
+
+- **New "book spine" style for the shelf**: a third style alongside grid and list. Each row is one full-width plank with a row of spines standing on it; thickness and height are mapped from the work's word count on a log scale (100k words is visibly thicker than 10k), and a hash of the title decides a slight lean so a row of spines looks like a real shelf. Titles are printed vertically down the spine; the rounded look is done with a highlight and a shade layer, no texture needed
+- **Panel direction unified**: 15 "pick one / take a look" panels — conversation history, context usage, switch work, pick model, pick style, table of contents, export, work menu, reference-book detail, style detail, skill detail, chat settings, advanced settings, note export format — now drop down from below the header and cover the rest of the screen, instead of rising from the bottom. Rising panels are kept for input and destructive confirmations
+- **Autosave switched to a debounced scheduler**: saves after typing stops; leaving the app, losing focus, or closing the page flushes any pending save immediately
+
+### Fixed
+
+- **Writing page felt sluggish while editing**: typing no longer re-renders the whole page on every keystroke, and no longer scans the whole text on every render. Word count updates after typing stops
+- **Keyboard avoidance re-layout on the writing page**: the keyboard opening and closing no longer re-lays out the entire subtree
+- **Thought-process duplication**: the group header missed some event types, the agent name showed both in the header and inline, and the same line could repeat
+- **Scroll containers**: leftover grey scrollbar on Android, mis-taps during slow drags, taps that did nothing
+- **Write confirmation**: confirmation channel completed for 20 tools; cancel and allow split into tiers; undo given per group; a confirmation token; action-only calls can skip it
+- **Removed the style row from the writing page**: the assistant page already offers the same entry
+- **Duplicated copy in the style library panel**: the same thing was said twice; the duplicate was removed
+- **Header icons too large**: switch-work and ⋯ reduced from 22 to 20, consistent across both pages
+- **Two stacked hairlines on the optional-content page**: "current load status" now lists the install state of all seven kinds of optional content
+- **Shelf proportions**: removed the book shadow (the pale strip to the right of the book), cover corner radius 10 → 6, the plank's visible lower lip reduced from 62% to 28%, and cell width no longer subtracts excessive fixed padding
+
+---
 ## [0.1.34] — 2026-10-02
 
 ### Added
