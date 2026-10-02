@@ -13,7 +13,7 @@ import {
   View,
 } from "react-native";
 
-import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, SheetBackdrop } from "@/components/ui";
+import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, TopSheet } from "@/components/ui";
 import {
   createStyleProfileVersion,
   deleteStyleProfile,
@@ -400,24 +400,18 @@ export function StyleLibraryScreen() {
         )}
       />
 
-      <Modal visible={Boolean(selectedSource)} transparent animationType="slide" onRequestClose={closeSource}>
-        <SheetBackdrop onPress={closeSource}>
-          <View style={styles.sheet}>
-            <View style={styles.sheetHeader}>
-              <View style={styles.sheetTitleWrap}>
-                {editingSource ? (
-                  <Field label="参考书名称" value={sourceTitle} onChangeText={setSourceTitle} autoFocus />
-                ) : (
-                  <>
-                    <Text style={styles.sheetTitle} numberOfLines={2}>{selectedSource?.title}</Text>
-                    <Text style={styles.sheetMeta}>{selectedSource ? formatName(selectedSource) + " · " + formatBytes(selectedSource.sizeBytes) + " · " + selectedSource.characterCount.toLocaleString() + " 字" : ""}</Text>
-                  </>
-                )}
-              </View>
-              <Pressable accessibilityLabel="关闭参考书详情" onPress={closeSource} style={styles.iconButton}>
-                <Ionicons name="close" size={24} color={colors.textMuted} />
-              </Pressable>
+      <Modal visible={Boolean(selectedSource)} transparent animationType="fade" onRequestClose={closeSource}>
+        <TopSheet
+          title={editingSource ? "编辑参考书" : (selectedSource?.title ?? "")}
+          subtitle={selectedSource ? formatName(selectedSource) + " · " + formatBytes(selectedSource.sizeBytes) + " · " + selectedSource.characterCount.toLocaleString() + " 字" : ""}
+          onClose={closeSource}
+          avoidKeyboard
+        >
+          {editingSource ? (
+            <View style={styleSheetPad}>
+              <Field label="参考书名称" value={sourceTitle} onChangeText={setSourceTitle} autoFocus />
             </View>
+          ) : null}
             <PlainScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
               {editingSource ? (
                 <View style={styles.inlineActions}>
@@ -494,22 +488,16 @@ export function StyleLibraryScreen() {
                 />
               )) : <Text style={styles.emptyHint}>还没有版本，点击“蒸馏文风”生成。</Text>}
             </PlainScrollView>
-          </View>
-        </SheetBackdrop>
+        </TopSheet>
       </Modal>
 
-      <Modal visible={Boolean(selectedProfile)} transparent animationType="slide" onRequestClose={() => setSelectedProfile(null)}>
-        <SheetBackdrop onPress={() => setSelectedProfile(null)}>
-          <View style={styles.sheet}>
-            <View style={styles.sheetHeader}>
-              <View style={styles.sheetTitleWrap}>
-                <Text style={styles.sheetTitle} numberOfLines={2}>{selectedProfile?.name} V{selectedProfile?.version}</Text>
-                <Text style={styles.sheetMeta}>{selectedProfile?.kind === "author" ? "作者文风版本" : "参考小说文风版本"}</Text>
-              </View>
-              <Pressable accessibilityLabel="关闭文风详情" onPress={() => setSelectedProfile(null)} style={styles.iconButton}>
-                <Ionicons name="close" size={24} color={colors.textMuted} />
-              </Pressable>
-            </View>
+      <Modal visible={Boolean(selectedProfile)} transparent animationType="fade" onRequestClose={() => setSelectedProfile(null)}>
+        <TopSheet
+          title={selectedProfile ? selectedProfile.name + " V" + selectedProfile.version : ""}
+          subtitle={selectedProfile?.kind === "author" ? "作者文风版本" : "参考小说文风版本"}
+          onClose={() => setSelectedProfile(null)}
+          avoidKeyboard
+        >
             <PlainScrollView style={styles.sheetScroll} contentContainerStyle={styles.profileContent}>
               {selectedProfile?.kind === "author" && editingAuthorGuide ? (
                 <Field label="作者文风指南" value={authorGuide} onChangeText={setAuthorGuide} multiline style={styles.guideInput} maxLength={100000} />
@@ -539,8 +527,7 @@ export function StyleLibraryScreen() {
                 </Pressable>
               </View>
             </PlainScrollView>
-          </View>
-        </SheetBackdrop>
+        </TopSheet>
       </Modal>
     </Screen>
   );
@@ -578,6 +565,9 @@ function ProfileRow({
   );
 }
 
+// 顶部面板里只包一块表单时的留白。
+const styleSheetPad = { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm } as const;
+
 const styles = StyleSheet.create({
   loading: { flex: 1, alignItems: "center", justifyContent: "center" },
   iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
@@ -614,13 +604,8 @@ const styles = StyleSheet.create({
   useButton: { minWidth: 54, minHeight: 44, alignItems: "center", justifyContent: "center", marginRight: spacing.xs },
   useButtonText: { color: colors.primary, fontSize: 13, fontWeight: "700" },
   useButtonTextActive: { color: colors.textMuted },
-  sheet: { maxHeight: "88%", borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, backgroundColor: colors.background },
   // 父层只有 maxHeight，ScrollView 默认不收缩会把超出部分顶出可视区且滚不动，必须允许它收缩。
   sheetScroll: { flexShrink: 1 },
-  sheetHeader: { minHeight: 70, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingLeft: spacing.lg, paddingRight: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-  sheetTitleWrap: { flex: 1, minWidth: 0 },
-  sheetTitle: { color: colors.text, fontSize: 19, fontWeight: "700" },
-  sheetMeta: { marginTop: 3, color: colors.textMuted, fontSize: 12 },
   sheetContent: { gap: spacing.md, padding: spacing.lg, paddingBottom: spacing.xxl },
   profileContent: { gap: spacing.lg, padding: spacing.lg, paddingBottom: spacing.xxl },
   inlineActions: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: spacing.sm },

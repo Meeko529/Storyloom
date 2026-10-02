@@ -1369,40 +1369,33 @@ export function AssistantScreen() {
         </TopSheet>
       </Modal>
 
-      <Modal visible={projectPickerVisible} transparent animationType="slide" onRequestClose={() => setProjectPickerVisible(false)}>
-        <SheetBackdrop onPress={() => setProjectPickerVisible(false)}>
-          <View style={styles.sheet}>
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>切换作品</Text>
-              <Pressable accessibilityLabel="关闭作品列表" onPress={() => setProjectPickerVisible(false)} style={styles.iconButton}>
-                <Ionicons name="close" size={24} color={colors.textMuted} />
+      <Modal visible={projectPickerVisible} transparent animationType="fade" onRequestClose={() => setProjectPickerVisible(false)}>
+        <TopSheet title="切换作品" onClose={() => setProjectPickerVisible(false)}>
+          <FlatList
+            data={projectsForPicker}
+            keyExtractor={(item) => item.id}
+            style={styles.sheetList}
+            contentContainerStyle={styles.topSheetListBottom}
+            renderItem={({ item }) => (
+              <Pressable
+                onPress={() => {
+                  setProjectPickerVisible(false);
+                  if (item.id !== projectId) {
+                    setCurrentProject(item.id);
+                    void load(item.id);
+                  }
+                }}
+                style={[styles.sheetRow, item.id === (project?.id ?? projectId) && styles.sheetRowActive]}
+              >
+                <Ionicons name={item.id === (project?.id ?? projectId) ? "radio-button-on" : "radio-button-off"} size={20} color={item.id === (project?.id ?? projectId) ? colors.primary : colors.textMuted} />
+                <View style={styles.sheetRowText}>
+                  <Text style={styles.sheetRowTitle} numberOfLines={1}>{item.title}</Text>
+                  <Text style={styles.sheetRowMeta} numberOfLines={1}>{item.description || "暂无简介"}</Text>
+                </View>
               </Pressable>
-            </View>
-            <FlatList
-              data={projectsForPicker}
-              keyExtractor={(item) => item.id}
-              style={styles.sheetList}
-              renderItem={({ item }) => (
-                <Pressable
-                  onPress={() => {
-                    setProjectPickerVisible(false);
-                    if (item.id !== projectId) {
-                      setCurrentProject(item.id);
-                      void load(item.id);
-                    }
-                  }}
-                  style={[styles.sheetRow, item.id === (project?.id ?? projectId) && styles.sheetRowActive]}
-                >
-                  <Ionicons name={item.id === (project?.id ?? projectId) ? "radio-button-on" : "radio-button-off"} size={20} color={item.id === (project?.id ?? projectId) ? colors.primary : colors.textMuted} />
-                  <View style={styles.sheetRowText}>
-                    <Text style={styles.sheetRowTitle} numberOfLines={1}>{item.title}</Text>
-                    <Text style={styles.sheetRowMeta} numberOfLines={1}>{item.description || "暂无简介"}</Text>
-                  </View>
-                </Pressable>
-              )}
-            />
-          </View>
-        </SheetBackdrop>
+            )}
+          />
+        </TopSheet>
       </Modal>
 
       <Modal visible={renaming !== null} transparent animationType="slide" onRequestClose={() => setRenaming(null)}>
@@ -1433,7 +1426,7 @@ export function AssistantScreen() {
             data={sessions}
             keyExtractor={(item) => item.id}
             style={styles.topSheetList}
-            contentContainerStyle={styles.topSheetListContent}
+            contentContainerStyle={styles.topSheetListBottom}
             renderItem={({ item }) => {
               const sessionModelId = item.modelId ?? defaultModelId;
               const sessionModel = models.find((model) => model.id === sessionModelId);
@@ -1496,22 +1489,12 @@ export function AssistantScreen() {
         </TopSheet>
       </Modal>
 
-      <Modal visible={modelPickerVisible} transparent animationType="slide" onRequestClose={() => setModelPickerVisible(false)}>
-        <SheetBackdrop onPress={() => setModelPickerVisible(false)}>
-          <View style={styles.sheet}>
-            <View style={styles.sheetHeader}>
-              <View style={styles.sheetTitleWrap}>
-                <Text style={styles.sheetTitle}>选择模型</Text>
-                <Text style={styles.sheetSubtitle}>仅用于当前对话</Text>
-              </View>
-              <Pressable accessibilityLabel="关闭模型列表" onPress={() => setModelPickerVisible(false)} style={styles.iconButton}>
-                <Ionicons name="close" size={24} color={colors.textMuted} />
-              </Pressable>
-            </View>
-            <FlatList
+      <Modal visible={modelPickerVisible} transparent animationType="fade" onRequestClose={() => setModelPickerVisible(false)}>
+        <TopSheet title="选择模型" subtitle="仅用于当前对话" onClose={() => setModelPickerVisible(false)}>
+          <FlatList
               data={models}
               keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.sheetList}
+              contentContainerStyle={[styles.sheetList, styles.topSheetListBottom]}
               ListHeaderComponent={
                 <Pressable onPress={() => void chooseModel(null)} style={[styles.sheetRow, activeSession?.modelId === null && styles.sheetRowActive]}>
                   <Ionicons name={activeSession?.modelId === null ? "radio-button-on" : "radio-button-off"} size={20} color={activeSession?.modelId === null ? colors.primary : colors.textMuted} />
@@ -1535,25 +1518,14 @@ export function AssistantScreen() {
                 );
               }}
             />
-          </View>
-        </SheetBackdrop>
+        </TopSheet>
       </Modal>
-      <Modal visible={stylePickerVisible} transparent animationType="slide" onRequestClose={() => setStylePickerVisible(false)}>
-        <SheetBackdrop onPress={() => setStylePickerVisible(false)}>
-          <View style={styles.sheet}>
-            <View style={styles.sheetHeader}>
-              <View style={styles.sheetTitleWrap}>
-                <Text style={styles.sheetTitle}>选择创作文风</Text>
-                <Text style={styles.sheetSubtitle}>{project?.title ?? "当前作品"}</Text>
-              </View>
-              <Pressable accessibilityLabel="关闭文风列表" onPress={() => setStylePickerVisible(false)} style={styles.iconButton}>
-                <Ionicons name="close" size={24} color={colors.textMuted} />
-              </Pressable>
-            </View>
-            <FlatList
+      <Modal visible={stylePickerVisible} transparent animationType="fade" onRequestClose={() => setStylePickerVisible(false)}>
+        <TopSheet title="选择创作文风" subtitle={project?.title ?? "当前作品"} onClose={() => setStylePickerVisible(false)}>
+          <FlatList
               data={styleProfiles}
               keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.sheetList}
+              contentContainerStyle={[styles.sheetList, styles.topSheetListBottom]}
               ListHeaderComponent={(
                 <Pressable onPress={() => void chooseStyle(null)} style={[styles.sheetRow, !activeStyleProfile && styles.sheetRowActive]}>
                   <Ionicons name={!activeStyleProfile ? "radio-button-on" : "radio-button-off"} size={20} color={!activeStyleProfile ? colors.primary : colors.textMuted} />
@@ -1576,8 +1548,7 @@ export function AssistantScreen() {
                 );
               }}
             />
-          </View>
-        </SheetBackdrop>
+        </TopSheet>
       </Modal>
     </Screen>
   );
@@ -1734,9 +1705,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  sheetTitleWrap: { flex: 1, minWidth: 0 },
   sheetTitle: { color: colors.text, fontSize: 18, fontWeight: "700" },
-  sheetSubtitle: { marginTop: 2, color: colors.textMuted, fontSize: 12 },
   sheetList: { paddingBottom: spacing.xl },
   sheetRow: {
     minHeight: 62,
@@ -1752,7 +1721,8 @@ const styles = StyleSheet.create({
   // 历史对话行：左侧圆角图标块 + 标题与摘要 + 最右一个 ⋯。
   // 重命名与删除收进 ⋯ 的行内菜单，因此行内只留一颗按钮。
   topSheetList: { flexGrow: 0 },
-  topSheetListContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl, gap: spacing.xs },
+  // 列表容器：行自带左右内边距，这里只补底部留白，不重复缩进。
+  topSheetListBottom: { paddingBottom: spacing.xl },
   sessionItem: {
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,

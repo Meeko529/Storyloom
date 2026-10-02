@@ -215,6 +215,22 @@ export function TopSheet({
 }
 
 /**
+ * 顶部下滑面板里的滚动区。
+ *
+ * `TopSheetScroll` 是 `PlainScrollView` 加上「占满面板剩余高度」的样式，
+ * 让面板在内容超出一屏时能滚，而不是把面板撑到屏外。
+ * `TopSheetPadScrollContent` 给内容加左右与底部留白；行自身已带内边距时用
+ * `TopSheetPadBottomContent`，否则左侧会缩进两次。
+ */
+export function TopSheetScroll({ contentStyle, children }: PropsWithChildren<{ contentStyle?: StyleProp<ViewStyle> }>) {
+  return (
+    <PlainScrollView style={styles.topSheetScroll} contentContainerStyle={contentStyle}>
+      {children}
+    </PlainScrollView>
+  );
+}
+
+/**
  * 全项目统一的滚动容器。
  *
  * 一律不显示滚动条：Android 上 ScrollView 默认画一条灰色竖条，落在卡内或弹层里很脏。
@@ -328,6 +344,13 @@ const styles = StyleSheet.create({
   topSheetTitle: { color: colors.text, fontSize: 17, fontWeight: "700" },
   topSheetSubtitle: { marginTop: 2, color: colors.textMuted, fontSize: 12 },
   topSheetClose: { width: 40, height: 40, alignItems: "flex-end", justifyContent: "flex-start" },
+  topSheetScroll: { flex: 1 },
+  topSheetPadScrollContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.xs, paddingBottom: spacing.xl },
+  // 行自带左右内边距时只补底部留白，否则左侧缩进两次。
+  topSheetPadBottomContent: { paddingBottom: spacing.xl },
+  // 面板内容首行的动作入口（如「新建卷」），顶栏只留标题与关闭。
+  topSheetActionRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  topSheetActionText: { color: colors.primary, fontSize: 14, fontWeight: "600" },
   screen: { flex: 1, backgroundColor: colors.background },
   scroll: { paddingBottom: 40 },
   header: {

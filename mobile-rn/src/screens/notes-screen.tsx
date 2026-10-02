@@ -13,7 +13,7 @@ import {
   View,
 } from "react-native";
 
-import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, SheetBackdrop } from "@/components/ui";
+import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, SheetBackdrop, TopSheet } from "@/components/ui";
 import { getProject, listChapters, listVolumes } from "@/data/repositories";
 import { exportNotes, type NotesExportFormat } from "@/lib/export";
 import {
@@ -396,15 +396,9 @@ export function NotesScreen() {
           </View>
         </SheetBackdrop>
       </Modal>
-          <Modal visible={formatPickerVisible} transparent animationType="slide" onRequestClose={() => setFormatPickerVisible(false)}>
-        <SheetBackdrop onPress={() => setFormatPickerVisible(false)}>
-          <View style={styles.sheet}>
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>导出笔记</Text>
-              <Pressable accessibilityLabel="关闭导出格式选择" onPress={() => setFormatPickerVisible(false)} style={styles.iconButton}>
-                <Ionicons name="close" size={24} color={colors.textMuted} />
-              </Pressable>
-            </View>
+          <Modal visible={formatPickerVisible} transparent animationType="fade" onRequestClose={() => setFormatPickerVisible(false)}>
+        <TopSheet title="导出笔记" subtitle="选择导出格式" onClose={() => setFormatPickerVisible(false)}>
+          <View style={notesFormatBody}>
             <Pressable onPress={() => { setFormatPickerVisible(false); void exportAllNotes("markdown"); }} style={styles.formatRow}>
               <Ionicons name="document-text-outline" size={20} color={colors.primary} />
               <View style={styles.formatRowText}>
@@ -427,11 +421,14 @@ export function NotesScreen() {
               </View>
             </Pressable>
           </View>
-        </SheetBackdrop>
+        </TopSheet>
       </Modal>
 </Screen>
   );
 }
+
+// 顶部面板内容容器：行自带左右内边距，这里只补行距与底部留白。
+const notesFormatBody = { paddingBottom: spacing.xl, gap: 2 } as const;
 
 const styles = StyleSheet.create({
   loading: { flex: 1, alignItems: "center", justifyContent: "center" },

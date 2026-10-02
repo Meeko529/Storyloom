@@ -17,7 +17,7 @@ import {
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
-import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, SheetBackdrop, TopSheet } from "@/components/ui";
+import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, SheetBackdrop, TopSheet, TopSheetScroll } from "@/components/ui";
 import { ensureEditorFontLoaded } from "@/settings/font-loader";
 import { exportNovel, type ExportScope, type NovelExportFormat } from "@/lib/export";
 import { countNotesUnder, deleteNotesUnder } from "@/data/note-repositories";
@@ -805,16 +805,9 @@ export function WritingScreen() {
         )}
       </KeyboardAvoidingView>
 
-      <Modal visible={projectPickerVisible} transparent animationType="slide" onRequestClose={() => setProjectPickerVisible(false)}>
-        <SheetBackdrop onPress={() => setProjectPickerVisible(false)}>
-          <View style={styles.directorySheet}>
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>切换作品</Text>
-              <Pressable accessibilityLabel="关闭作品列表" onPress={() => setProjectPickerVisible(false)} style={styles.iconButton}>
-                <Ionicons name="close" size={24} color={colors.textMuted} />
-              </Pressable>
-            </View>
-            <PlainScrollView style={styles.previewScroll} contentContainerStyle={styles.previewContent}>
+      <Modal visible={projectPickerVisible} transparent animationType="fade" onRequestClose={() => setProjectPickerVisible(false)}>
+        <TopSheet title="切换作品" onClose={() => setProjectPickerVisible(false)}>
+          <TopSheetScroll contentStyle={topSheetPadContent}>
               {projectPickerList.map((item) => (
                 <Pressable
                   key={item.id}
@@ -831,29 +824,25 @@ export function WritingScreen() {
                   </View>
                 </Pressable>
               ))}
-            </PlainScrollView>
-          </View>
-        </SheetBackdrop>
+          </TopSheetScroll>
+        </TopSheet>
       </Modal>
 
-      <Modal visible={chapterPickerVisible} transparent animationType="slide" onRequestClose={() => setChapterPickerVisible(false)}>
-        <SheetBackdrop onPress={() => setChapterPickerVisible(false)}>
-          <View style={styles.directorySheet}>
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>作品目录</Text>
-              <View style={styles.sheetHeaderActions}>
-                <Pressable
-                  accessibilityLabel="新建卷"
-                  onPress={() => { void openNameDialog({ kind: "create-volume" }, "第" + (volumes.length + 1) + "卷"); }}
-                  style={styles.iconButton}
-                >
-                  <Ionicons name="folder-open-outline" size={22} color={colors.primary} />
-                </Pressable>
-                <Pressable accessibilityLabel="关闭目录" onPress={() => setChapterPickerVisible(false)} style={styles.iconButton}>
-                  <Ionicons name="close" size={24} color={colors.textMuted} />
-                </Pressable>
-              </View>
-            </View>
+      <Modal visible={chapterPickerVisible} transparent animationType="fade" onRequestClose={() => setChapterPickerVisible(false)}>
+        <TopSheet
+          title="作品目录"
+          subtitle={project?.title ?? "当前作品"}
+          onClose={() => setChapterPickerVisible(false)}
+        >
+            {/* 面板顶栏只有标题与关闭，「新建卷」放在内容首行。 */}
+            <Pressable
+              accessibilityLabel="新建卷"
+              onPress={() => { void openNameDialog({ kind: "create-volume" }, "第" + (volumes.length + 1) + "卷"); }}
+              style={({ pressed }) => [topSheetActionRow, pressed && styles.rowPressed]}
+            >
+              <Ionicons name="folder-open-outline" size={19} color={colors.primary} />
+              <Text style={topSheetActionText}>新建卷</Text>
+            </Pressable>
             <SectionList
               sections={directorySections}
               keyExtractor={(item) => item.id}
@@ -918,8 +907,7 @@ export function WritingScreen() {
                 />
               )}
             />
-          </View>
-        </SheetBackdrop>
+        </TopSheet>
       </Modal>
 
       <Modal visible={historyVisible} transparent animationType="fade" onRequestClose={() => setHistoryVisible(false)}>
@@ -991,15 +979,8 @@ export function WritingScreen() {
         </TopSheet>
       </Modal>
 
-      <Modal visible={exportPickerVisible} transparent animationType="slide" onRequestClose={() => setExportPickerVisible(false)}>
-        <SheetBackdrop onPress={() => setExportPickerVisible(false)}>
-          <View style={styles.actionSheet}>
-            <View style={styles.exportHeader}>
-              <Text style={styles.actionTitle}>导出作品</Text>
-              <Pressable accessibilityLabel="关闭导出选项" onPress={() => setExportPickerVisible(false)} style={styles.iconButton}>
-                <Ionicons name="close" size={24} color={colors.textMuted} />
-              </Pressable>
-            </View>
+      <Modal visible={exportPickerVisible} transparent animationType="fade" onRequestClose={() => setExportPickerVisible(false)}>
+        <TopSheet title="导出作品" subtitle={project?.title ?? "当前作品"} onClose={() => setExportPickerVisible(false)}>
             <View style={styles.exportFormatRow}>
               <Pressable
                 accessibilityLabel="导出为 Markdown"
@@ -1054,8 +1035,7 @@ export function WritingScreen() {
               </View>
               <Ionicons name="chevron-forward" size={19} color={colors.textMuted} />
             </Pressable>
-          </View>
-        </SheetBackdrop>
+        </TopSheet>
       </Modal>
       <Modal visible={Boolean(directoryTarget)} transparent animationType="slide" onRequestClose={() => setDirectoryTarget(null)}>
         <SheetBackdrop onPress={() => setDirectoryTarget(null)}>
@@ -1140,7 +1120,6 @@ const styles = StyleSheet.create({
   headerMenuRowPressed: { backgroundColor: colors.surfaceMuted },
   headerMenuText: { color: colors.text, fontSize: 14, fontWeight: "600" },
   headerMenuTextDisabled: { color: colors.textMuted },
-  historyHeaderCopy: { flex: 1, minWidth: 0, gap: 2 },
   rowPressed: { backgroundColor: colors.surfaceMuted },
   // 预览态退回列表的一行。顶栏只有标题与关闭两颗位置，入口放在内容首行。
   historyBackRow: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
@@ -1188,27 +1167,6 @@ const styles = StyleSheet.create({
   previewActions: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end", gap: spacing.sm },
   counter: { flex: 1, color: colors.textMuted, fontSize: 12 },
   centeredBackdrop: { flex: 1, justifyContent: "center", padding: spacing.lg, backgroundColor: colors.overlay },
-  directorySheet: {
-    maxHeight: "82%",
-    minHeight: "46%",
-    paddingTop: spacing.md,
-    paddingBottom: spacing.lg,
-    borderTopLeftRadius: radius.sheet,
-    borderTopRightRadius: radius.sheet,
-    backgroundColor: colors.background,
-  },
-  sheetHeader: {
-    minHeight: 58,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingLeft: spacing.lg,
-    paddingRight: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  sheetHeaderActions: { flexDirection: "row", alignItems: "center" },
-  sheetTitle: { color: colors.text, fontSize: 18, fontWeight: "700" },
   directoryList: { paddingBottom: spacing.lg },
   volumeHeader: {
     minHeight: 50,
@@ -1247,7 +1205,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radius.sheet,
     backgroundColor: colors.background,
   },
-  exportHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingLeft: spacing.sm },
   exportFormatRow: { flexDirection: "row", gap: spacing.xs, paddingHorizontal: spacing.sm, paddingBottom: spacing.xs },
   exportFormatChip: { flex: 1, minHeight: 38, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, backgroundColor: colors.surface },
   exportFormatChipActive: { borderColor: colors.primary, backgroundColor: "#E6F3EF" },
@@ -1281,3 +1238,9 @@ const styles = StyleSheet.create({
   nameDialogTitle: { color: colors.text, fontSize: 20, fontWeight: "700" },
   nameDialogActions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm },
 });
+
+// 顶部面板的两处共用样式：内容留白与首行动作入口。放本地而非组件库，
+// 因为只有写作页的作品目录需要首行那颗「新建卷」。
+const topSheetPadContent = { paddingHorizontal: spacing.lg, paddingTop: spacing.xs, paddingBottom: spacing.xl } as const;
+const topSheetActionRow = { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm } as const;
+const topSheetActionText = { color: colors.primary, fontSize: 14, fontWeight: "600" } as const;

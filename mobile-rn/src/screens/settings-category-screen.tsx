@@ -17,7 +17,7 @@ import {
   View,
 } from "react-native";
 
-import { Button, ErrorNotice, Field, Header, PlainScrollView, Screen, SheetBackdrop } from "@/components/ui";
+import { Button, ErrorNotice, Field, Header, PlainScrollView, Screen, TopSheet } from "@/components/ui";
 import { MASCOT_OPTIONS, normalizeMascotKind } from "@/settings/mascots";
 import {
   getSetting,
@@ -1661,20 +1661,13 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
       ) : null}
 
       {/* 技能详情：点技能行进来，只读看完整指令；内置的可复制成自己的副本再改。 */}
-      <Modal visible={Boolean(detailSkill)} transparent animationType="slide" onRequestClose={() => setDetailSkill(null)}>
-        <SheetBackdrop onPress={() => setDetailSkill(null)}>
-          <View style={styles.skillSheet}>
-            <View style={styles.skillSheetHeader}>
-              <View style={styles.skillSheetTitleWrap}>
-                <Text style={styles.skillSheetTitle}>{detailSkill?.name ?? ""}</Text>
-                <Text style={styles.skillSheetSubtitle}>
-                  {detailSkill?.source === "custom" ? "自定义技能" : detailSkill?.source === "plugin" ? "Lorn 文风插件" : detailSkill?.source === "remote" ? "oh-story 更新技能" : "Storyloom 基础包"} · {detailSkill?.instructions.length ?? 0} 字
-                </Text>
-              </View>
-              <Pressable accessibilityLabel="关闭技能详情" onPress={() => setDetailSkill(null)} style={styles.iconButton}>
-                <Ionicons name="close" size={24} color={colors.textMuted} />
-              </Pressable>
-            </View>
+      <Modal visible={Boolean(detailSkill)} transparent animationType="fade" onRequestClose={() => setDetailSkill(null)}>
+        <TopSheet
+          title={detailSkill?.name ?? ""}
+          subtitle={`${detailSkill?.source === "custom" ? "自定义技能" : detailSkill?.source === "plugin" ? "Lorn 文风插件" : detailSkill?.source === "remote" ? "oh-story 更新技能" : "Storyloom 基础包"} · ${detailSkill?.instructions.length ?? 0} 字`}
+          onClose={() => setDetailSkill(null)}
+        >
+          <View style={skillSheetBody}>
             <PlainScrollView style={styles.skillSheetScroll} contentContainerStyle={styles.skillSheetScrollContent}>
               <Text style={styles.skillSheetBody}>{detailSkill?.instructions ?? ""}</Text>
             </PlainScrollView>
@@ -1686,11 +1679,14 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
               )
             ) : null}
           </View>
-        </SheetBackdrop>
+        </TopSheet>
       </Modal>
     </Screen>
   );
 }
+
+// 顶部面板的内容容器：底部留白，最后那颗按钮不贴面板下沿。
+const skillSheetBody = { paddingBottom: spacing.xl } as const;
 
 const styles = StyleSheet.create({
   loading: { flex: 1, alignItems: "center", justifyContent: "center" },
@@ -1707,11 +1703,6 @@ const styles = StyleSheet.create({
   mascotLabel: { color: colors.text, fontSize: 12 },
   groupHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 7, paddingHorizontal: spacing.sm, marginTop: 0, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   searchInput: { minHeight: 42, marginBottom: spacing.sm, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surface, color: colors.text, fontSize: 14 },
-  skillSheet: { maxHeight: "82%", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.lg, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, backgroundColor: colors.background },
-  skillSheetHeader: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  skillSheetTitleWrap: { flex: 1, minWidth: 0 },
-  skillSheetTitle: { color: colors.text, fontSize: 18, fontWeight: "700" },
-  skillSheetSubtitle: { marginTop: 2, color: colors.textMuted, fontSize: 12 },
   skillSheetScroll: { alignSelf: "stretch" },
   skillSheetScrollContent: { paddingVertical: spacing.sm },
   skillSheetBody: { color: colors.text, fontSize: 13, lineHeight: 21 },

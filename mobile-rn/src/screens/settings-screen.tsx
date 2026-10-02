@@ -7,7 +7,7 @@ import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, BackHandler, FlatList, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { Button, ErrorNotice, Field, Header, PlainScrollView, Screen, SheetBackdrop } from "@/components/ui";
+import { Button, ErrorNotice, Field, Header, PlainScrollView, Screen, TopSheet } from "@/components/ui";
 import {
   deleteProvider,
   getProviderApiKey,
@@ -740,20 +740,10 @@ export function SettingsScreen() {
       <Modal
         visible={convSheetModel !== null}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setConvSheetModel(null)}
       >
-        <SheetBackdrop onPress={() => setConvSheetModel(null)}>
-          <View style={styles.modelSheet}>
-            <View style={styles.sheetHeader}>
-              <View style={styles.providerInfo}>
-                <Text style={styles.sectionTitle}>对话设置</Text>
-                <Text style={styles.providerUrl}>{convSheetModel ? convSheetModel.name : ""}</Text>
-              </View>
-              <Pressable accessibilityLabel="关闭对话设置" onPress={() => setConvSheetModel(null)} style={styles.iconButton}>
-                <Ionicons name="close" size={24} color={colors.textMuted} />
-              </Pressable>
-            </View>
+        <TopSheet title="对话设置" subtitle={convSheetModel ? convSheetModel.name : ""} onClose={() => setConvSheetModel(null)} avoidKeyboard>
             <View style={styles.segmented}>
               <Pressable onPress={() => setConvScope("model")} style={[styles.segment, convScope === "model" && styles.segmentActive]}>
                 <Text style={[styles.segmentText, convScope === "model" && styles.segmentTextActive]}>仅此模型</Text>
@@ -803,30 +793,22 @@ export function SettingsScreen() {
                 }
               }} />
             </View>
-          </View>
-        </SheetBackdrop>
+        </TopSheet>
       </Modal>
       <Modal
         visible={modelPickerProvider !== null}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setModelPickerProvider(null)}
       >
-        <SheetBackdrop onPress={() => setModelPickerProvider(null)}>
-          <View style={styles.modelSheet}>
-            <View style={styles.sheetHeader}>
-              <View style={styles.providerInfo}>
-                <Text style={styles.sectionTitle}>选择模型</Text>
-                <Text style={styles.providerUrl}>
-                  {modelFilter.trim()
-                    ? `${filteredRemoteModels.length} / ${remoteModels.length} 个模型`
-                    : `${remoteModels.length} 个可用模型`}
-                </Text>
-              </View>
-              <Pressable accessibilityLabel="关闭模型列表" onPress={() => setModelPickerProvider(null)} style={styles.iconButton}>
-                <Ionicons name="close" size={24} color={colors.textMuted} />
-              </Pressable>
-            </View>
+        <TopSheet
+          title="选择模型"
+          subtitle={modelFilter.trim()
+            ? `${filteredRemoteModels.length} / ${remoteModels.length} 个模型`
+            : `${remoteModels.length} 个可用模型`}
+          onClose={() => setModelPickerProvider(null)}
+          avoidKeyboard
+        >
             <View style={styles.modelFilterWrap}>
               <Field
                 label="查找模型"
@@ -856,27 +838,16 @@ export function SettingsScreen() {
                 </Pressable>
               )}
             />
-          </View>
-        </SheetBackdrop>
+        </TopSheet>
       </Modal>
 
       <Modal
         visible={advancedTarget !== null}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setAdvancedTarget(null)}
       >
-        <SheetBackdrop onPress={() => setAdvancedTarget(null)}>
-          <View style={styles.modelSheet}>
-            <View style={styles.sheetHeader}>
-              <View style={styles.providerInfo}>
-                <Text style={styles.sectionTitle}>高级设置</Text>
-                <Text style={styles.providerUrl}>{advancedTarget ? advancedTarget.name : ""}</Text>
-              </View>
-              <Pressable accessibilityLabel="关闭高级设置" onPress={() => setAdvancedTarget(null)} style={styles.iconButton}>
-                <Ionicons name="close" size={24} color={colors.textMuted} />
-              </Pressable>
-            </View>
+        <TopSheet title="高级设置" subtitle={advancedTarget ? advancedTarget.name : ""} onClose={() => setAdvancedTarget(null)} avoidKeyboard>
             <PlainScrollView
               style={styles.advancedSheetBody}
               contentContainerStyle={styles.advancedSheetContent}
@@ -885,8 +856,7 @@ export function SettingsScreen() {
               <AdvancedFields value={advancedDraft} onChange={setAdvancedDraft} />
               <Button label="保存高级设置" onPress={() => void saveAdvancedEditor()} />
             </PlainScrollView>
-          </View>
-        </SheetBackdrop>
+        </TopSheet>
       </Modal>
     </Screen>
   );
@@ -949,9 +919,7 @@ const styles = StyleSheet.create({
   choiceActive: { borderColor: colors.primary, backgroundColor: "#E6F3EF" },
   choiceText: { color: colors.textMuted, fontSize: 13 },
   choiceTextActive: { color: colors.primary, fontWeight: "700" },
-  modelSheet: { maxHeight: "78%", paddingHorizontal: spacing.md, paddingTop: spacing.md, gap: spacing.sm, paddingBottom: spacing.lg, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, backgroundColor: colors.background },
   modelFilterWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   modelFilterEmpty: { padding: spacing.lg, color: colors.textMuted, fontSize: 14, lineHeight: 20 },
-  sheetHeader: { minHeight: 64, flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.lg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   remoteModelRow: { minHeight: 62, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
 });

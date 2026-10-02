@@ -643,10 +643,9 @@ function coverColor(title: string): string {
         </KeyboardAvoidingView>
       </Modal>
 
-      <Modal visible={menuProject !== null} transparent animationType="slide" onRequestClose={() => setMenuProject(null)}>
-        <Pressable onPress={() => setMenuProject(null)} style={styles.menuBackdrop}>
-          <View style={styles.menuSheet}>
-            <Text numberOfLines={1} style={styles.menuTitle}>{menuProject?.title ?? ""}</Text>
+      <Modal visible={menuProject !== null} transparent animationType="fade" onRequestClose={() => setMenuProject(null)}>
+        <TopSheet title={menuProject?.title ?? ""} subtitle="作品操作" onClose={() => setMenuProject(null)}>
+          <View style={menuSheetBody}>
             <Pressable
               accessibilityLabel="编辑信息"
               onPress={() => { if (menuProject) openProjectInfo(menuProject); }}
@@ -701,7 +700,7 @@ function coverColor(title: string): string {
               <Text style={[styles.menuRowText, styles.menuRowDanger]}>删除作品</Text>
             </Pressable>
           </View>
-        </Pressable>
+        </TopSheet>
       </Modal>
 
       <Modal visible={categoryManagerVisible} transparent animationType="fade" onRequestClose={closeCategoryManager}>
@@ -834,7 +833,6 @@ const styles = StyleSheet.create({
   sheetScroll: { maxHeight: 460 },
   sheetScrollContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg, gap: spacing.sm },
   sheetSectionTitle: { marginTop: spacing.xs, color: colors.textMuted, fontSize: 12, fontWeight: "700" },
-  menuSheet: { maxHeight: "80%", paddingVertical: spacing.sm, paddingTop: spacing.md, paddingBottom: spacing.xl, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, backgroundColor: colors.background },
   menuTitle: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xs, color: colors.textMuted, fontSize: 13 },
   menuRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 52, paddingHorizontal: spacing.lg },
   menuRowPressed: { backgroundColor: colors.surfaceMuted },
@@ -870,3 +868,6 @@ const styles = StyleSheet.create({
   modalTitle: { color: colors.text, fontSize: 20, fontWeight: "700" },
   modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm },
 });
+
+// 作品菜单进顶部面板后的容器：行自带左右内边距，这里只补行距与底部留白。
+const menuSheetBody = { paddingBottom: spacing.xl, gap: 2 } as const;
