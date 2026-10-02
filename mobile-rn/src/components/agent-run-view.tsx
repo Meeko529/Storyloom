@@ -185,7 +185,9 @@ export function AgentTraceView({
         <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={18} color={colors.textMuted} />
       </Pressable>
       {expanded ? (
-        <AdaptiveScroll maxHeight={340}>
+        <AdaptiveScroll maxHeight={340} claimGesture>
+          {/* claimGesture：助手消息列表是 inverted FlatList，思考轨迹嵌在列表头里。
+              不抢手势的话，想上下滑看轨迹内容时整条对话会先跟着滑走。 */}
           <View style={styles.events}>
             {reasoning?.text.trim() ? (
               <ReasoningRow text={reasoning.text} seconds={reasoning.seconds} live={reasoning.live} />
@@ -249,7 +251,8 @@ export function AgentQuestionSheet({
               <Ionicons name="close" size={24} color={colors.textMuted} />
             </Pressable>
           </View>
-          <AdaptiveScroll maxHeight={300} contentContainerStyle={styles.questions} keyboardShouldPersistTaps="handled">
+          {/* claimGesture 同上：提问卡嵌在倒置列表里，不抢手势则滑动被外层吃掉。 */}
+          <AdaptiveScroll maxHeight={300} contentContainerStyle={styles.questions} keyboardShouldPersistTaps="handled" claimGesture>
             {request.questions.map((question, questionIndex) => (
               <View key={`${request.id}-${questionIndex}`} style={styles.question}>
                 <Text style={styles.questionIndex}>问题 {questionIndex + 1}</Text>

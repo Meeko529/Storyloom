@@ -1023,7 +1023,7 @@ export function AssistantScreen() {
                     <Text numberOfLines={1} style={styles.writeCardTarget}>{writeCard.target ?? writeCard.name}</Text>
                     <Text style={styles.writeBadge}>待确认</Text>
                   </View>
-                  <AdaptiveScroll maxHeight={300} style={styles.writeCardScroll}>
+                  <AdaptiveScroll maxHeight={300} style={styles.writeCardScroll} claimGesture>
                   {writeCard.before !== undefined && writeCard.after !== undefined ? (() => {
                     const stats = diffLineStats(writeCard.before, writeCard.after);
                     const afterLines = writeCard.after.split("\n").filter((line) => line.trim().length > 0);
@@ -1035,7 +1035,7 @@ export function AssistantScreen() {
                           <Text style={styles.writeStatDel}>−{stats.removed} 行</Text>
                         </View>
                         {writeDiffExpanded ? (
-                          <AdaptiveScroll maxHeight={260} style={styles.writeDiffScroll}>
+                          <AdaptiveScroll maxHeight={260} style={styles.writeDiffScroll} claimGesture>
                             <Text style={styles.writeDiffLabel}>写入前</Text>
                             {beforeLines.length === 0 ? (
                               <Text style={styles.writeDiffDel}>− （当前为空）</Text>

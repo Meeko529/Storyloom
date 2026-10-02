@@ -10,7 +10,6 @@ import {
   Text,
   TextInput,
   View,
-  type LayoutChangeEvent,
   type StyleProp,
   type TextInputProps,
   type ViewStyle,
@@ -27,6 +26,8 @@ export function Screen({ children, scroll = false }: PropsWithChildren<{ scroll?
         <KeyboardAwareScrollView
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          showsHorizontalScrollIndicator={false}
           bottomOffset={spacing.lg}
         >
           {children}
@@ -137,48 +138,86 @@ export function SheetBackdrop({ onPress, children }: PropsWithChildren<{ onPress
 }
 
 /**
- * 限高滚动容器。
+ * 全项目统一的滚动容器。
  *
- * 内容高度不超过上限时按内容收缩（不撑开、不留空档）；超过上限才切换成可滚动。
- * 直接用 `ScrollView` + `maxHeight` 在 Android 上会被撑到上限高度，内容少时下方留白，
- * 所以这里按实测内容高度二选一。
+ * 一律不显示滚动条：Android 上 ScrollView 默认画一条灰色竖条，落在卡内或弹层里很脏。
+ * 做这一个组件是为了「关掉滚动条」只写一次 —— 此前 17 处滚动容器各写各的，
+ * 漏关的地方就留到用户反馈里。
+ */
+export function PlainScrollView({
+  horizontal = false,
+  style,
+  contentContainerStyle,
+  keyboardShouldPersistTaps,
+  children,
+}: PropsWithChildren<{
+  horizontal?: boolean;
+  style?: StyleProp<ViewStyle>;
+  contentContainerStyle?: StyleProp<ViewStyle>;
+  keyboardShouldPersistTaps?: boolean | "always" | "never" | "handled";
+}>) {
+  return (
+    <ScrollView
+      horizontal={horizontal}
+      nestedScrollEnabled
+      showsVerticalScrollIndicator={false}
+      showsHorizontalScrollIndicator={false}
+      keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+      style={style}
+      contentContainerStyle={contentContainerStyle}
+    >
+      {children}
+    </ScrollView>
+  );
+}
+
+/**
+ * 限高滚动容器（内容自适应高度）。
+ *
+ * 语义：内容高度 ≤ maxHeight 时高度等于内容高度（不撑开、不留空档）；超过上限才可滚动。
+ *
+ * 🔴 曾经在这里犯过一个反复出现的错：早先的实现按高度在两个分支间切换
+ * `ScrollView` 与 `View`。两个分支的根元素**类型不同**，高度跨过阈值时 React 会把
+ * 整棵子树卸载重建，容器内所有 `useState` 归零 —— 于是「展开」点了没反应、且在
+ * 阈值附近来回抖动时明显卡顿。现在固定只用 `ScrollView`，靠 `onContentSizeChange`
+ * 动态调 `maxHeight`，**永远不换根节点**。
  */
 export function AdaptiveScroll({
   maxHeight,
   style,
   contentContainerStyle,
   keyboardShouldPersistTaps,
+  claimGesture = false,
   children,
 }: PropsWithChildren<{
   maxHeight: number;
   style?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
   keyboardShouldPersistTaps?: boolean | "always" | "never" | "handled";
+  /**
+   * 抢下手势：用在「倒置 FlatList 里内嵌的限高滚动」场景。
+   * 外层列表是 inverted 的，两层滚动方向判定相反，触摸会先被外层吃掉 ——
+   * 表现为「想滑卡内内容，结果整条对话跟着滑」。让内层在触摸开始时就成为 responder
+   * 才能拿到手势。只在确实嵌套倒置列表时开，普通页面保持默认。
+   */
+  claimGesture?: boolean;
 }>) {
+  // 内容实测高度；未测到时先按上限夹住，避免撑开一帧。
   const [contentHeight, setContentHeight] = useState(0);
-  const [measured, setMeasured] = useState(false);
-  const measure = (event: LayoutChangeEvent) => {
-    setContentHeight(event.nativeEvent.layout.height);
-    setMeasured(true);
-  };
-  // 超过上限才滚；没有超过（含尚未测到高度）时用普通容器，高度等于内容高度。
-  if (contentHeight > maxHeight) {
-    return (
-      <ScrollView
-        nestedScrollEnabled
-        keyboardShouldPersistTaps={keyboardShouldPersistTaps}
-        style={[style, { maxHeight }]}
-        contentContainerStyle={contentContainerStyle}
-      >
-        <View onLayout={measure}>{children}</View>
-      </ScrollView>
-    );
-  }
+  const clamped = contentHeight > maxHeight ? maxHeight : undefined;
   return (
-    // 首帧还没测到高度时先夹住，避免把外层卡片撑开一帧。
-    <View style={[style, measured ? null : { maxHeight, overflow: "hidden" }]}>
-      <View onLayout={measure} style={contentContainerStyle}>{children}</View>
-    </View>
+    <ScrollView
+      nestedScrollEnabled
+      showsVerticalScrollIndicator={false}
+      showsHorizontalScrollIndicator={false}
+      keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+      onStartShouldSetResponderCapture={claimGesture ? () => true : undefined}
+      onContentSizeChange={(_width, height) => setContentHeight(height)}
+      style={[style, { maxHeight: clamped }]}
+      contentContainerStyle={contentContainerStyle}
+    >
+      {children}
+    </ScrollView>
   );
 }
 

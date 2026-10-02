@@ -9,7 +9,6 @@ import {
   AppState,
   Modal,
   Pressable,
-  ScrollView,
   SectionList,
   StyleSheet,
   Text,
@@ -18,7 +17,7 @@ import {
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
-import { Button, EmptyState, ErrorNotice, Field, Header, Screen, SheetBackdrop } from "@/components/ui";
+import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, SheetBackdrop } from "@/components/ui";
 import { ensureEditorFontLoaded } from "@/settings/font-loader";
 import { exportNovel, type ExportScope, type NovelExportFormat } from "@/lib/export";
 import { countNotesUnder, deleteNotesUnder } from "@/data/note-repositories";
@@ -795,11 +794,11 @@ export function WritingScreen() {
               </>
             ) : (
               <View style={styles.preview}>
-                <ScrollView style={styles.previewScroll} contentContainerStyle={styles.previewContent} showsVerticalScrollIndicator>
+                <PlainScrollView style={styles.previewScroll} contentContainerStyle={styles.previewContent}>
                   <Text selectable style={[styles.previewText, editorTextStyle]}>
                     {content || "本章暂无正文，点击右上角编辑开始写作。"}
                   </Text>
-                </ScrollView>
+                </PlainScrollView>
                 <View style={styles.editorFooter}>
                   <Text style={styles.counter}>{dirty ? "正在保存修改..." : "预览模式"}</Text>
                   <View style={styles.previewActions}>
@@ -834,7 +833,7 @@ export function WritingScreen() {
                 <Ionicons name="close" size={24} color={colors.textMuted} />
               </Pressable>
             </View>
-            <ScrollView style={styles.previewScroll} contentContainerStyle={styles.previewContent}>
+            <PlainScrollView style={styles.previewScroll} contentContainerStyle={styles.previewContent}>
               {projectPickerList.map((item) => (
                 <Pressable
                   key={item.id}
@@ -851,7 +850,7 @@ export function WritingScreen() {
                   </View>
                 </Pressable>
               ))}
-            </ScrollView>
+            </PlainScrollView>
           </View>
         </SheetBackdrop>
       </Modal>
@@ -868,7 +867,7 @@ export function WritingScreen() {
                 <Ionicons name="close" size={24} color={colors.textMuted} />
               </Pressable>
             </View>
-            <ScrollView style={styles.styleList} contentContainerStyle={styles.styleListContent}>
+            <PlainScrollView style={styles.styleList} contentContainerStyle={styles.styleListContent}>
               <Pressable onPress={() => void chooseStyle(null)} style={[styles.styleOption, !activeStyleProfile && styles.styleOptionActive]}>
                 <Ionicons name={!activeStyleProfile ? "radio-button-on" : "radio-button-off"} size={20} color={!activeStyleProfile ? colors.primary : colors.textMuted} />
                 <View style={styles.styleOptionCopy}>
@@ -888,7 +887,7 @@ export function WritingScreen() {
                   </Pressable>
                 );
               })}
-            </ScrollView>
+            </PlainScrollView>
           </View>
         </SheetBackdrop>
       </Modal>
@@ -1002,7 +1001,7 @@ export function WritingScreen() {
             </View>
             {historyPreview ? (
               <>
-                <ScrollView style={styles.historyScroll} contentContainerStyle={styles.historyPreviewContent} showsVerticalScrollIndicator>
+                <PlainScrollView style={styles.historyScroll} contentContainerStyle={styles.historyPreviewContent}>
                   <Text style={styles.historyPreviewMeta}>
                     {formatVersionTime(historyPreview.createdAt) + " · " + historyPreview.characterCount + " 字 · " + versionReasonLabel(historyPreview.reason)}
                   </Text>
@@ -1010,7 +1009,7 @@ export function WritingScreen() {
                   <Text selectable style={[styles.historyPreviewText, editorTextStyle]}>
                     {historyPreview.content || "这一版正文为空。"}
                   </Text>
-                </ScrollView>
+                </PlainScrollView>
                 <View style={styles.historyFooter}>
                   <Button
                     label={restoringVersion ? "恢复中" : "恢复这一版"}
@@ -1022,7 +1021,7 @@ export function WritingScreen() {
             ) : historyLoading ? (
               <View style={styles.loading}><ActivityIndicator color={colors.primary} /></View>
             ) : (
-              <ScrollView style={styles.historyScroll} contentContainerStyle={styles.historyList} showsVerticalScrollIndicator>
+              <PlainScrollView style={styles.historyScroll} contentContainerStyle={styles.historyList}>
                 {historyList.length ? historyList.map((version) => (
                   <Pressable
                     key={version.id}
@@ -1049,7 +1048,7 @@ export function WritingScreen() {
                 )) : (
                   <EmptyState title="还没有历史版本" />
                 )}
-              </ScrollView>
+              </PlainScrollView>
             )}
           </View>
         </SheetBackdrop>

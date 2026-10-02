@@ -10,7 +10,6 @@ import {
   Linking,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -18,7 +17,7 @@ import {
   View,
 } from "react-native";
 
-import { Button, ErrorNotice, Field, Header, Screen, SheetBackdrop } from "@/components/ui";
+import { Button, ErrorNotice, Field, Header, PlainScrollView, Screen, SheetBackdrop } from "@/components/ui";
 import { MASCOT_OPTIONS, normalizeMascotKind } from "@/settings/mascots";
 import {
   getSetting,
@@ -1660,9 +1659,9 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
                 <Ionicons name="close" size={24} color={colors.textMuted} />
               </Pressable>
             </View>
-            <ScrollView style={styles.skillSheetScroll} contentContainerStyle={styles.skillSheetScrollContent}>
+            <PlainScrollView style={styles.skillSheetScroll} contentContainerStyle={styles.skillSheetScrollContent}>
               <Text style={styles.skillSheetBody}>{detailSkill?.instructions ?? ""}</Text>
-            </ScrollView>
+            </PlainScrollView>
             {detailSkill ? (
               detailSkill.source === "custom" ? (
                 <Button label="编辑这条技能" onPress={() => { startEditSkill(detailSkill); setDetailSkill(null); }} />

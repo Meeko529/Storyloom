@@ -5,9 +5,9 @@ import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, BackHandler, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, BackHandler, FlatList, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { Button, ErrorNotice, Field, Header, Screen, SheetBackdrop } from "@/components/ui";
+import { Button, ErrorNotice, Field, Header, PlainScrollView, Screen, SheetBackdrop } from "@/components/ui";
 import {
   deleteProvider,
   getProviderApiKey,
@@ -877,14 +877,14 @@ export function SettingsScreen() {
                 <Ionicons name="close" size={24} color={colors.textMuted} />
               </Pressable>
             </View>
-            <ScrollView
+            <PlainScrollView
               style={styles.advancedSheetBody}
               contentContainerStyle={styles.advancedSheetContent}
               keyboardShouldPersistTaps="handled"
             >
               <AdvancedFields value={advancedDraft} onChange={setAdvancedDraft} />
               <Button label="保存高级设置" onPress={() => void saveAdvancedEditor()} />
-            </ScrollView>
+            </PlainScrollView>
           </View>
         </SheetBackdrop>
       </Modal>

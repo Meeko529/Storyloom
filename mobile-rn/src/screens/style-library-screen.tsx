@@ -8,13 +8,12 @@ import {
   FlatList,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 
-import { Button, EmptyState, ErrorNotice, Field, Header, Screen, SheetBackdrop } from "@/components/ui";
+import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, SheetBackdrop } from "@/components/ui";
 import {
   createStyleProfileVersion,
   deleteStyleProfile,
@@ -419,7 +418,7 @@ export function StyleLibraryScreen() {
                 <Ionicons name="close" size={24} color={colors.textMuted} />
               </Pressable>
             </View>
-            <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
+            <PlainScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
               {editingSource ? (
                 <View style={styles.inlineActions}>
                   <Button label="取消" variant="secondary" onPress={() => setEditingSource(false)} />
@@ -494,7 +493,7 @@ export function StyleLibraryScreen() {
                   disabled={busy || !projectId}
                 />
               )) : <Text style={styles.emptyHint}>还没有版本，点击“蒸馏文风”生成。</Text>}
-            </ScrollView>
+            </PlainScrollView>
           </View>
         </SheetBackdrop>
       </Modal>
@@ -511,7 +510,7 @@ export function StyleLibraryScreen() {
                 <Ionicons name="close" size={24} color={colors.textMuted} />
               </Pressable>
             </View>
-            <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.profileContent}>
+            <PlainScrollView style={styles.sheetScroll} contentContainerStyle={styles.profileContent}>
               {selectedProfile?.kind === "author" && editingAuthorGuide ? (
                 <Field label="作者文风指南" value={authorGuide} onChangeText={setAuthorGuide} multiline style={styles.guideInput} maxLength={100000} />
               ) : (
@@ -539,7 +538,7 @@ export function StyleLibraryScreen() {
                   <Ionicons name="trash-outline" size={21} color={colors.danger} />
                 </Pressable>
               </View>
-            </ScrollView>
+            </PlainScrollView>
           </View>
         </SheetBackdrop>
       </Modal>

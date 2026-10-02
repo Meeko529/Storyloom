@@ -7,13 +7,13 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Dimensions, FlatList, Image, ImageBackground, Modal, Pressable, ScrollView, StyleSheet, TextInput, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Dimensions, FlatList, Image, ImageBackground, Modal, Pressable, StyleSheet, TextInput, Text, View } from "react-native";
 import { appendBreadcrumb } from "@/lib/crash-log";
 import { importProjectFromFile } from "@/lib/doc-import";
 import { downsampleToFile } from "@/lib/media-downsample";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
-import { Button, EmptyState, ErrorNotice, Field, Header, Screen } from "@/components/ui";
+import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen } from "@/components/ui";
 import { createCategory, createProject, deleteCategory, deleteProject, getProjectStats, getProjectStatsMap, getSetting, listCategories, listProjects, renameCategory, setProjectCategory, setSetting, updateProjectCover, updateProjectInfo, type ProjectStats } from "@/data/repositories";
 import type { RootStackParamList, RootTabParamList } from "@/navigation/types";
 import { useAppStore } from "@/store/app-store";
@@ -507,7 +507,7 @@ function coverColor(title: string): string {
               </Pressable>
             </View>
             {categories.length ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={styles.shelfChipsRow} contentContainerStyle={styles.shelfChipsContent}>
+              <PlainScrollView horizontal keyboardShouldPersistTaps="handled" style={styles.shelfChipsRow} contentContainerStyle={styles.shelfChipsContent}>
                 <Pressable onPress={() => selectShelfCategory(null)} style={({ pressed }) => [styles.shelfChip, !selectedCategoryId && styles.shelfChipActive]}>
                   <Text style={[styles.shelfChipText, !selectedCategoryId && styles.shelfChipTextActive]}>全部</Text>
                 </Pressable>
@@ -521,7 +521,7 @@ function coverColor(title: string): string {
                     <Text style={[styles.shelfChipText, selectedCategoryId === "uncategorized" && styles.shelfChipTextActive]}>未分类</Text>
                   </Pressable>
                 ) : null}
-              </ScrollView>
+              </PlainScrollView>
             ) : null}
             {error ? <View style={styles.errorWrap}><ErrorNotice message={error} onRetry={() => void loadProjects()} /></View> : null}
           </View>
@@ -714,7 +714,7 @@ function coverColor(title: string): string {
                 <Ionicons name="close" size={22} color={colors.textMuted} />
               </Pressable>
             </View>
-            <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetScrollContent} keyboardShouldPersistTaps="handled">
+            <PlainScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetScrollContent} keyboardShouldPersistTaps="handled">
               {assignTarget ? (
                 <>
                   <Text style={styles.sheetSectionTitle}>归入</Text>
@@ -774,7 +774,7 @@ function coverColor(title: string): string {
                   }) : <Text style={styles.categorySectionHint}>还没有分类，先创建一个。</Text>}
                 </>
               )}
-            </ScrollView>
+            </PlainScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>

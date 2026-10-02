@@ -274,6 +274,8 @@ export function CharactersScreen() {
             <KeyboardAwareScrollView
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
+              showsVerticalScrollIndicator={false}
+              showsHorizontalScrollIndicator={false}
               bottomOffset={spacing.lg}
               extraKeyboardSpace={spacing.md}
               contentContainerStyle={styles.form}

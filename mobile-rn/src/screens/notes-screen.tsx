@@ -8,13 +8,12 @@ import {
   FlatList,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 
-import { Button, EmptyState, ErrorNotice, Field, Header, Screen, SheetBackdrop } from "@/components/ui";
+import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, SheetBackdrop } from "@/components/ui";
 import { getProject, listChapters, listVolumes } from "@/data/repositories";
 import { exportNotes, type NotesExportFormat } from "@/lib/export";
 import {
@@ -348,7 +347,7 @@ export function NotesScreen() {
                 <Ionicons name="close" size={24} color={colors.textMuted} />
               </Pressable>
             </View>
-            <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
+            <PlainScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
               <Field label="标题" value={title} onChangeText={setTitle} autoFocus={!editing} maxLength={200} />
               <Field label="内容" value={content} onChangeText={setContent} multiline style={styles.contentInput} maxLength={100000} />
               <View style={styles.inlineActions}>
@@ -359,7 +358,7 @@ export function NotesScreen() {
                   </Pressable>
                 ) : null}
               </View>
-            </ScrollView>
+            </PlainScrollView>
           </View>
         </SheetBackdrop>
       </Modal>
@@ -376,7 +375,7 @@ export function NotesScreen() {
                 <Ionicons name="close" size={24} color={colors.textMuted} />
               </Pressable>
             </View>
-            <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetContent}>
+            <PlainScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetContent}>
               {moveTargets.map((target) => {
                 const current = movingNote
                   && (movingNote.chapterId ?? movingNote.volumeId ?? null) === (target.chapterId ?? target.volumeId ?? null);
@@ -393,7 +392,7 @@ export function NotesScreen() {
                   </Pressable>
                 );
               })}
-            </ScrollView>
+            </PlainScrollView>
           </View>
         </SheetBackdrop>
       </Modal>
