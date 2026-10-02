@@ -50,43 +50,45 @@ function runStatus(trace: AgentRunTrace): { label: string; color: string } {
 }
 
 /**
- * 组头标题跟随组内最后一步。
+ * 组头摘要：按事件类型聚合成短名。
  *
- * 抄 DeepWrite 的 `workGroupActivityLabel`：正在读文件就写「读取章节」，正在想就写
- * 「思考中」，跑完了写「处理完成」。比固定写「已完成」有信息量 —— 展开前就知道它
- * 现在卡在哪一步。
+ * 不写智能体名，也不写「N 个智能体 / N 项工具」这类总数 —— 展开后每行都写着，
+ * 组头再写一遍就是重复。总时长也只在这里出现一次。
+ *
+ * 提问 / 技能 / 子智能体这三类的 title 里带着智能体名，直接拿去聚合等于把名字又
+ * 绕回组头一次，所以改用固定短名；工具类的 title 本身就是纯动作名，可以直接用。
+ */
+const EVENT_KIND_LABELS: Partial<Record<AgentTraceEventKind, string>> = {
+  question: "向你提问",
+  skill: "加载技能",
+  agent: "子智能体协作",
+};
+
+/**
+ * 组头标题：跟着助手当前这一步走。
+ *
+ * 展开前就能看出它此刻在做什么，比固定写「已完成」有信息量。两处要收窄，否则会把
+ * 重复信息带回组头：标题取短名而非 event.title —— 提问与子智能体的 title 形如
+ * 「Build 的提问」，带智能体名；末尾思考段完成时写「处理完成」，与摘除末段思考配套。
  */
 function activityLabel(
-  lines: ReadonlyArray<{ kind: "reasoning" | "event"; title?: string; running?: boolean }>,
+  lines: ReadonlyArray<{ kind: "reasoning" | "event"; short?: string; running?: boolean }>,
   trace: AgentRunTrace,
 ): { label: string; color: string } {
   if (trace.status === "error") return { label: "执行失败", color: colors.danger };
   if (trace.events.some((event) => event.status === "waiting")) return { label: "等待你的操作", color: colors.accent };
   const last = lines[lines.length - 1];
-  if (last?.kind === "reasoning") {
-    return last.running
-      ? { label: "思考中", color: colors.primary }
-      : { label: "处理完成", color: colors.primary };
-  }
-  if (last?.kind === "event" && last.title) {
-    return last.running
-      ? { label: last.title, color: colors.primary }
-      : { label: "处理完成", color: colors.primary };
-  }
-  return runStatus(trace);
+  if (!last) return runStatus(trace);
+  if (!last.running) return { label: "处理完成", color: colors.primary };
+  // 还在跑：报出此刻在做什么。
+  if (last.kind === "reasoning") return { label: "思考中", color: colors.primary };
+  return { label: last.short ?? "处理中", color: colors.primary };
 }
 
-/**
- * 组头摘要：只写「工具名 + 次数」的聚合。
- *
- * 刻意不写智能体名、不写"N 个智能体 / N 项工具 / N 个技能 / 已探索 N 项 / N 次提问"这类总数 ——
- * 展开后每一行都写着这些，组头再写一遍就是重复。总时长也只在这里出现一次。
- */
-function summarizeTools(trace: AgentRunTrace): string {
+function summarizeEvents(trace: AgentRunTrace): string {
   const counts = new Map<string, number>();
   for (const event of trace.events) {
-    if (event.kind !== "tool" && event.kind !== "consistency") continue;
-    const name = event.title.trim();
+    const name = EVENT_KIND_LABELS[event.kind] ?? event.title.trim();
     if (!name) continue;
     counts.set(name, (counts.get(name) ?? 0) + 1);
   }
@@ -122,7 +124,11 @@ function TraceEventRow({ event, inline = false }: { event: AgentTraceEvent; inli
         <View style={styles.eventCopy}>
           <View style={styles.eventTitleLine}>
             <Text style={styles.eventTitle} numberOfLines={2}>{event.title}</Text>
-            {event.agentName ? <Text style={styles.agentName} numberOfLines={1}>{event.agentName}</Text> : null}
+            {/* 提问与子智能体协作的 title 本身已带智能体名（"Build 的提问"），
+                右边再挂一次 agentName 就是同一行内重复，所以只在 title 不含它时补。 */}
+            {event.agentName && !event.title.includes(event.agentName) ? (
+              <Text style={styles.agentName} numberOfLines={1}>{event.agentName}</Text>
+            ) : null}
           </View>
           {event.detail ? <Text style={styles.eventDetail} numberOfLines={expanded ? undefined : 2}>{event.detail}</Text> : null}
         </View>
@@ -151,7 +157,7 @@ function TraceEventRow({ event, inline = false }: { event: AgentTraceEvent; inli
  * 组内的一段，不是独立折叠：没有自己的箭头，展开由外层那个合集统一控制。
  * 「用时」也不在这里写 —— 总时长由组头承担，重复写就是冗余。
  */
-export function ReasoningSegment({ text, seconds, live }: { text: string; seconds?: number; live?: boolean }) {
+export function ReasoningSegment({ text, live }: { text: string; live?: boolean }) {
   return (
     <View style={styles.reasoningSegment}>
       <View style={styles.reasoningSegmentHeader}>
@@ -159,7 +165,6 @@ export function ReasoningSegment({ text, seconds, live }: { text: string; second
         <Text style={[styles.reasoningSegmentTitle, live && styles.reasoningSegmentTitleLive]}>
           {live ? "思考中" : "思考过程"}
         </Text>
-        {seconds ? <Text style={styles.reasoningSegmentMeta}>用时 {seconds}s</Text> : null}
         <Text style={styles.reasoningSegmentMeta}>{text.trim().length} 字</Text>
       </View>
       <View style={styles.reasoningSegmentBody}>
@@ -172,9 +177,11 @@ export function ReasoningSegment({ text, seconds, live }: { text: string; second
 /**
  * 一轮回复 = 一个合集。
  *
- * 结构照 open-webui 的 ConsecutiveDetailsGroup：一个折叠、一个箭头，组内所有内容
- * 一起展开收起，段落自身不再各带箭头。展开后是一条按真实顺序排下来的线 ——
- * 思考与工具事件混在里面，不写死谁在前。
+ * 一个折叠、一个箭头，组内所有内容一起展开收起，段落自身不再各带箭头。展开后是
+ * 一条按真实顺序排下来的线 —— 思考与工具事件混在里面，不写死谁在前。
+ *
+ * 此前组头、思考行、每个工具行各带一个箭头，等于三层独立折叠：点开思考行会与
+ * 外层争状态，用户看到的是"点了没反应"。收敛成一个折叠后不存在这个问题。
  *
  * 组头只写「状态 + 工具名聚合 + 总时长」三样：智能体名与各类总数一律不进组头，
  * 因为展开后每行都写着，组头再写一遍就是重复。
@@ -199,7 +206,7 @@ export function AgentTraceView({
   liveReasoning?: string;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded || trace.status === "running");
-  const toolSummary = useMemo(() => summarizeTools(trace), [trace]);
+  const eventSummary = useMemo(() => summarizeEvents(trace), [trace]);
 
   useEffect(() => {
     if (trace.status === "running") setExpanded(true);
@@ -212,31 +219,35 @@ export function AgentTraceView({
       kind: "reasoning" | "event";
       id?: string;
       text?: string;
-      title?: string;
+      short?: string;
       running?: boolean;
-      seconds?: number;
       live?: boolean;
     }> = [];
     if (trace.segments?.length) {
       for (const segment of trace.segments) {
         if (segment.kind === "reasoning") {
-          if (segment.text.trim()) collected.push({ kind: "reasoning", text: segment.text, seconds: segment.seconds });
+          if (segment.text.trim()) collected.push({ kind: "reasoning", text: segment.text });
         } else if (eventsById.has(segment.eventId)) {
           const event = eventsById.get(segment.eventId)!;
           collected.push({
             kind: "event",
             id: event.id,
-            title: event.title,
-            running: event.status === "running",
+            short: EVENT_KIND_LABELS[event.kind] ?? event.title.trim(),
+            running: event.status === "running" || event.status === "waiting",
           });
         }
       }
     } else {
       for (const segment of reasoningSegments ?? []) {
-        if (segment.text.trim()) collected.push({ kind: "reasoning", text: segment.text, seconds: segment.seconds });
+        if (segment.text.trim()) collected.push({ kind: "reasoning", text: segment.text });
       }
       for (const event of trace.events) {
-        collected.push({ kind: "event", id: event.id, title: event.title, running: event.status === "running" });
+        collected.push({
+          kind: "event",
+          id: event.id,
+          short: EVENT_KIND_LABELS[event.kind] ?? event.title.trim(),
+          running: event.status === "running" || event.status === "waiting",
+        });
       }
     }
 
@@ -250,10 +261,9 @@ export function AgentTraceView({
     return collected;
   }, [trace.segments, trace.events, eventsById, reasoningSegments, liveReasoning]);
 
-  // 末段思考已进过线，且它是模型给出正面前的最后一步 —— 抄 DeepWrite 的
-  // `processingItems` 结尾把最后一块 response 摘出去的做法：完成后的末段思考
-  // 不再留在时间线里，避免「时间线末尾一段思考」与「助手正文」两处重复表达。
-  // 流式期间（trace.status === "running"）不摘，那一段正是正在增长的思考。
+  // 末段思考是模型给出正面前的最后一步，它的内容已经由助手正文表达了；再留在
+  // 时间线里就是同一件事说了两遍，所以完成态把它摘掉。
+  // 流式期间不摘 —— 那一段正是正在增长的思考，还没有对应的正文。
   const visibleLines = useMemo(() => {
     if (trace.status === "running") return lines;
     if (lines.length < 2) return lines;
@@ -277,7 +287,7 @@ export function AgentTraceView({
           <Ionicons name="git-network-outline" size={15} color={status.color} />
         </View>
         <Text style={[styles.traceStatus, { color: status.color }]}>{status.label}</Text>
-        {toolSummary ? <Text style={styles.traceTools} numberOfLines={1}>{toolSummary}</Text> : null}
+        {eventSummary ? <Text style={styles.traceTools} numberOfLines={1}>{eventSummary}</Text> : null}
         {durationSeconds ? <Text style={styles.traceElapsed}>用时 {durationSeconds}s</Text> : null}
         {trace.status === "running" ? <ActivityIndicator size="small" color={colors.primary} /> : null}
         <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={18} color={colors.textMuted} />
@@ -295,7 +305,7 @@ export function AgentTraceView({
             ) : null}
             {visibleLines.map((line, index) => {
               if (line.kind === "reasoning") {
-                return <ReasoningSegment key={`reasoning-${index}`} text={line.text ?? ""} seconds={line.seconds} live={line.live} />;
+                return <ReasoningSegment key={`reasoning-${index}`} text={line.text ?? ""} live={line.live} />;
               }
               const event = line.id ? eventsById.get(line.id) : undefined;
               return event ? <TraceEventRow key={event.id} event={event} inline={inline} /> : null;
