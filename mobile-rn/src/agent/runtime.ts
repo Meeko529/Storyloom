@@ -144,6 +144,17 @@ function cloneTrace(trace: AgentRunTrace): AgentRunTrace {
   };
 }
 
+/**
+ * 去掉正文预览段。
+ *
+ * 实时推给界面的轨迹保留它（那一段正是正在写出的正文），但**落库与对外返回的
+ * 快照必须去掉**：正文落定后由消息体承载，轨迹里再留一份就会重复。
+ */
+function withoutContentPreview(trace: AgentRunTrace): AgentRunTrace {
+  if (!trace.segments?.some((segment) => segment.kind === "content")) return trace;
+  return { ...trace, segments: trace.segments.filter((segment) => segment.kind !== "content") };
+}
+
 function createTraceRecorder(
   agent: AgentDefinition,
   collaborationSuggested: boolean,
@@ -168,6 +179,8 @@ function createTraceRecorder(
   // 靠这个下标把两者合成一段；若只看"末段是不是思考"，思考之后又发生工具调用
   // 时就会误判成新的一段，同一段思考便显示两遍。
   let liveIndex: number | null = null;
+  // 正在写出的正文所在段下标，语义同上：只认这一段，不认"末段"。
+  let contentIndex: number | null = null;
 
   return {
     /**
@@ -210,6 +223,45 @@ function createTraceRecorder(
         segments.push({ kind: "reasoning", text, live: true });
         liveIndex = segments.length - 1;
       }
+      trace = { ...trace, segments };
+      publish();
+    },
+    /**
+     * 流式正文增量：只追加进正在写的那一段，不新开段落。
+     *
+     * 正文与思考走同一条线：界面读的都是 `segments` 这一处，不存在第二条流式
+     * 通道 —— 另开一条正是此前"同一段内容显示两遍"的成因。
+     */
+    appendContentDelta(text: string): void {
+      if (!text) return;
+      const segments = [...(trace.segments ?? [])];
+      const current = contentIndex === null ? undefined : segments[contentIndex];
+      if (current && current.kind === "content") {
+        segments[contentIndex as number] = { ...current, text: current.text + text };
+      } else {
+        segments.push({ kind: "content", text, live: true });
+        contentIndex = segments.length - 1;
+      }
+      trace = { ...trace, segments };
+      publish();
+    },
+    /**
+     * 撤掉正文预览：这一轮模型还要调工具，此刻写出的正文不是最终答案。
+     *
+     * 移除中段会让后面记下的下标整体前移一位，两个下标都要跟着校正 —— 不改的
+     * 话下一次追加会写进隔壁段里。
+     */
+    dropContentPreview(): void {
+      if (contentIndex === null) return;
+      const segments = [...(trace.segments ?? [])];
+      if (segments[contentIndex]?.kind !== "content") {
+        contentIndex = null;
+        return;
+      }
+      segments.splice(contentIndex, 1);
+      const removed = contentIndex;
+      contentIndex = null;
+      if (liveIndex !== null && liveIndex > removed) liveIndex -= 1;
       trace = { ...trace, segments };
       publish();
     },
@@ -257,7 +309,7 @@ function createTraceRecorder(
       publish();
     },
     snapshot(): AgentRunTrace {
-      return cloneTrace(trace);
+      return withoutContentPreview(cloneTrace(trace));
     },
   };
 }
@@ -664,11 +716,12 @@ async function runAgentLoop(input: LoopInput): Promise<LoopResult> {
       throw new Error("本次任务的模型请求次数已达上限，请拆分需求后重试");
     }
     input.budget.remaining -= 1;
-    // 流式增量先落进 recorder 的 segments，界面从同一处读；再透传给调用方。
-    // 顺序不能反：先写数据再通知，调用方拿到的才是含本次增量的快照。
+    // 流式增量先落进 recorder 的 segments（思考与正文写在同一条线上），界面从同一处
+    // 读；再透传给调用方。顺序不能反：先写数据再通知，调用方拿到的才是含本次增量的快照。
     const turn = await callModel(input.selection, messages, tools, {
       onDelta: (delta) => {
         if (delta.reasoning) input.recorder.appendReasoningDelta(delta.reasoning);
+        if (delta.content) input.recorder.appendContentDelta(delta.content);
         input.onDelta?.(delta);
       },
     });
@@ -696,6 +749,10 @@ async function runAgentLoop(input: LoopInput): Promise<LoopResult> {
         consistencyEventId,
       };
     }
+
+    // 这一轮还要调工具，此刻写出的正文不是最终答案：撤掉预览，等下一轮重新开始写。
+    // 不清的话，中间轮的正文会和最终答案拼在同一段里。
+    input.recorder.dropContentPreview();
 
     for (const call of turn.toolCalls) {
       const kind = call.name === "activate_skill"

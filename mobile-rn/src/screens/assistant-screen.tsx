@@ -37,7 +37,7 @@ import {
   normalizeContextWindow,
 } from "@/agent/context-usage";
 import { editorFontFamily, readChatPrefs } from "@/settings/editor-prefs";
-import { AgentQuestionSheet, AgentTraceView, ReasoningSegment } from "@/components/agent-run-view";
+import { AgentQuestionSheet, AgentTraceView } from "@/components/agent-run-view";
 import { appendCrashLog } from "@/lib/crash-log";
 import { throttle } from "@/lib/debounce";
 import { MessageActionBar } from "@/components/message-action-bar";
@@ -314,6 +314,20 @@ export function AssistantScreen() {
   const flushLiveTrace = useMemo(() => throttle((trace: AgentRunTrace) => setLiveTrace(trace), 150), []);
   // 离开页面时丢弃挂起的那一次刷新，不给已卸载的组件发 setState。
   useEffect(() => () => flushLiveTrace.cancel(), [flushLiveTrace]);
+  /**
+   * 正在写出的正文。
+   *
+   * 与思考共用同一条 `segments`：正文增量由 runtime 追加进轨迹里的 content 段，
+   * 界面只读这一处，不另开第二条流式通道。正文落定后由消息体承载，那一段在落库
+   * 前就被移除，所以不会与气泡重复。
+   */
+  const streamingContent = useMemo(() => {
+    const parts: string[] = [];
+    for (const segment of liveTrace?.segments ?? []) {
+      if (segment.kind === "content") parts.push(segment.text);
+    }
+    return parts.join("");
+  }, [liveTrace]);
   // 最近一次被接受的 AI 写入（撤销入口），null 表示当前没有可撤销的改动
   const [undoTarget, setUndoTarget] = useState<string | null>(null);
   // 待随下一条消息发送的文本附件
@@ -1070,6 +1084,14 @@ export function AssistantScreen() {
                     <Text style={styles.liveHeaderText}>处理中 · 已处理 {thinkingSeconds}s</Text>
                   </View>
                   {liveTrace ? <AgentTraceView trace={liveTrace} defaultExpanded inline /> : null}
+                  {streamingContent ? (
+                    <View style={styles.streamingBubble}>
+                      <View style={styles.messageHeader}>
+                        <Text style={styles.messageRole}>Storyloom</Text>
+                      </View>
+                      <Text selectable style={[styles.messageText, chatTextStyle]}>{streamingContent}</Text>
+                    </View>
+                  ) : null}
                 </>
               ) : null}
               {writeCard ? (
@@ -1609,6 +1631,8 @@ const styles = StyleSheet.create({
   liveTimeline: { marginTop: spacing.md, gap: spacing.sm },
   liveHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xs },
   liveHeaderText: { color: colors.text, fontSize: 13, fontWeight: "600" },
+  // 流式正文：与落定后的消息气泡同一套排版，只是还没进消息列表。
+  streamingBubble: { gap: spacing.xs, paddingVertical: spacing.xs },
   emptyMessages: { flexGrow: 1 },
   message: { gap: spacing.md, paddingVertical: spacing.md },
   messageHeader: { minHeight: 28, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },

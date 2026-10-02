@@ -165,6 +165,12 @@ export interface AgentTraceEvent {
  */
 export type AgentRunSegment =
   | { kind: "reasoning"; text: string; seconds?: number; live?: boolean }
+  /**
+   * 正在写出的正文。只活在流式期间：正文一旦落定就由消息体承载，这一段随即
+   * 从时间线上移除，也不进落库的轨迹 —— 否则同一份正文会同时出现在实时时间线
+   * 与消息气泡里。
+   */
+  | { kind: "content"; text: string; live?: boolean }
   | { kind: "event"; eventId: string };
 
 export interface AgentRunTrace {
