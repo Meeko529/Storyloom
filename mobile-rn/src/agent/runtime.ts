@@ -115,8 +115,10 @@ type LoopInput = {
 
 export interface AgentRunResult {
   content: string;
-  /** 思考型模型的推理过程；模型未提供时为空 */
+  /** 思考型模型的推理过程；模型未提供时为空。取时间线里最后一段，供旧字段使用。 */
   reasoning?: string;
+  /** 全部思考段落，按真实顺序；界面用它与工具事件混排成一条时间线 */
+  reasoningSegments?: Array<{ text: string; seconds?: number }>;
   trace: AgentRunTrace;
 }
 
@@ -135,7 +137,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function cloneTrace(trace: AgentRunTrace): AgentRunTrace {
-  return { ...trace, events: trace.events.map((event) => ({ ...event })) };
+  return {
+    ...trace,
+    events: trace.events.map((event) => ({ ...event })),
+    segments: trace.segments?.map((segment) => ({ ...segment })),
+  };
 }
 
 function createTraceRecorder(
@@ -152,17 +158,29 @@ function createTraceRecorder(
     collaborationRequired: collaborationSuggested,
     startedAt: new Date().toISOString(),
     events: [],
+    segments: [],
   };
 
   const publish = () => onTrace?.(cloneTrace(trace));
   publish();
 
   return {
+    /** 追加一段思考。思考与工具事件在同一条线上，按调用发生的真实先后排列。 */
+    addReasoning(text: string, seconds?: number): void {
+      const body = text.trim();
+      if (!body) return;
+      trace = {
+        ...trace,
+        segments: [...(trace.segments ?? []), { kind: "reasoning", text: body, ...(seconds ? { seconds } : {}) }],
+      };
+      publish();
+    },
     add(event: TraceEventDraft): string {
       const id = createId();
       trace = {
         ...trace,
         events: [...trace.events, { ...event, id, startedAt: new Date().toISOString() }],
+        segments: [...(trace.segments ?? []), { kind: "event", eventId: id }],
       };
       publish();
       return id;
@@ -611,6 +629,10 @@ async function runAgentLoop(input: LoopInput): Promise<LoopResult> {
     const turn = await callModel(input.selection, messages, tools, input.onDelta ? { onDelta: input.onDelta } : undefined);
     messages.push({ role: "assistant", content: turn.content, toolCalls: turn.toolCalls });
 
+    // 每一轮的思考都记进时间线，前几轮不再被丢弃 —— 界面上思考与工具才能按
+    // 真实先后排在同一条线上。空文本不入线，避免出现空的思考段。
+    if (turn.reasoning?.trim()) input.recorder.addReasoning(turn.reasoning);
+
     if (turn.toolCalls.length === 0) {
       if (consistencyRequired && consistencyEventId) {
         input.recorder.update(consistencyEventId, {
@@ -879,10 +901,15 @@ export async function runAgent(input: {
       await setSetting(consistencyKey, "");
     }
     recorder.complete();
+    const snapshot = recorder.snapshot();
+    const reasoningSegments = (snapshot.segments ?? []).flatMap((segment) => (
+      segment.kind === "reasoning" ? [{ text: segment.text, ...(segment.seconds ? { seconds: segment.seconds } : {}) }] : []
+    ));
     return {
       content: result.content,
       ...(result.reasoning ? { reasoning: result.reasoning } : {}),
-      trace: recorder.snapshot(),
+      ...(reasoningSegments.length ? { reasoningSegments } : {}),
+      trace: snapshot,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -157,6 +157,16 @@ export interface AgentTraceEvent {
   completedAt?: string;
 }
 
+/**
+ * 一轮运行里的一条时间线段落。
+ *
+ * 思考过程与工具事件按**真实发生顺序**排在同一个数组里，不分两处、不写死先后。
+ * 界面上整个数组就是一个合集：外层一个折叠、一键收放，段落自身不再各带箭头。
+ */
+export type AgentRunSegment =
+  | { kind: "reasoning"; text: string; seconds?: number; live?: boolean }
+  | { kind: "event"; eventId: string };
+
 export interface AgentRunTrace {
   version: 1;
   id: string;
@@ -167,6 +177,11 @@ export interface AgentRunTrace {
   startedAt: string;
   completedAt?: string;
   events: AgentTraceEvent[];
+  /**
+   * 思考与工具事件的真实顺序。
+   * 旧数据没有这个字段（只有 events），界面按「思考在前」兜底渲染。
+   */
+  segments?: AgentRunSegment[];
 }
 
 export interface AgentClarificationOption {
@@ -198,10 +213,12 @@ export interface AgentClarificationResponse {
 
 export interface ChatMessageMetadata {
   agentTrace?: AgentRunTrace;
-  /** 思考型模型的推理过程；仅在模型提供时记录 */
+  /** 思考型模型的推理过程；仅在模型提供时记录。历史字段，等于最后一段思考。 */
   reasoning?: string;
   /** 本次请求总耗时（秒，含思考与执行）；≥1 才记录 */
   processingSeconds?: number;
+  /** 思考过程的全部段落，按真实顺序；新数据一律写这里，reasoning 只留最后一段供旧代码读取 */
+  reasoningSegments?: Array<{ text: string; seconds?: number }>;
   /** 随该条消息发送的文本附件摘要（正文不落库，只记来源与体量） */
   attachments?: Array<{ name: string; characters: number }>;
   taskStatus?: "completed" | "failed";

@@ -49,6 +49,25 @@ function runStatus(trace: AgentRunTrace): { label: string; color: string } {
   return { label: "已完成", color: colors.primary };
 }
 
+/**
+ * 组头摘要：只写「工具名 + 次数」的聚合。
+ *
+ * 刻意不写智能体名、不写"N 个智能体 / N 项工具 / N 个技能 / 已探索 N 项 / N 次提问"这类总数 ——
+ * 展开后每一行都写着这些，组头再写一遍就是重复。总时长也只在这里出现一次。
+ */
+function summarizeTools(trace: AgentRunTrace): string {
+  const counts = new Map<string, number>();
+  for (const event of trace.events) {
+    if (event.kind !== "tool" && event.kind !== "consistency") continue;
+    const name = event.title.trim();
+    if (!name) continue;
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([name, count]) => (count > 1 ? `${name} ×${count}` : name))
+    .join("、");
+}
+
 function EventPayload({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.payload}>
@@ -99,106 +118,126 @@ function TraceEventRow({ event, inline = false }: { event: AgentTraceEvent; inli
   );
 }
 
-/** 思考过程行：与执行事件同层，收在一条时间线里。默认收起，点开看全文。 */
-export function ReasoningRow({ text, seconds, live }: { text: string; seconds?: number; live?: boolean }) {
-  const [open, setOpen] = useState(false);
-  const characters = text.trim().length;
+/**
+ * 时间线里的一段思考。
+ *
+ * 组内的一段，不是独立折叠：没有自己的箭头，展开由外层那个合集统一控制。
+ * 「用时」也不在这里写 —— 总时长由组头承担，重复写就是冗余。
+ */
+export function ReasoningSegment({ text, seconds, live }: { text: string; seconds?: number; live?: boolean }) {
   return (
-    <View style={styles.reasoningRow}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={open ? "收起思考过程" : "展开思考过程"}
-        onPress={() => setOpen((value) => !value)}
-        style={styles.reasoningRowHeader}
-      >
+    <View style={styles.reasoningSegment}>
+      <View style={styles.reasoningSegmentHeader}>
         <Ionicons name="bulb-outline" size={15} color={live ? colors.primary : colors.textMuted} />
-        <Text style={[styles.reasoningRowTitle, live && styles.reasoningRowTitleLive]}>{live ? "思考中" : "思考过程"}</Text>
-        <Text style={styles.reasoningRowMeta}>{seconds ? `用时 ${seconds}s · ` : ""}{characters} 字</Text>
-        <Ionicons name={open ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
-      </Pressable>
-      {open ? (
-        <View style={styles.reasoningBody}>
-          <Text selectable style={styles.reasoningRowText}>{text}</Text>
-        </View>
-      ) : null}
+        <Text style={[styles.reasoningSegmentTitle, live && styles.reasoningSegmentTitleLive]}>
+          {live ? "思考中" : "思考过程"}
+        </Text>
+        {seconds ? <Text style={styles.reasoningSegmentMeta}>用时 {seconds}s</Text> : null}
+        <Text style={styles.reasoningSegmentMeta}>{text.trim().length} 字</Text>
+      </View>
+      <View style={styles.reasoningSegmentBody}>
+        <Text selectable style={styles.reasoningSegmentText}>{text}</Text>
+      </View>
     </View>
   );
 }
 
+/**
+ * 一轮回复 = 一个合集。
+ *
+ * 结构照 open-webui 的 ConsecutiveDetailsGroup：一个折叠、一个箭头，组内所有内容
+ * 一起展开收起，段落自身不再各带箭头。展开后是一条按真实顺序排下来的线 ——
+ * 思考与工具事件混在里面，不写死谁在前。
+ *
+ * 组头只写「状态 + 工具名聚合 + 总时长」三样：智能体名与各类总数一律不进组头，
+ * 因为展开后每行都写着，组头再写一遍就是重复。
+ */
 export function AgentTraceView({
   trace,
   defaultExpanded = false,
   durationSeconds,
   inline = false,
-  reasoning,
+  reasoningSegments,
+  liveReasoning,
 }: {
   trace: AgentRunTrace;
   defaultExpanded?: boolean;
-  /** 本轮总耗时（秒）：完成态在工作摘要后追加“用时 Ns”。 */
+  /** 本轮总耗时（秒）：完成态在组头追加一次，组内不再重复。 */
   durationSeconds?: number;
-  /** 时间线形态：不画卡片外框与底色，状态行与执行事件直接铺在消息/实时时间线里。 */
+  /** 时间线形态：不画卡片外框与底色，组直接铺在消息/实时时间线里。 */
   inline?: boolean;
-  /** 本轮模型的思考文本：作为时间线里的一行，与执行事件同层。 */
-  reasoning?: { text: string; seconds?: number; live?: boolean };
+  /** 全部思考段落，按真实顺序；旧数据可回落到单个 reasoning 文本 */
+  reasoningSegments?: Array<{ text: string; seconds?: number; live?: boolean }>;
+  /** 实时流式思考：尚未进入 segments，先挂在组末 */
+  liveReasoning?: string;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded || trace.status === "running");
   const status = runStatus(trace);
-  const counts = useMemo(() => {
-    const agents = trace.events.filter((event) => event.kind === "agent").length;
-    const tools = trace.events.filter((event) => event.kind === "tool" || event.kind === "consistency").length;
-    const skills = trace.events.filter((event) => event.kind === "skill").length;
-    const explored = trace.events.filter((event) => event.kind === "tool"
-      && Boolean(event.toolName)
-      && /^(list_|read_|search_)/.test(event.toolName ?? "")).length;
-    const questions = trace.events.filter((event) => event.kind === "question").length;
-    return { agents, tools, skills, explored, questions };
-  }, [trace.events]);
+  const toolSummary = useMemo(() => summarizeTools(trace), [trace]);
 
   useEffect(() => {
     if (trace.status === "running") setExpanded(true);
   }, [trace.status]);
 
-  const summary = [
-   counts.agents ? `${counts.agents} 个智能体` : "",
-   counts.tools ? `${counts.tools} 项工具` : "",
-   counts.skills ? `${counts.skills} 个技能` : "",
-    counts.explored ? `已探索 ${counts.explored} 项` : "",
-    counts.questions ? `${counts.questions} 次提问` : "",
-  ].filter(Boolean).join(" · ") || "正在分析任务";
+  // 段落的唯一来源：有 segments 就按它排；旧数据没有 segments 时把思考放最前兜底。
+  const eventsById = useMemo(() => new Map(trace.events.map((event) => [event.id, event])), [trace.events]);
+  const lines = useMemo(() => {
+    const collected: Array<{ kind: "reasoning"; text: string; seconds?: number; live?: boolean }
+      | { kind: "event"; id: string }> = [];
+    if (trace.segments?.length) {
+      for (const segment of trace.segments) {
+        if (segment.kind === "reasoning") {
+          if (segment.text.trim()) collected.push({ kind: "reasoning", text: segment.text, seconds: segment.seconds });
+        } else if (eventsById.has(segment.eventId)) {
+          collected.push({ kind: "event", id: segment.eventId });
+        }
+      }
+    } else {
+      for (const segment of reasoningSegments ?? []) {
+        if (segment.text.trim()) collected.push({ kind: "reasoning", text: segment.text, seconds: segment.seconds });
+      }
+      for (const event of trace.events) collected.push({ kind: "event", id: event.id });
+    }
+    if (liveReasoning?.trim()) collected.push({ kind: "reasoning", text: liveReasoning, live: true });
+    return collected;
+  }, [trace.segments, trace.events, eventsById, reasoningSegments, liveReasoning]);
 
   return (
     <View style={styles.trace}>
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded }}
+        accessibilityLabel={expanded ? "收起处理过程" : "展开处理过程"}
         onPress={() => setExpanded((value) => !value)}
         style={[styles.traceHeader, inline && styles.traceHeaderInline]}
       >
         <View style={styles.traceIcon}>
           <Ionicons name="git-network-outline" size={15} color={status.color} />
         </View>
-        <View style={styles.traceCopy}>
-          <Text style={[styles.traceStatus, { color: status.color }]}>{status.label}</Text>
-          <Text style={styles.traceSummary} numberOfLines={1}>{trace.primaryAgentName} · {summary}{durationSeconds ? ` · 用时 ${durationSeconds}s` : ""}</Text>
-        </View>
+        <Text style={[styles.traceStatus, { color: status.color }]}>{status.label}</Text>
+        {toolSummary ? <Text style={styles.traceTools} numberOfLines={1}>{toolSummary}</Text> : null}
+        {durationSeconds ? <Text style={styles.traceElapsed}>用时 {durationSeconds}s</Text> : null}
         {trace.status === "running" ? <ActivityIndicator size="small" color={colors.primary} /> : null}
         <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={18} color={colors.textMuted} />
       </Pressable>
-      {expanded ? (
+      {expanded && lines.length ? (
         <AdaptiveScroll maxHeight={340} claimGesture>
           {/* claimGesture：助手消息列表是 inverted FlatList，思考轨迹嵌在列表头里。
               不抢手势的话，想上下滑看轨迹内容时整条对话会先跟着滑走。 */}
           <View style={styles.events}>
-            {reasoning?.text.trim() ? (
-              <ReasoningRow text={reasoning.text} seconds={reasoning.seconds} live={reasoning.live} />
-            ) : null}
             {trace.collaborationRequired ? (
               <View style={styles.collaborationNotice}>
                 <Ionicons name="people-outline" size={16} color={colors.primary} />
                 <Text style={styles.collaborationText}>此任务可按需调用专业子智能体协作</Text>
               </View>
             ) : null}
-            {trace.events.map((event) => <TraceEventRow key={event.id} event={event} inline={inline} />)}
+            {lines.map((line, index) => {
+              if (line.kind === "reasoning") {
+                return <ReasoningSegment key={`reasoning-${index}`} text={line.text} seconds={line.seconds} live={line.live} />;
+              }
+              const event = eventsById.get(line.id);
+              return event ? <TraceEventRow key={event.id} event={event} inline={inline} /> : null;
+            })}
           </View>
         </AdaptiveScroll>
       ) : null}
@@ -358,9 +397,10 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     backgroundColor: colors.surfaceMuted,
   },
-  traceCopy: { flexShrink: 1, minWidth: 0 },
   traceStatus: { fontSize: 13, fontWeight: "700" },
-  traceSummary: { marginTop: 2, color: colors.textMuted, fontSize: 12 },
+  // 组头的工具名聚合：flexShrink 让它可压缩，状态与时长不被挤掉。
+  traceTools: { flexShrink: 1, minWidth: 0, color: colors.textMuted, fontSize: 12 },
+  traceElapsed: { color: colors.textMuted, fontSize: 12 },
   events: {},
   collaborationNotice: {
     minHeight: 34,
@@ -371,14 +411,14 @@ const styles = StyleSheet.create({
     backgroundColor: "#E8F2EE",
   },
   collaborationText: { flex: 1, color: colors.primary, fontSize: 12, fontWeight: "600" },
-  reasoningRow: { paddingHorizontal: 0 },
-  reasoningRowHeader: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 34 },
-  reasoningRowTitle: { color: colors.textMuted, fontSize: 13 },
-  reasoningRowTitleLive: { color: colors.primary },
-  reasoningRowMeta: { flex: 1, color: colors.textMuted, fontSize: 12 },
-  reasoningRowText: { color: colors.textMuted, fontSize: 13, lineHeight: 20 },
-  // 展开的思考正文缩进一档，左侧细竖线把它与后面的工具行分开。
-  reasoningBody: { marginTop: spacing.xs, marginLeft: 5, paddingLeft: spacing.sm, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.border },
+  // 思考段：组内的一段，没有自己的折叠箭头；正文缩进一档并加左侧细竖线。
+  reasoningSegment: { paddingHorizontal: 0 },
+  reasoningSegmentHeader: { flexDirection: "row", alignItems: "center", gap: 6, minHeight: 34 },
+  reasoningSegmentTitle: { color: colors.textMuted, fontSize: 13 },
+  reasoningSegmentTitleLive: { color: colors.primary },
+  reasoningSegmentMeta: { color: colors.textMuted, fontSize: 12 },
+  reasoningSegmentText: { color: colors.textMuted, fontSize: 13, lineHeight: 20 },
+  reasoningSegmentBody: { marginTop: spacing.xs, marginLeft: 5, paddingLeft: spacing.sm, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.border },
   event: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   eventInline: { borderTopWidth: 0, borderTopColor: "transparent" },
   eventHeader: {

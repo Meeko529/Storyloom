@@ -37,7 +37,7 @@ import {
   normalizeContextWindow,
 } from "@/agent/context-usage";
 import { editorFontFamily, readChatPrefs } from "@/settings/editor-prefs";
-import { AgentQuestionSheet, AgentTraceView, ReasoningRow } from "@/components/agent-run-view";
+import { AgentQuestionSheet, AgentTraceView, ReasoningSegment } from "@/components/agent-run-view";
 import { appendCrashLog } from "@/lib/crash-log";
 import { MessageActionBar } from "@/components/message-action-bar";
 import { AdaptiveScroll, Button, EmptyState, ErrorNotice, Field, Header, Screen, SheetBackdrop } from "@/components/ui";
@@ -846,6 +846,7 @@ export function AssistantScreen() {
       const assistantMessage = await addMessage(sessionId, "assistant", response.content, {
         agentTrace: response.trace,
         ...(response.reasoning ? { reasoning: response.reasoning } : {}),
+        ...(response.reasoningSegments?.length ? { reasoningSegments: response.reasoningSegments } : {}),
         processingSeconds,
         taskStatus: "completed",
         retryContext: { userMessageId: userMessage.id, modelId: runSelection.model.id, agentId: retry?.agentId ?? activeAgentId },
@@ -1009,10 +1010,10 @@ export function AssistantScreen() {
                       trace={liveTrace}
                       defaultExpanded
                       inline
-                      reasoning={liveReasoning.trim() ? { text: liveReasoning, live: true } : undefined}
+                      liveReasoning={liveReasoning}
                     />
                   ) : liveReasoning.trim() ? (
-                    <ReasoningRow text={liveReasoning} live />
+                    <ReasoningSegment text={liveReasoning} live />
                   ) : null}
                 </>
               ) : null}
@@ -1128,7 +1129,8 @@ export function AssistantScreen() {
                   trace={item.metadata.agentTrace}
                   durationSeconds={item.metadata.processingSeconds}
                   inline
-                  reasoning={item.metadata.reasoning ? { text: item.metadata.reasoning, seconds: item.metadata.processingSeconds } : undefined}
+                  reasoningSegments={item.metadata.reasoningSegments
+                    ?? (item.metadata.reasoning ? [{ text: item.metadata.reasoning }] : undefined)}
                 />
               ) : failed ? (
                 <View style={styles.failureCard}>
