@@ -167,22 +167,32 @@ export async function saveIndexSettings(settings: IndexSettings): Promise<void> 
   });
 }
 
+/**
+ * 读取工具权限。
+ *
+ * 🔴 写入类工具（`readonly: false`）**强制为「每次询问」**：它们会改动正文与设定，
+ * 一旦允许设成「允许」，就等于把写入确认整个关掉，助手可以在用户不知情时落盘。
+ * 存档里若已是「允许」，读取时降级为「每次询问」。
+ */
 export async function getToolPermissions(): Promise<Record<string, ToolPermissionMode>> {
   const value = await readJson("agent.toolPermissions");
   const permissions: Record<string, ToolPermissionMode> = {};
   for (const tool of TOOL_CATALOG) {
     const mode = isRecord(value) ? value[tool.key] : undefined;
-    permissions[tool.key] = mode === "allow" || mode === "ask" || mode === "deny"
-      ? mode
-      : tool.readonly ? "allow" : "ask";
+    const parsed = mode === "allow" || mode === "ask" || mode === "deny" ? mode : undefined;
+    permissions[tool.key] = tool.readonly ? (parsed ?? "allow") : parsed === "deny" ? "deny" : "ask";
   }
   return permissions;
 }
 
+/** 同上：写入类工具落盘前一律收敛为「每次询问」，只允许禁用。 */
 export async function saveToolPermissions(permissions: Record<string, ToolPermissionMode>): Promise<void> {
   const normalized = Object.fromEntries(TOOL_CATALOG.map((tool) => {
     const mode = permissions[tool.key];
-    return [tool.key, mode === "allow" || mode === "ask" || mode === "deny" ? mode : "ask"];
+    if (tool.readonly) {
+      return [tool.key, mode === "allow" || mode === "ask" || mode === "deny" ? mode : "ask"];
+    }
+    return [tool.key, mode === "deny" ? "deny" : "ask"];
   }));
   await writeJson("agent.toolPermissions", normalized);
 }

@@ -87,10 +87,14 @@ import type {
  * 而不是只看一段参数 JSON——借鉴 DeepWrite 的操作批次与 denova 的整组粒度。
  */
 type WriteCardRequest = {
+  /** 本次请求的唯一标识：确认卡只认自己那一次请求的令牌，避免过期请求落盘。 */
+  requestToken: number;
   name: string;
   target?: string;
   before?: string;
   after?: string;
+  /** 只有一句动作说明、没有逐行正文可比时为真，界面据此不渲染差异。 */
+  actionOnly?: boolean;
   details?: string;
   resolve: (ok: boolean) => void;
 };
@@ -126,13 +130,25 @@ function diffLineStats(before: string, after: string): { added: number; removed:
   return { added, removed };
 }
 
-let writeCardSink: ((req: WriteCardRequest) => void) | null = null;
-
-function requestToolApproval(name: string, args: Record<string, unknown>, preview: WritePreview | null): Promise<boolean> {
+/**
+ * 请求一次写入确认。
+ *
+ * 🔴 弹卡接口此前是模块顶层的全局变量，多条消息并发时后者会覆盖前者，前一次请求
+ * 的 resolve 永远悬空。改为由 `send` 通过参数传入当前请求自己的回调，并把
+ * `requestToken` 带在卡上 —— 用户在确认期间切换对话或取消后，卡片上的令牌就与
+ * 当前请求不符，两颗按钮会拒绝 resolve，不会把已经作废的改动写进作品。
+ */
+function requestToolApproval(
+  emit: ((req: WriteCardRequest) => void) | null,
+  requestToken: number,
+  name: string,
+  args: Record<string, unknown>,
+  preview: WritePreview | null,
+): Promise<boolean> {
   if (!preview) {
     const details = JSON.stringify(args, null, 2).slice(0, 1_200);
     return new Promise((resolve) => {
-      if (writeCardSink) writeCardSink({ name, details, resolve });
+      if (emit) emit({ requestToken, name, details, resolve });
       else {
         Alert.alert("确认工具调用", `${name}\n\n${details}`, [
           { text: "拒绝", style: "cancel", onPress: () => resolve(false) },
@@ -144,7 +160,15 @@ function requestToolApproval(name: string, args: Record<string, unknown>, previe
   const before = preview.before.trim() || "（当前为空）";
   const after = preview.after.trim() || "（将清空）";
   return new Promise((resolve) => {
-    if (writeCardSink) writeCardSink({ name, target: preview.target, before, after, resolve });
+    if (emit) emit({
+      requestToken,
+      name,
+      target: preview.target,
+      before,
+      after,
+      ...(preview.actionOnly ? { actionOnly: true } : {}),
+      resolve,
+    });
     else resolve(false);
   });
 }
@@ -285,7 +309,6 @@ export function AssistantScreen() {
   const [attachments, setAttachments] = useState<TextAttachment[]>([]);
   const [writeCard, setWriteCard] = useState<WriteCardRequest | null>(null);
   const [writeDiffExpanded, setWriteDiffExpanded] = useState(false);
-  writeCardSink = (req) => { setWriteDiffExpanded(false); setWriteCard(req); };
   const [pendingQuestion, setPendingQuestion] = useState<AgentClarificationRequest | null>(null);
   const [retryRequest, setRetryRequest] = useState<RetryRequest | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -757,6 +780,16 @@ export function AssistantScreen() {
     const requestId = sendRequestRef.current + 1;
     sendRequestRef.current = requestId;
     const isCurrentRequest = () => sendRequestRef.current === requestId;
+    // 本请求专属的弹卡回调：并发请求各自持有自己的 emit，不共用全局槽位。
+    const emitWriteCard = (req: WriteCardRequest) => {
+      if (req.requestToken !== requestId) {
+        // 已作废的请求：直接回绝，不给界面展示的机会。
+        req.resolve(false);
+        return;
+      }
+      setWriteDiffExpanded(false);
+      setWriteCard(req);
+    };
     setSending(true);
     setError(null);
     setInput("");
@@ -831,7 +864,7 @@ export function AssistantScreen() {
         selection: runSelection,
         history: runHistory,
         agentId: retry?.agentId ?? activeAgentId,
-        approveTool: requestToolApproval,
+        approveTool: (name, args, preview) => requestToolApproval(emitWriteCard, requestId, name, args, preview),
         askUser,
         onDelta: (delta) => {
           if (delta.reasoning) setLiveReasoning((current) => current + delta.reasoning);
@@ -1031,7 +1064,9 @@ export function AssistantScreen() {
                     <Text style={styles.writeBadge}>待确认</Text>
                   </View>
                   <AdaptiveScroll maxHeight={300} style={styles.writeCardScroll} claimGesture>
-                  {writeCard.before !== undefined && writeCard.after !== undefined ? (() => {
+                  {writeCard.actionOnly ? (
+                    <Text style={styles.writeCardDetails}>{writeCard.after}</Text>
+                  ) : writeCard.before !== undefined && writeCard.after !== undefined ? (() => {
                     const stats = diffLineStats(writeCard.before, writeCard.after);
                     const afterLines = writeCard.after.split("\n").filter((line) => line.trim().length > 0);
                     const beforeLines = writeCard.before.split("\n").filter((line) => line.trim().length > 0);
@@ -1081,14 +1116,22 @@ export function AssistantScreen() {
                   <View style={styles.writeCardActions}>
                     <Pressable
                       accessibilityRole="button"
-                      onPress={() => { writeCard.resolve(false); setWriteCard(null); }}
+                      onPress={() => {
+                        if (writeCard.requestToken !== sendRequestRef.current) return;
+                        writeCard.resolve(false);
+                        setWriteCard(null);
+                      }}
                       style={styles.writeCardButtonSecondary}
                     >
                       <Text style={styles.writeCardButtonSecondaryText}>驳回</Text>
                     </Pressable>
                     <Pressable
                       accessibilityRole="button"
-                      onPress={() => { writeCard.resolve(true); setWriteCard(null); }}
+                      onPress={() => {
+                        if (writeCard.requestToken !== sendRequestRef.current) return;
+                        writeCard.resolve(true);
+                        setWriteCard(null);
+                      }}
                       style={styles.writeCardButtonPrimary}
                     >
                       <Text style={styles.writeCardButtonPrimaryText}>接受</Text>

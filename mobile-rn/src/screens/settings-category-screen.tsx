@@ -945,7 +945,10 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
   /** 批量设定全部工具权限。 */
   const setAllPermissions = async (mode: ToolPermissionMode) => {
     const next: Record<string, ToolPermissionMode> = {};
-    for (const tool of TOOL_CATALOG) next[tool.key] = mode;
+    for (const tool of TOOL_CATALOG) {
+      // 「允许」只作用于只读工具；写入类固定为每次询问，界面显示与实际行为必须一致。
+      next[tool.key] = mode === "allow" && !tool.readonly ? "ask" : mode;
+    }
     await persistManagedState(next, saveToolPermissions, setPermissions);
   };
 
@@ -1287,11 +1290,18 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
         <View style={styles.section}>
           <Text style={styles.sectionHint}>控制助手能否读写你的内容。设为「每次询问」时，助手调用前会先征求同意。</Text>
           <View style={styles.presetRow}>
-            {PERMISSION_MODES.map((mode) => (
-              <Pressable key={mode.id} onPress={() => void setAllPermissions(mode.id)} style={styles.presetChip}>
-                <Text style={styles.presetChipText}>全部{mode.label}</Text>
-              </Pressable>
-            ))}
+            {/* 写入类工具只留「每次询问」与「禁止」两档：设成「允许」等于关掉写入确认。
+                预设按钮同理，写入类那一批不参与「全部允许」。 */}
+            {PERMISSION_MODES
+              .filter((mode) => mode.id !== "allow")
+              .map((mode) => (
+                <Pressable key={mode.id} onPress={() => void setAllPermissions(mode.id)} style={styles.presetChip}>
+                  <Text style={styles.presetChipText}>全部{mode.label}</Text>
+                </Pressable>
+              ))}
+            <Pressable onPress={() => void setAllPermissions("allow")} style={styles.presetChip}>
+              <Text style={styles.presetChipText}>只读工具全部允许</Text>
+            </Pressable>
           </View>
           <TextInput
             value={toolQuery}
@@ -1322,7 +1332,7 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
                         <Text style={styles.settingValue}>{tool.readonly ? "只读" : "可写入"}</Text>
                       </View>
                       <View style={styles.modeChoices}>
-                        {PERMISSION_MODES.map((mode) => (
+                        {(tool.readonly ? PERMISSION_MODES : PERMISSION_MODES.filter((mode) => mode.id !== "allow")).map((mode) => (
                           <Pressable
                             key={mode.id}
                             onPress={() => void setPermission(tool.key, mode.id)}
