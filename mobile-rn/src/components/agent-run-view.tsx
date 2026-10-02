@@ -174,6 +174,64 @@ export function ReasoningSegment({ text, live }: { text: string; live?: boolean 
   );
 }
 
+export type TraceLine = {
+  kind: "reasoning" | "event";
+  id?: string;
+  text?: string;
+  short?: string;
+  running?: boolean;
+  live?: boolean;
+};
+
+/**
+ * 时间线的行 = 段落的唯一映射。
+ *
+ * 抽成纯函数是为了能脱离组件直接验证：同一份 segments 算两遍必须得到同一结果
+ * —— 实时看到的与关掉重开看到的必须是同一条线。
+ *
+ * 段落只有一个来源：`segments`。流式思考在生成侧就追加进末段，界面不再另拼一份
+ * 实时文本，也就不会出现同一段思考显示两遍。旧数据没有 segments 时，退回
+ * 「思考全在前 + 事件全在后」的兜底排法。
+ */
+export function buildTraceLines(input: {
+  segments?: Array<{ kind: string; text?: string; eventId?: string; live?: boolean }>;
+  events: AgentTraceEvent[];
+  reasoningSegments?: Array<{ text: string; seconds?: number; live?: boolean }>;
+}): TraceLine[] {
+  const collected: TraceLine[] = [];
+  const eventsById = new Map(input.events.map((event) => [event.id, event]));
+  if (input.segments?.length) {
+    for (const segment of input.segments) {
+      if (segment.kind === "reasoning") {
+        if ((segment.text ?? "").trim()) {
+          collected.push({ kind: "reasoning", text: segment.text, live: segment.live });
+        }
+      } else if (segment.eventId && eventsById.has(segment.eventId)) {
+        const event = eventsById.get(segment.eventId)!;
+        collected.push({
+          kind: "event",
+          id: event.id,
+          short: EVENT_KIND_LABELS[event.kind] ?? event.title.trim(),
+          running: event.status === "running" || event.status === "waiting",
+        });
+      }
+    }
+    return collected;
+  }
+  for (const segment of input.reasoningSegments ?? []) {
+    if (segment.text.trim()) collected.push({ kind: "reasoning", text: segment.text });
+  }
+  for (const event of input.events) {
+    collected.push({
+      kind: "event",
+      id: event.id,
+      short: EVENT_KIND_LABELS[event.kind] ?? event.title.trim(),
+      running: event.status === "running" || event.status === "waiting",
+    });
+  }
+  return collected;
+}
+
 /**
  * 一轮回复 = 一个合集。
  *
@@ -192,7 +250,6 @@ export function AgentTraceView({
   durationSeconds,
   inline = false,
   reasoningSegments,
-  liveReasoning,
 }: {
   trace: AgentRunTrace;
   defaultExpanded?: boolean;
@@ -202,8 +259,6 @@ export function AgentTraceView({
   inline?: boolean;
   /** 全部思考段落，按真实顺序；旧数据可回落到单个 reasoning 文本 */
   reasoningSegments?: Array<{ text: string; seconds?: number; live?: boolean }>;
-  /** 实时流式思考：尚未进入 segments，先挂在组末 */
-  liveReasoning?: string;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded || trace.status === "running");
   const eventSummary = useMemo(() => summarizeEvents(trace), [trace]);
@@ -212,54 +267,11 @@ export function AgentTraceView({
     if (trace.status === "running") setExpanded(true);
   }, [trace.status]);
 
-  // 段落的唯一来源：有 segments 就按它排；旧数据没有 segments 时把思考放最前兜底。
   const eventsById = useMemo(() => new Map(trace.events.map((event) => [event.id, event])), [trace.events]);
-  const lines = useMemo(() => {
-    const collected: Array<{
-      kind: "reasoning" | "event";
-      id?: string;
-      text?: string;
-      short?: string;
-      running?: boolean;
-      live?: boolean;
-    }> = [];
-    if (trace.segments?.length) {
-      for (const segment of trace.segments) {
-        if (segment.kind === "reasoning") {
-          if (segment.text.trim()) collected.push({ kind: "reasoning", text: segment.text });
-        } else if (eventsById.has(segment.eventId)) {
-          const event = eventsById.get(segment.eventId)!;
-          collected.push({
-            kind: "event",
-            id: event.id,
-            short: EVENT_KIND_LABELS[event.kind] ?? event.title.trim(),
-            running: event.status === "running" || event.status === "waiting",
-          });
-        }
-      }
-    } else {
-      for (const segment of reasoningSegments ?? []) {
-        if (segment.text.trim()) collected.push({ kind: "reasoning", text: segment.text });
-      }
-      for (const event of trace.events) {
-        collected.push({
-          kind: "event",
-          id: event.id,
-          short: EVENT_KIND_LABELS[event.kind] ?? event.title.trim(),
-          running: event.status === "running" || event.status === "waiting",
-        });
-      }
-    }
-
-    // 流式思考与 segments 里的最后一段是**同一份内容**的两个来源
-    // （一段来自 onDelta 累积，一段来自该轮模型调用返回）。两者只能显示一次：
-    // 段末已经是思考段时不再追加，否则同段文字会连着出现两遍。
-    const tailIsReasoning = collected[collected.length - 1]?.kind === "reasoning";
-    if (!tailIsReasoning && liveReasoning?.trim()) {
-      collected.push({ kind: "reasoning", text: liveReasoning, live: true, running: true });
-    }
-    return collected;
-  }, [trace.segments, trace.events, eventsById, reasoningSegments, liveReasoning]);
+  const lines = useMemo(
+    () => buildTraceLines({ segments: trace.segments, events: trace.events, reasoningSegments }),
+    [trace.segments, trace.events, reasoningSegments],
+  );
 
   // 末段思考是模型给出正面前的最后一步，它的内容已经由助手正文表达了；再留在
   // 时间线里就是同一件事说了两遍，所以完成态把它摘掉。

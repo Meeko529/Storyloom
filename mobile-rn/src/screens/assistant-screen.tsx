@@ -305,18 +305,15 @@ export function AssistantScreen() {
   const [stylePickerVisible, setStylePickerVisible] = useState(false);
   const [updatingStyle, setUpdatingStyle] = useState(false);
   const [liveTrace, setLiveTrace] = useState<AgentRunTrace | null>(null);
-  const [liveReasoning, setLiveReasoning] = useState("");
   /**
-   * 流式思考的完整文本。
+   * 实时轨迹按 150ms 节流刷进 state。
    *
-   * 增量按 token 到达，先攒在这个 ref 里，再节流刷进 state。此前每个增量都直接
-   * setState —— 一段几千字的思考就是几千次整屏重渲染，界面按 token 卡。
-   * 攒文本不进 state，刷新的频率与模型吐字速度解耦。
+   * 流式思考每到一个 token，runtime 就会发布一次轨迹；不节流就是每 token 整屏
+   * 重渲染。节流后刷新频率与模型吐字速度解耦。
    */
-  const liveReasoningRef = useRef("");
-  const flushLiveReasoning = useMemo(() => throttle((text: string) => setLiveReasoning(text), 150), []);
+  const flushLiveTrace = useMemo(() => throttle((trace: AgentRunTrace) => setLiveTrace(trace), 150), []);
   // 离开页面时丢弃挂起的那一次刷新，不给已卸载的组件发 setState。
-  useEffect(() => () => flushLiveReasoning.cancel(), [flushLiveReasoning]);
+  useEffect(() => () => flushLiveTrace.cancel(), [flushLiveTrace]);
   // 最近一次被接受的 AI 写入（撤销入口），null 表示当前没有可撤销的改动
   const [undoTarget, setUndoTarget] = useState<string | null>(null);
   // 待随下一条消息发送的文本附件
@@ -430,12 +427,13 @@ export function AssistantScreen() {
     } finally {
       if (loadRequestRef.current === requestId) setLoading(false);
     }
-  }, [cancelPendingQuestion, effectiveProjectId]);
+  }, [cancelPendingQuestion, effectiveProjectId, flushLiveTrace]);
 
   useEffect(() => {
     cancelPendingQuestion();
     setSending(false);
     setLiveTrace(null);
+    flushLiveTrace.cancel();
     return () => {
       sendRequestRef.current += 1;
       cancelPendingQuestion();
@@ -812,9 +810,7 @@ export function AssistantScreen() {
     setError(null);
     setInput("");
     setLiveTrace(null);
-    setLiveReasoning("");
-    liveReasoningRef.current = "";
-    flushLiveReasoning.cancel();
+    flushLiveTrace.cancel();
     let userMessage = retry?.userMessage ?? null;
     let nextHistory = retry?.history ?? [];
     let userMessageSaved = Boolean(userMessage);
@@ -886,15 +882,11 @@ export function AssistantScreen() {
         agentId: retry?.agentId ?? activeAgentId,
         approveTool: (name, args, preview) => requestToolApproval(emitWriteCard, requestId, name, args, preview),
         askUser,
-        onDelta: (delta) => {
-          if (!delta.reasoning) return;
-          liveReasoningRef.current += delta.reasoning;
-          flushLiveReasoning(liveReasoningRef.current);
-        },
         onTrace: (trace) => {
-          // 实时时间线的数据源：把执行事件流同步到界面，否则只看得见计时。
+          // 实时时间线唯一的数据源：思考增量与执行事件都在这同一份轨迹里，
+          // 界面不再另存一份流式文本，也就不会出现同一段思考显示两遍。
           latestTrace = trace;
-          setLiveTrace(trace);
+          flushLiveTrace(trace);
         },
       });
       const processingSeconds = Math.max(1, Math.round((Date.now() - requestStartedAt) / 1000));
@@ -914,11 +906,7 @@ export function AssistantScreen() {
       });
       setRetryRequest(null);
       setLiveTrace(null);
-      // 流式思考一并清掉：它与 trace.segments 同源，清了 trace 就得清这份，
-      // 否则残留到下一次发送，时间线上会出现一段没有归属的思考。
-      setLiveReasoning("");
-      liveReasoningRef.current = "";
-      flushLiveReasoning.cancel();
+      flushLiveTrace.cancel();
       setUndoTarget(undoLabel());
       setAttachments([]);
     } catch (sendError) {
@@ -957,9 +945,7 @@ export function AssistantScreen() {
       // 失败时不回填输入框：原话已经在消息列表里，重发走那条消息下方的「重试」。
       if (isCurrentRequest()) {
         setLiveTrace(null);
-        setLiveReasoning("");
-        liveReasoningRef.current = "";
-        flushLiveReasoning.cancel();
+        flushLiveTrace.cancel();
       }
     } finally {
       if (isCurrentRequest()) setSending(false);
@@ -1083,16 +1069,7 @@ export function AssistantScreen() {
                     <ActivityIndicator size="small" color={colors.primary} />
                     <Text style={styles.liveHeaderText}>处理中 · 已处理 {thinkingSeconds}s</Text>
                   </View>
-                  {liveTrace ? (
-                    <AgentTraceView
-                      trace={liveTrace}
-                      defaultExpanded
-                      inline
-                      liveReasoning={liveReasoning}
-                    />
-                  ) : liveReasoning.trim() ? (
-                    <ReasoningSegment text={liveReasoning} live />
-                  ) : null}
+                  {liveTrace ? <AgentTraceView trace={liveTrace} defaultExpanded inline /> : null}
                 </>
               ) : null}
               {writeCard ? (

@@ -164,15 +164,53 @@ function createTraceRecorder(
   const publish = () => onTrace?.(cloneTrace(trace));
   publish();
 
+  // 本轮流式思考所在的段下标。流式增量与这一轮返回的完整文本是同一份内容，
+  // 靠这个下标把两者合成一段；若只看"末段是不是思考"，思考之后又发生工具调用
+  // 时就会误判成新的一段，同一段思考便显示两遍。
+  let liveIndex: number | null = null;
+
   return {
-    /** 追加一段思考。思考与工具事件在同一条线上，按调用发生的真实先后排列。 */
+    /**
+     * 追加一段思考。思考与工具事件在同一条线上，按调用发生的真实先后排列。
+     *
+     * 本轮已有流式段时**覆盖它**（并用完整文本替换增量拼出的内容），
+     * 新开一段会让同一份思考出现两遍。
+     */
     addReasoning(text: string, seconds?: number): void {
       const body = text.trim();
       if (!body) return;
-      trace = {
-        ...trace,
-        segments: [...(trace.segments ?? []), { kind: "reasoning", text: body, ...(seconds ? { seconds } : {}) }],
-      };
+      const segments = [...(trace.segments ?? [])];
+      if (liveIndex !== null && segments[liveIndex]?.kind === "reasoning") {
+        segments[liveIndex] = {
+          kind: "reasoning",
+          text: body,
+          live: false,
+          ...(seconds ? { seconds } : {}),
+        };
+        liveIndex = null;
+      } else {
+        segments.push({ kind: "reasoning", text: body, ...(seconds ? { seconds } : {}) });
+      }
+      trace = { ...trace, segments };
+      publish();
+    },
+    /**
+     * 流式增量：只往本轮那段思考追加，不新开段落。
+     *
+     * 有了它，界面只需要读 `segments` 一处就能拿到正在增长的思考，不必再在
+     * 组件里另存一份流式文本 —— 那正是"同一段思考显示两遍"的来源。
+     */
+    appendReasoningDelta(text: string): void {
+      if (!text) return;
+      const segments = [...(trace.segments ?? [])];
+      const current = liveIndex === null ? undefined : segments[liveIndex];
+      if (current && current.kind === "reasoning") {
+        segments[liveIndex as number] = { ...current, text: current.text + text };
+      } else {
+        segments.push({ kind: "reasoning", text, live: true });
+        liveIndex = segments.length - 1;
+      }
+      trace = { ...trace, segments };
       publish();
     },
     add(event: TraceEventDraft): string {
@@ -626,7 +664,14 @@ async function runAgentLoop(input: LoopInput): Promise<LoopResult> {
       throw new Error("本次任务的模型请求次数已达上限，请拆分需求后重试");
     }
     input.budget.remaining -= 1;
-    const turn = await callModel(input.selection, messages, tools, input.onDelta ? { onDelta: input.onDelta } : undefined);
+    // 流式增量先落进 recorder 的 segments，界面从同一处读；再透传给调用方。
+    // 顺序不能反：先写数据再通知，调用方拿到的才是含本次增量的快照。
+    const turn = await callModel(input.selection, messages, tools, {
+      onDelta: (delta) => {
+        if (delta.reasoning) input.recorder.appendReasoningDelta(delta.reasoning);
+        input.onDelta?.(delta);
+      },
+    });
     messages.push({ role: "assistant", content: turn.content, toolCalls: turn.toolCalls });
 
     // 每一轮的思考都记进时间线，前几轮不再被丢弃 —— 界面上思考与工具才能按
