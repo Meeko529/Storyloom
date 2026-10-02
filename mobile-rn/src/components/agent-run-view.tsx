@@ -3,13 +3,12 @@ import { useEffect, useMemo, useState, type ComponentProps } from "react";
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-import { Button } from "@/components/ui";
+import { AdaptiveScroll } from "@/components/ui";
 import { colors, radius, spacing } from "@/theme";
 import type {
   AgentClarificationAnswer,
@@ -117,7 +116,11 @@ export function ReasoningRow({ text, seconds, live }: { text: string; seconds?: 
         <Text style={styles.reasoningRowMeta}>{seconds ? `用时 ${seconds}s · ` : ""}{characters} 字</Text>
         <Ionicons name={open ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
       </Pressable>
-      {open ? <Text selectable style={styles.reasoningRowText}>{text}</Text> : null}
+      {open ? (
+        <View style={styles.reasoningBody}>
+          <Text selectable style={styles.reasoningRowText}>{text}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -164,7 +167,7 @@ export function AgentTraceView({
   ].filter(Boolean).join(" · ") || "正在分析任务";
 
   return (
-    <View style={[styles.trace, inline && styles.traceInline, !inline && trace.status === "error" && styles.traceError]}>
+    <View style={styles.trace}>
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded }}
@@ -181,19 +184,21 @@ export function AgentTraceView({
         {trace.status === "running" ? <ActivityIndicator size="small" color={colors.primary} /> : null}
         <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={18} color={colors.textMuted} />
       </Pressable>
-      {reasoning?.text.trim() ? (
-        <ReasoningRow text={reasoning.text} seconds={reasoning.seconds} live={reasoning.live} />
-      ) : null}
       {expanded ? (
-        <View style={[styles.events, inline && styles.eventsInline]}>
-          {trace.collaborationRequired ? (
-            <View style={styles.collaborationNotice}>
-              <Ionicons name="people-outline" size={16} color={colors.primary} />
-              <Text style={styles.collaborationText}>此任务可按需调用专业子智能体协作</Text>
-            </View>
-          ) : null}
-          {trace.events.map((event) => <TraceEventRow key={event.id} event={event} inline={inline} />)}
-        </View>
+        <AdaptiveScroll maxHeight={340}>
+          <View style={styles.events}>
+            {reasoning?.text.trim() ? (
+              <ReasoningRow text={reasoning.text} seconds={reasoning.seconds} live={reasoning.live} />
+            ) : null}
+            {trace.collaborationRequired ? (
+              <View style={styles.collaborationNotice}>
+                <Ionicons name="people-outline" size={16} color={colors.primary} />
+                <Text style={styles.collaborationText}>此任务可按需调用专业子智能体协作</Text>
+              </View>
+            ) : null}
+            {trace.events.map((event) => <TraceEventRow key={event.id} event={event} inline={inline} />)}
+          </View>
+        </AdaptiveScroll>
       ) : null}
     </View>
   );
@@ -244,11 +249,7 @@ export function AgentQuestionSheet({
               <Ionicons name="close" size={24} color={colors.textMuted} />
             </Pressable>
           </View>
-          <ScrollView
-            contentContainerStyle={styles.questions}
-            keyboardShouldPersistTaps="handled"
-            nestedScrollEnabled
-          >
+          <AdaptiveScroll maxHeight={300} contentContainerStyle={styles.questions} keyboardShouldPersistTaps="handled">
             {request.questions.map((question, questionIndex) => (
               <View key={`${request.id}-${questionIndex}`} style={styles.question}>
                 <Text style={styles.questionIndex}>问题 {questionIndex + 1}</Text>
@@ -313,10 +314,20 @@ export function AgentQuestionSheet({
                 </View>
               </View>
             ))}
-          </ScrollView>
+          </AdaptiveScroll>
           <View style={styles.questionActions}>
-            <Button label="稍后再说" variant="secondary" onPress={onCancel} />
-            <Button label="提交回答" disabled={!canSubmit} onPress={submit} />
+            <Pressable accessibilityRole="button" onPress={onCancel} style={styles.questionButtonSecondary}>
+              <Text style={styles.questionButtonSecondaryText}>稍后再说</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !canSubmit }}
+              disabled={!canSubmit}
+              onPress={submit}
+              style={[styles.questionButtonPrimary, !canSubmit && styles.questionButtonDisabled]}
+            >
+              <Text style={styles.questionButtonPrimaryText}>提交回答</Text>
+            </Pressable>
           </View>
         </View>
     </View>
@@ -324,18 +335,8 @@ export function AgentQuestionSheet({
 }
 
 const styles = StyleSheet.create({
-  trace: {
-    alignSelf: "flex-start",
-    flexShrink: 1,
-    maxWidth: "88%",
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    backgroundColor: "#EFF3F0",
-  },
-  traceError: { borderColor: "#E4B4AE" },
-  // 时间线形态：去掉卡片外框、底色与圆角，状态行与事件行直接落在消息/时间线上。
+  // 组根：一个组一条线，不画外框与底色，状态行与后续轨迹直接落在消息/实时时间线上。
+  trace: { alignSelf: "flex-start", flexShrink: 1, maxWidth: "88%" },
   traceInline: { borderWidth: 0, borderRadius: 0, backgroundColor: "transparent" },
   traceHeaderInline: { paddingHorizontal: 0 },
   eventsInline: { borderTopWidth: 0 },
@@ -344,7 +345,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
   },
   traceIcon: {
@@ -358,7 +358,7 @@ const styles = StyleSheet.create({
   traceCopy: { flexShrink: 1, minWidth: 0 },
   traceStatus: { fontSize: 13, fontWeight: "700" },
   traceSummary: { marginTop: 2, color: colors.textMuted, fontSize: 12 },
-  events: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  events: {},
   collaborationNotice: {
     minHeight: 34,
     flexDirection: "row",
@@ -374,6 +374,8 @@ const styles = StyleSheet.create({
   reasoningRowTitleLive: { color: colors.primary },
   reasoningRowMeta: { flex: 1, color: colors.textMuted, fontSize: 12 },
   reasoningRowText: { color: colors.textMuted, fontSize: 13, lineHeight: 20 },
+  // 展开的思考正文缩进一档，左侧细竖线把它与后面的工具行分开。
+  reasoningBody: { marginTop: spacing.xs, marginLeft: 5, paddingLeft: spacing.sm, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.border },
   event: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   eventInline: { borderTopWidth: 0, borderTopColor: "transparent" },
   eventHeader: {
@@ -381,7 +383,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
   },
   eventKindIcon: { width: 22, alignItems: "center" },
@@ -404,34 +405,34 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   questionHeader: {
-    minHeight: 48,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-    paddingLeft: spacing.lg,
-    paddingRight: spacing.sm,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.xs,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
   questionHeaderIcon: {
-    width: 36,
-    height: 36,
+    width: 32,
+    height: 32,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.sm,
-    backgroundColor: "#E8F2EE",
+    backgroundColor: colors.surfaceMuted,
   },
   questionHeaderCopy: { flex: 1, minWidth: 0 },
-  questionSheetTitle: { color: colors.text, fontSize: 15, fontWeight: "700" },
-  closeButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  questionSheetTitle: { color: colors.text, fontSize: 14, fontWeight: "700" },
+  closeButton: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
   questions: { padding: spacing.md, paddingBottom: spacing.lg, gap: spacing.lg },
   question: { gap: spacing.sm },
   questionIndex: { color: colors.primary, fontSize: 11, fontWeight: "700" },
-  questionTitle: { color: colors.text, fontSize: 15, fontWeight: "700", lineHeight: 21 },
-  questionDescription: { color: colors.textMuted, fontSize: 13, lineHeight: 19 },
+  questionTitle: { color: colors.text, fontSize: 14, fontWeight: "700", lineHeight: 20 },
+  questionDescription: { color: colors.textMuted, fontSize: 12, lineHeight: 18 },
   options: { gap: spacing.sm, marginTop: spacing.xs },
   option: {
-    minHeight: 44,
+    minHeight: 40,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
@@ -442,11 +443,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     backgroundColor: colors.background,
   },
-  optionSelected: { borderColor: colors.primary, backgroundColor: colors.surface },
+  optionSelected: { borderColor: colors.primary, backgroundColor: colors.surfaceMuted },
   optionCopy: { flex: 1, minWidth: 0 },
-  optionLabel: { color: colors.text, fontSize: 14, fontWeight: "600" },
+  optionLabel: { color: colors.text, fontSize: 13, fontWeight: "600" },
   optionLabelSelected: { color: colors.primary },
-  optionDescription: { marginTop: 3, color: colors.textMuted, fontSize: 12, lineHeight: 17 },
+  optionDescription: { marginTop: 3, color: colors.textMuted, fontSize: 11.5, lineHeight: 16 },
   customInput: {
     minHeight: 88,
     maxHeight: 160,
@@ -463,12 +464,31 @@ const styles = StyleSheet.create({
   questionActions: {
     flexDirection: "row",
     justifyContent: "flex-end",
+    alignItems: "center",
     gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
-    backgroundColor: colors.surface,
   },
-});
+  questionButtonSecondary: {
+    minHeight: 34,
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    backgroundColor: colors.background,
+  },
+  questionButtonSecondaryText: { color: colors.text, fontSize: 13, fontWeight: "600" },
+  questionButtonPrimary: {
+    minHeight: 34,
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.sm,
+    backgroundColor: colors.primary,
+  },
+  questionButtonDisabled: { opacity: 0.45 },
+  questionButtonPrimaryText: { color: "#FFFFFF", fontSize: 13, fontWeight: "600" },
+  });

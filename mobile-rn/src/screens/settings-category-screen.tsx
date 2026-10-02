@@ -155,7 +155,7 @@ const SKILL_GROUPS: { title: string; test: (name: string) => boolean }[] = [
   { title: "题材与设定", test: (name) => /剧本|世界观|类型|题材|设定|起名|命名|互动|分支|广播|诗歌|歌词|同人|系列|调研|简介|推荐|卖点|金手指/.test(name) },
   { title: "审查与打磨", test: (name) => /审查|检查|修订|禁用词|模板|质量|契约|一致性|读者|校对/.test(name) },
   { title: "规范与连续性", test: (name) => /格式|规范|状态|追踪|连续|设定|逻辑|体检/.test(name) },
-  { title: "情节与结构", test: (name) => /开篇|结构|反转|钩子|悬念|情绪|投稿|大纲|节奏|剧情|情节|场景|爽点|打脸|扩写|缩写|主题|描写|氛围|场面/.test(name) },
+  { title: "情节与结构", test: (name) => /开篇|结构|反转|钩子|悬念|情绪|投稿|大纲|节奏|剧情|情节|场景|爽点|打脸|扩写|缩写|主题|描写|氛围|场面|信息差|冲突/.test(name) },
 ];
 const SKILL_GROUP_OTHER = "其他";
 
@@ -1207,6 +1207,13 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
           ) : null}
           <Button label={rebuilding ? "索引中" : "重建当前作品索引"} onPress={() => void rebuildIndex()} disabled={!projectId || rebuilding} loading={rebuilding} />
           {indexProgress ? <Text style={styles.progressText}>{indexProgress}</Text> : null}
+          <Button label="清除当前作品索引" variant="secondary" onPress={() => {
+            if (!projectId) return;
+            Alert.alert("清除索引", "只删除索引，不删除章节、角色和世界书数据。", [
+              { text: "取消", style: "cancel" },
+              { text: "清除", style: "destructive", onPress: () => void clearProjectIndex(projectId).then(() => setIndexStats({ sources: 0, chunks: 0 })) },
+            ]);
+          }} disabled={!projectId} />
           <Button
             label="恢复默认参数"
             variant="secondary"
@@ -1635,14 +1642,6 @@ export function SettingsCategoryScreen({ category, onBack }: { category: Exclude
             备份包含全部作品、章节、笔记、智能体、技能、设置，以及作品封面与角色头像；不包含 API Key（恢复后需重新填写）与可重新下载的内容包资源。恢复会覆盖当前数据。
           </Text>
           {appUpdateError ? <Text style={styles.progressText}>{appUpdateError}</Text> : null}
-          <View style={styles.subsectionDivider} />
-          <Button label="清除当前作品索引" variant="secondary" onPress={() => {
-            if (!projectId) return;
-            Alert.alert("清除索引", "只删除索引，不删除章节、角色和世界书数据。", [
-              { text: "取消", style: "cancel" },
-              { text: "清除", style: "destructive", onPress: () => void clearProjectIndex(projectId).then(() => setIndexStats({ sources: 0, chunks: 0 })) },
-            ]);
-          }} disabled={!projectId} />
         </View>
       ) : null}
 

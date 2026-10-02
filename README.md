@@ -1,6 +1,6 @@
 # Storyloom ✒️
 
-[中文](README.md) | **English**
+[中文](README.md) | [English](README_EN.md)
 
 > (๑•̀ㅂ•́)و✧ 装在手机里的小说创作 Agent —— 通勤路上也能肝三章
 

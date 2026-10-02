@@ -16,7 +16,6 @@ import {
   Text,
   TextInput,
   View,
-  ScrollView,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { mascotSource, normalizeMascotKind } from "@/settings/mascots";
@@ -41,7 +40,7 @@ import { editorFontFamily, readChatPrefs } from "@/settings/editor-prefs";
 import { AgentQuestionSheet, AgentTraceView, ReasoningRow } from "@/components/agent-run-view";
 import { appendCrashLog } from "@/lib/crash-log";
 import { MessageActionBar } from "@/components/message-action-bar";
-import { Button, EmptyState, ErrorNotice, Field, Header, Screen, SheetBackdrop } from "@/components/ui";
+import { AdaptiveScroll, Button, EmptyState, ErrorNotice, Field, Header, Screen, SheetBackdrop } from "@/components/ui";
 import {
   addMessage,
   createChatSession,
@@ -1024,7 +1023,7 @@ export function AssistantScreen() {
                     <Text numberOfLines={1} style={styles.writeCardTarget}>{writeCard.target ?? writeCard.name}</Text>
                     <Text style={styles.writeBadge}>待确认</Text>
                   </View>
-                  <ScrollView style={styles.writeCardScroll} nestedScrollEnabled>
+                  <AdaptiveScroll maxHeight={300} style={styles.writeCardScroll}>
                   {writeCard.before !== undefined && writeCard.after !== undefined ? (() => {
                     const stats = diffLineStats(writeCard.before, writeCard.after);
                     const afterLines = writeCard.after.split("\n").filter((line) => line.trim().length > 0);
@@ -1036,16 +1035,27 @@ export function AssistantScreen() {
                           <Text style={styles.writeStatDel}>−{stats.removed} 行</Text>
                         </View>
                         {writeDiffExpanded ? (
-                          <ScrollView style={styles.writeDiffScroll} nestedScrollEnabled>
-                            {beforeLines.slice(0, 120).map((line, idx) => (
+                          <AdaptiveScroll maxHeight={260} style={styles.writeDiffScroll}>
+                            <Text style={styles.writeDiffLabel}>写入前</Text>
+                            {beforeLines.length === 0 ? (
+                              <Text style={styles.writeDiffDel}>− （当前为空）</Text>
+                            ) : beforeLines.slice(0, 120).map((line, idx) => (
                               <Text key={"b" + idx} style={styles.writeDiffDel} numberOfLines={2}>− {line}</Text>
                             ))}
+                            <Text style={[styles.writeDiffLabel, styles.writeDiffLabelSpaced]}>写入后</Text>
                             {afterLines.slice(0, 120).map((line, idx) => (
                               <Text key={"a" + idx} style={styles.writeDiffAdd} numberOfLines={2}>+ {line}</Text>
                             ))}
-                          </ScrollView>
+                          </AdaptiveScroll>
                         ) : (
                           <View style={styles.writeDiff}>
+                            <Text style={styles.writeDiffLabel}>写入前</Text>
+                            {beforeLines.length === 0 ? (
+                              <Text style={styles.writeDiffDel}>− （当前为空）</Text>
+                            ) : beforeLines.slice(0, 2).map((line, idx) => (
+                              <Text key={"b" + idx} style={styles.writeDiffDel} numberOfLines={1}>− {line}</Text>
+                            ))}
+                            <Text style={[styles.writeDiffLabel, styles.writeDiffLabelSpaced]}>写入后</Text>
                             {afterLines.slice(0, 3).map((line, idx) => (
                               <Text key={"a" + idx} style={styles.writeDiffAdd} numberOfLines={1}>+ {line}</Text>
                             ))}
@@ -1060,7 +1070,7 @@ export function AssistantScreen() {
                   })(                  ) : writeCard.details ? (
                     <Text style={styles.writeCardDetails}>{writeCard.details}</Text>
                   ) : null}
-                  </ScrollView>
+                  </AdaptiveScroll>
                   <View style={styles.writeCardActions}>
                     <Button label="驳回" variant="secondary" onPress={() => { writeCard.resolve(false); setWriteCard(null); }} />
                     <Button label="接受" onPress={() => { writeCard.resolve(true); setWriteCard(null); }} />
@@ -1533,7 +1543,7 @@ const styles = StyleSheet.create({
   failureRetryDisabled: { opacity: 0.5 },
   failureRetryText: { color: colors.danger, fontSize: 12, fontWeight: "700" },
   composerWrap: { marginHorizontal: spacing.md, marginBottom: spacing.sm, gap: 6 },
-  composer: { flexDirection: "row", alignItems: "center", gap: 6, paddingLeft: 6, paddingRight: 6, paddingVertical: 6, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 999, ...shadow.card },
+  composer: { flexDirection: "row", alignItems: "center", gap: 6, paddingLeft: 6, paddingRight: 6, paddingVertical: 6, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, borderRadius: 999, ...shadow.card },
   writeBadge: { marginLeft: "auto", color: colors.primary, fontSize: 11, fontWeight: "800", backgroundColor: "rgba(23,107,87,0.12)", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3, overflow: "hidden" },
   writeCard: {
     alignSelf: "flex-start",
@@ -1557,11 +1567,13 @@ const styles = StyleSheet.create({
   writeStats: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md, paddingVertical: spacing.xs },
   writeStatAdd: { color: "#1B7F4D", fontSize: 12, fontWeight: "800" },
   writeStatDel: { color: colors.danger, fontSize: 12, fontWeight: "800" },
-  writeDiffScroll: { maxHeight: 260, marginTop: spacing.sm, marginHorizontal: spacing.md, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceMuted, paddingVertical: spacing.xs },
+  writeDiffScroll: { maxHeight: 260, marginTop: spacing.sm },
   writeDiffToggle: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, marginTop: spacing.xs, paddingVertical: spacing.sm + 2 },
   writeDiffToggleText: { color: colors.textMuted, fontSize: 13 },
   writeDiffToggleHint: { color: colors.textMuted, fontSize: 12, flexShrink: 1, textAlign: "right" },
-  writeDiff: { marginTop: spacing.sm, backgroundColor: colors.surfaceMuted, borderRadius: 10, padding: spacing.sm, gap: 4 },
+  writeDiff: { marginTop: spacing.sm, gap: 4 },
+  writeDiffLabel: { color: colors.textMuted, fontSize: 11, fontWeight: "700" },
+  writeDiffLabelSpaced: { marginTop: spacing.xs },
   writeDiffAdd: { color: "#1B7F4D", fontSize: 12, lineHeight: 18 },
   writeDiffDel: { color: colors.danger, fontSize: 12, lineHeight: 18 },
   mascot: { position: "absolute", right: 14, top: -40, width: 40, height: 44 },
@@ -1569,7 +1581,7 @@ const styles = StyleSheet.create({
   welcomeBox: { flexGrow: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm, paddingHorizontal: spacing.xl },
   welcomeChipsRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 8 },
   welcomeTitle: { color: colors.text, fontSize: 17, fontWeight: "700", marginBottom: spacing.xs },
-  welcomeChip: { borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: colors.surface },
+  welcomeChip: { borderWidth: 1, borderColor: colors.border, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: colors.background },
   welcomeChipText: { color: colors.textMuted, fontSize: 11.5 },
   editingBanner: { minHeight: 36, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   undoBanner: { minHeight: 36, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.md, paddingVertical: spacing.xs, backgroundColor: "#E6F3EF", borderRadius: 8 },
@@ -1624,7 +1636,7 @@ const styles = StyleSheet.create({
   sheetRowTitle: { color: colors.text, fontSize: 15, fontWeight: "600" },
   sheetRowMeta: { marginTop: 3, color: colors.textMuted, fontSize: 12 },
   headerMenuBackdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9 },
-  headerMenuCard: { position: "absolute", top: 100, right: 18, width: 176, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingVertical: 4, zIndex: 10, elevation: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 10 },
+  headerMenuCard: { position: "absolute", top: 100, right: 18, width: 176, backgroundColor: colors.background, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingVertical: 4, zIndex: 10, elevation: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 10 },
   headerMenuRow: { minHeight: 46, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md },
   headerMenuRowPressed: { backgroundColor: colors.surfaceMuted },
   headerMenuText: { color: colors.text, fontSize: 14, fontWeight: "600" },

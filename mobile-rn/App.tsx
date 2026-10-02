@@ -8,10 +8,11 @@ import { checkAppUpdate, downloadAndInstallUpdate, type AppUpdateInfo } from "@/
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AdaptiveScroll } from "@/components/ui";
 import { installCrashLogger } from "@/lib/crash-log";
 import type { RootStackParamList, RootTabParamList } from "@/navigation/types";
 import { CharactersScreen } from "@/screens/characters-screen";
@@ -42,7 +43,7 @@ function MainTabs() {
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textMuted,
           tabBarStyle: {
-            backgroundColor: colors.surface,
+            backgroundColor: colors.background,
             borderTopColor: colors.border,
             height: 58 + insets.bottom,
             paddingBottom: Math.max(insets.bottom, 5),
@@ -257,7 +258,7 @@ function AppUpdatePopup() {
         <View style={styles.updateCard}>
           <Text style={styles.updateTitle}>发现新版本 {info.latestVersion}</Text>
           {busy ? <Text style={styles.updateHint}>{progress || "正在下载…"}</Text> : null}
-          <ScrollView style={styles.updateNotesScroll} nestedScrollEnabled>
+          <AdaptiveScroll maxHeight={260} style={styles.updateNotesScroll}>
             {parseUpdateNotes(info.notes).map((line, index) =>
               line.kind === "section" ? (
                 <Text key={index} style={styles.updateNoteSection}>{line.text}</Text>
@@ -268,7 +269,7 @@ function AppUpdatePopup() {
                 </View>
               ),
             )}
-          </ScrollView>
+          </AdaptiveScroll>
           <View style={styles.updateActions}>
             <Pressable disabled={busy} onPress={() => setInfo(null)} style={styles.updateLater}>
               <Text style={styles.updateLaterText}>稍后</Text>

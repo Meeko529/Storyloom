@@ -2,7 +2,7 @@
 
 > (๑•̀ㅂ•́)و✧ A novel-writing agent that lives in your pocket — draft three chapters on your commute.
 
-**English** | [中文](README.md)
+[English](README_EN.md) | [中文](README.md)
 
 An AI writing assistant that runs **entirely on your phone**: outlines, prose, revisions and continuity notes — all on-device.
 No computer, no command line. Install and write.

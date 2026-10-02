@@ -1,15 +1,19 @@
 // 本文件基于 OpenFicM（Apache-2.0）修改
 // 改动说明见仓库根目录 docs/上游来源与改动清单.md
 import { Ionicons } from "@expo/vector-icons";
-import type { PropsWithChildren, ReactNode } from "react";
+import { useState, type PropsWithChildren, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
+  type LayoutChangeEvent,
+  type StyleProp,
   type TextInputProps,
+  type ViewStyle,
 } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -128,6 +132,52 @@ export function SheetBackdrop({ onPress, children }: PropsWithChildren<{ onPress
       {/* 顶部把手：负下边距让它压进弹层上沿，zIndex 保证画在弹层之上。 */}
       <View pointerEvents="none" style={styles.sheetHandle} />
       {children}
+    </View>
+  );
+}
+
+/**
+ * 限高滚动容器。
+ *
+ * 内容高度不超过上限时按内容收缩（不撑开、不留空档）；超过上限才切换成可滚动。
+ * 直接用 `ScrollView` + `maxHeight` 在 Android 上会被撑到上限高度，内容少时下方留白，
+ * 所以这里按实测内容高度二选一。
+ */
+export function AdaptiveScroll({
+  maxHeight,
+  style,
+  contentContainerStyle,
+  keyboardShouldPersistTaps,
+  children,
+}: PropsWithChildren<{
+  maxHeight: number;
+  style?: StyleProp<ViewStyle>;
+  contentContainerStyle?: StyleProp<ViewStyle>;
+  keyboardShouldPersistTaps?: boolean | "always" | "never" | "handled";
+}>) {
+  const [contentHeight, setContentHeight] = useState(0);
+  const [measured, setMeasured] = useState(false);
+  const measure = (event: LayoutChangeEvent) => {
+    setContentHeight(event.nativeEvent.layout.height);
+    setMeasured(true);
+  };
+  // 超过上限才滚；没有超过（含尚未测到高度）时用普通容器，高度等于内容高度。
+  if (contentHeight > maxHeight) {
+    return (
+      <ScrollView
+        nestedScrollEnabled
+        keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+        style={[style, { maxHeight }]}
+        contentContainerStyle={contentContainerStyle}
+      >
+        <View onLayout={measure}>{children}</View>
+      </ScrollView>
+    );
+  }
+  return (
+    // 首帧还没测到高度时先夹住，避免把外层卡片撑开一帧。
+    <View style={[style, measured ? null : { maxHeight, overflow: "hidden" }]}>
+      <View onLayout={measure} style={contentContainerStyle}>{children}</View>
     </View>
   );
 }

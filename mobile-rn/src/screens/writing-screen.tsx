@@ -1199,7 +1199,7 @@ const styles = StyleSheet.create({
   iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   headerActions: { flexDirection: "row", alignItems: "center" },
   headerMenuBackdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9 },
-  headerMenuCard: { position: "absolute", top: 100, right: 18, width: 176, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingVertical: 4, zIndex: 10, elevation: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 10 },
+  headerMenuCard: { position: "absolute", top: 100, right: 18, width: 176, backgroundColor: colors.background, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingVertical: 4, zIndex: 10, elevation: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 10 },
   headerMenuRow: { minHeight: 46, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md },
   headerMenuRowPressed: { backgroundColor: colors.surfaceMuted },
   headerMenuText: { color: colors.text, fontSize: 14, fontWeight: "600" },
