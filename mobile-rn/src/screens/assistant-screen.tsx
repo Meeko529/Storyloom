@@ -40,7 +40,7 @@ import { editorFontFamily, readChatPrefs } from "@/settings/editor-prefs";
 import { AgentQuestionSheet, AgentTraceView, ReasoningSegment } from "@/components/agent-run-view";
 import { appendCrashLog } from "@/lib/crash-log";
 import { MessageActionBar } from "@/components/message-action-bar";
-import { AdaptiveScroll, Button, EmptyState, ErrorNotice, Field, Header, Screen, SheetBackdrop } from "@/components/ui";
+import { AdaptiveScroll, Button, EmptyState, ErrorNotice, Field, Header, Screen, SheetBackdrop, TopSheet } from "@/components/ui";
 import {
   addMessage,
   createChatSession,
@@ -83,8 +83,8 @@ import type {
 } from "@/types";
 
 /**
- * 工具授权。写入类工具先展示「改前 / 改后」，按一整组接受或驳回，
- * 而不是只看一段参数 JSON——借鉴 DeepWrite 的操作批次与 denova 的整组粒度。
+ * 工具授权。写入类工具先展示「改前 / 改后」，按一整组接受或驳回——
+ * 逐行确认在长正文上不现实，整组粒度才看得清一次改动动了什么。
  */
 type WriteCardRequest = {
   /** 本次请求的唯一标识：确认卡只认自己那一次请求的令牌，避免过期请求落盘。 */
@@ -289,6 +289,8 @@ export function AssistantScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sessionPickerVisible, setSessionPickerVisible] = useState(false);
+  // 历史对话里当前展开行内菜单的那一条；同一时刻只展开一条。
+  const [sessionMenuId, setSessionMenuId] = useState<string | null>(null);
   const [headerMenuVisible, setHeaderMenuVisible] = useState(false);
   const [messageCounts, setMessageCounts] = useState<Record<string, number>>({});
   const [renaming, setRenaming] = useState<ChatSession | null>(null);
@@ -556,10 +558,14 @@ export function AssistantScreen() {
       await setSetting(activeSessionSettingKey(effectiveProjectId), session.id);
       setActiveSession(session);
       setMessages(nextMessages);
-            const lastFailed = [...nextMessages].reverse().find((message) => message.role === "assistant" && (message.metadata?.taskStatus === "failed" || message.metadata?.agentTrace?.status === "error"));
+      // 切走的那条如果上一轮失败过，把「重试」按在新对话上重算一遍。
+      const lastFailed = [...nextMessages].reverse().find((message) => message.role === "assistant"
+        && (message.metadata?.taskStatus === "failed" || message.metadata?.agentTrace?.status === "error"));
       setRetryRequest(lastFailed ? retryRequestForMessage(lastFailed, nextMessages, session, nextSelection, activeAgentId) : null);
       setSelection(nextSelection);
       setError(selectionError);
+      setSessionMenuId(null);
+      setSessionPickerVisible(false);
     } catch (switchError) {
       setError(switchError instanceof Error ? switchError.message : String(switchError));
     }
@@ -574,7 +580,7 @@ export function AssistantScreen() {
   /** 新建对话前先确认：误触会立刻切走，且每次点都会新建。 */
   const confirmNewSession = () => {
     if (!effectiveProjectId || sending) return;
-    Alert.alert("新建对话？", "当前对话不会被删除，之后可在管理对话里找回。", [
+    Alert.alert("新建对话？", "当前对话不会被删除，之后可在历史对话里找回。", [
       { text: "取消", style: "cancel" },
       { text: "新建", onPress: () => void newSession() },
     ]);
@@ -971,13 +977,22 @@ export function AssistantScreen() {
           <Pressable accessibilityLabel="关闭更多操作" onPress={() => setHeaderMenuVisible(false)} style={styles.headerMenuBackdrop} />
           <View style={styles.headerMenuCard}>
             <Pressable
-              accessibilityLabel="管理对话"
+              accessibilityLabel="新建对话"
+              disabled={sending}
+              onPress={() => { setHeaderMenuVisible(false); confirmNewSession(); }}
+              style={({ pressed }) => [styles.headerMenuRow, pressed && styles.headerMenuRowPressed]}
+            >
+              <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
+              <Text style={styles.headerMenuText}>新建对话</Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel="历史对话"
               disabled={sending}
               onPress={() => { setHeaderMenuVisible(false); setSessionPickerVisible(true); }}
               style={({ pressed }) => [styles.headerMenuRow, pressed && styles.headerMenuRowPressed]}
             >
               <Ionicons name="chatbubbles-outline" size={20} color={colors.primary} />
-              <Text style={styles.headerMenuText}>管理对话</Text>
+              <Text style={styles.headerMenuText}>历史对话</Text>
             </Pressable>
             <Pressable
               accessibilityLabel="上下文占用"
@@ -1413,49 +1428,77 @@ export function AssistantScreen() {
         </SheetBackdrop>
       </Modal>
 
-      <Modal visible={sessionPickerVisible} transparent animationType="slide" onRequestClose={() => setSessionPickerVisible(false)}>
-        <SheetBackdrop onPress={() => setSessionPickerVisible(false)}>
-          <View style={styles.sheet}>
-            <View style={styles.sheetHeader}>
-              <View style={styles.sheetTitleWrap}>
-                <Text style={styles.sheetTitle} numberOfLines={1}>{project?.title ?? "当前作品"}</Text>
-                <Text style={styles.sheetSubtitle}>{sessions.length} 个对话</Text>
-              </View>
-              <Pressable accessibilityLabel="关闭对话列表" onPress={() => setSessionPickerVisible(false)} style={styles.iconButton}>
-                <Ionicons name="close" size={24} color={colors.textMuted} />
-              </Pressable>
-            </View>
-            <Pressable accessibilityLabel="新建对话" onPress={confirmNewSession} style={styles.newSessionButton}>
-              <Ionicons name="add" size={20} color="#FFFFFF" />
-              <Text style={styles.newSessionButtonText}>新建对话</Text>
-            </Pressable>
-            <FlatList
-              data={sessions}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.sheetList}
-              renderItem={({ item }) => {
-                const sessionModelId = item.modelId ?? defaultModelId;
-                const sessionModel = models.find((model) => model.id === sessionModelId);
-                const selected = item.id === activeSession?.id;
-                return (
-                  <Pressable onPress={() => void switchSession(item)} style={[styles.sheetRow, selected && styles.sheetRowActive]}>
-                    <Ionicons name={selected ? "radio-button-on" : "radio-button-off"} size={20} color={selected ? colors.primary : colors.textMuted} />
-                    <View style={styles.sheetRowText}>
-                      <Text style={styles.sheetRowTitle} numberOfLines={1}>{item.title}</Text>
-                      <Text style={styles.sheetRowMeta} numberOfLines={1}>{sessionModel?.name ?? "未选择模型"} · {messageCounts[item.id] ?? 0} 条消息 · {formatSessionTime(item.updatedAt)}</Text>
+      <Modal visible={sessionPickerVisible} transparent animationType="fade" onRequestClose={() => setSessionPickerVisible(false)}>
+        <TopSheet
+          title="历史对话"
+          subtitle={`${sessions.length} 个对话`}
+          onClose={() => setSessionPickerVisible(false)}
+        >
+          <FlatList
+            data={sessions}
+            keyExtractor={(item) => item.id}
+            style={styles.topSheetList}
+            contentContainerStyle={styles.topSheetListContent}
+            renderItem={({ item }) => {
+              const sessionModelId = item.modelId ?? defaultModelId;
+              const sessionModel = models.find((model) => model.id === sessionModelId);
+              const selected = item.id === activeSession?.id;
+              const menuOpen = sessionMenuId === item.id;
+              return (
+                <Pressable
+                  accessibilityLabel={`切换到对话 ${item.title}`}
+                  onPress={() => { if (menuOpen) return; void switchSession(item); }}
+                  style={[styles.sessionItem, selected && styles.sessionItemActive]}
+                >
+                  <View style={styles.sessionItemRow}>
+                    <View style={[styles.sessionItemIcon, selected && styles.sessionItemIconActive]}>
+                      <Ionicons name="chatbubble-ellipses-outline" size={18} color={selected ? "#FFFFFF" : colors.primary} />
                     </View>
-                    <Pressable accessibilityLabel={`重命名对话 ${item.title}`} onPress={(event) => { event.stopPropagation(); setRenaming(item); setRenameTitle(item.title); }} style={styles.iconButton}>
-                      <Ionicons name="pencil-outline" size={17} color={colors.textMuted} />
+                    <View style={styles.sessionItemCopy}>
+                      <View style={styles.sessionItemTitleLine}>
+                        <Text style={styles.sessionItemTitle} numberOfLines={1}>{item.title}</Text>
+                        {selected ? <Text style={styles.sessionItemBadge}>当前</Text> : null}
+                      </View>
+                      <Text style={styles.sessionItemMeta} numberOfLines={1}>
+                        {sessionModel?.name ?? "未选择模型"} · {messageCounts[item.id] ?? 0} 条消息 · {formatSessionTime(item.updatedAt)}
+                      </Text>
+                    </View>
+                    <Pressable
+                      accessibilityLabel={`对话 ${item.title} 的更多操作`}
+                      hitSlop={8}
+                      onPress={(event) => { event.stopPropagation(); setSessionMenuId(menuOpen ? null : item.id); }}
+                      style={styles.iconButton}
+                    >
+                      <Ionicons name="ellipsis-vertical" size={18} color={colors.textMuted} />
                     </Pressable>
-                    <Pressable accessibilityLabel={`删除对话 ${item.title}`} onPress={(event) => { event.stopPropagation(); confirmDeleteSession(item); }} style={styles.iconButton}>
-                      <Ionicons name="trash-outline" size={19} color={colors.danger} />
-                    </Pressable>
-                  </Pressable>
-                );
-              }}
-            />
-          </View>
-        </SheetBackdrop>
+                  </View>
+                  {/* 菜单在行下方展开，不做绝对定位：绝对定位贴着行尾时，最后一行会被面板
+                      下沿裁掉，菜单点不到。 */}
+                  {menuOpen ? (
+                    <View style={styles.sessionItemMenu}>
+                      <Pressable
+                        accessibilityLabel={`重命名对话 ${item.title}`}
+                        onPress={(event) => { event.stopPropagation(); setSessionMenuId(null); setRenaming(item); setRenameTitle(item.title); }}
+                        style={styles.sessionItemMenuRow}
+                      >
+                        <Ionicons name="pencil-outline" size={16} color={colors.text} />
+                        <Text style={styles.sessionItemMenuText}>重命名</Text>
+                      </Pressable>
+                      <Pressable
+                        accessibilityLabel={`删除对话 ${item.title}`}
+                        onPress={(event) => { event.stopPropagation(); setSessionMenuId(null); confirmDeleteSession(item); }}
+                        style={styles.sessionItemMenuRow}
+                      >
+                        <Ionicons name="trash-outline" size={16} color={colors.danger} />
+                        <Text style={[styles.sessionItemMenuText, { color: colors.danger }]}>删除</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
+                </Pressable>
+              );
+            }}
+          />
+        </TopSheet>
       </Modal>
 
       <Modal visible={modelPickerVisible} transparent animationType="slide" onRequestClose={() => setModelPickerVisible(false)}>
@@ -1710,9 +1753,31 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  newSessionButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: colors.primary, borderRadius: radius.md, paddingVertical: 11, marginHorizontal: spacing.lg, marginBottom: 10 },
-  newSessionButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "700" },
   renameActions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm },
+  // 历史对话行：左侧圆角图标块 + 标题与摘要 + 最右一个 ⋯。
+  // 重命名与删除收进 ⋯ 的行内菜单，因此行内只留一颗按钮。
+  topSheetList: { flexGrow: 0 },
+  topSheetListContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl, gap: spacing.xs },
+  sessionItem: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sessionItemRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  sessionItemActive: { borderColor: colors.primary },
+  sessionItemIcon: { width: 34, height: 34, borderRadius: radius.sm, alignItems: "center", justifyContent: "center", backgroundColor: "#E8F2EE" },
+  sessionItemIconActive: { backgroundColor: colors.primary },
+  sessionItemCopy: { flex: 1, minWidth: 0 },
+  sessionItemTitleLine: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  sessionItemTitle: { flexShrink: 1, color: colors.text, fontSize: 15, fontWeight: "600" },
+  sessionItemBadge: { overflow: "hidden", borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1, backgroundColor: "#E6F3EF", color: colors.primary, fontSize: 11, fontWeight: "700" },
+  sessionItemMeta: { marginTop: 3, color: colors.textMuted, fontSize: 12 },
+  sessionItemMenu: { marginTop: spacing.sm, paddingVertical: 2, borderRadius: radius.sm, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border },
+  sessionItemMenuRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 40, paddingHorizontal: spacing.md },
+  sessionItemMenuText: { color: colors.text, fontSize: 13 },
     sheetRowActive: { backgroundColor: colors.surfaceMuted },
   sheetRowText: { flex: 1, minWidth: 0 },
   sheetRowTitle: { color: colors.text, fontSize: 15, fontWeight: "600" },

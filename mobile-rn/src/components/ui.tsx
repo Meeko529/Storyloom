@@ -1,9 +1,11 @@
 // 本文件基于 OpenFicM（Apache-2.0）修改
 // 改动说明见仓库根目录 docs/上游来源与改动清单.md
 import { Ionicons } from "@expo/vector-icons";
-import { useState, type PropsWithChildren, type ReactNode } from "react";
+import { useEffect, useRef, useState, type PropsWithChildren, type ReactNode } from "react";
 import {
   ActivityIndicator,
+  Animated,
+  KeyboardAvoidingView,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,7 +17,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors, radius, spacing } from "@/theme";
 
@@ -138,6 +140,81 @@ export function SheetBackdrop({ onPress, children }: PropsWithChildren<{ onPress
 }
 
 /**
+ * 顶部下滑面板。
+ *
+ * 与 `SheetBackdrop` 的差别在方向：那个从底部升起，这个从顶栏下方向下垂、盖住下方
+ * 全屏。选择器与列表类内容（对话、版本、分类）用这个形态，读起来像"从上面拉下来的
+ * 一层"，不打断当前页面；底部升起留给输入类与破坏性确认。
+ *
+ * 面板自身只渲染覆盖层与卡片，圆角在下沿；内容由调用方给，高度上限由 `maxHeightRatio`
+ * 按屏高折算，避免小屏上把顶栏顶出屏幕。
+ */
+export function TopSheet({
+  title,
+  subtitle,
+  onClose,
+  maxHeightRatio = 0.78,
+  avoidKeyboard = false,
+  children,
+}: PropsWithChildren<{
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  maxHeightRatio?: number;
+  /** 面板内有输入框时打开：键盘弹起时把面板整体顶上去，输入框不被盖住。 */
+  avoidKeyboard?: boolean;
+}>) {
+  const insets = useSafeAreaInsets();
+  const [viewportHeight, setViewportHeight] = useState(0);
+  // 进场用位移 + 透明度，Modal 的 animationType 只做整层的淡入 —— 那样面板是"啪地
+  // 出现"，与从上方垂下的观感相反。
+  const enter = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(enter, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+  }, [enter]);
+  const body = (
+    <>
+      <Pressable accessibilityLabel={`关闭${title}`} style={StyleSheet.absoluteFill} onPress={onClose} />
+      <Animated.View
+        style={[
+          styles.topSheet,
+          {
+            // 落在顶栏下沿之下：顶栏高 58，留 4 的缝，看起来是"挂在顶栏下面"。
+            marginTop: insets.top + 62,
+            maxHeight: viewportHeight > 0 ? viewportHeight * maxHeightRatio : undefined,
+            opacity: enter,
+            transform: [{ translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [-16, 0] }) }],
+          },
+        ]}
+      >
+        <View style={styles.topSheetHeader}>
+          <View style={styles.topSheetTitleWrap}>
+            <Text style={styles.topSheetTitle} numberOfLines={1}>{title}</Text>
+            {subtitle ? <Text style={styles.topSheetSubtitle} numberOfLines={1}>{subtitle}</Text> : null}
+          </View>
+          <Pressable accessibilityLabel={`关闭${title}`} onPress={onClose} style={styles.topSheetClose}>
+            <Ionicons name="close" size={22} color={colors.textMuted} />
+          </Pressable>
+        </View>
+        {children}
+      </Animated.View>
+    </>
+  );
+  return (
+    <View
+      style={styles.topSheetBackdrop}
+      onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
+    >
+      {avoidKeyboard ? (
+        <KeyboardAvoidingView behavior="padding" style={styles.topSheetAvoid}>
+          {body}
+        </KeyboardAvoidingView>
+      ) : body}
+    </View>
+  );
+}
+
+/**
  * 全项目统一的滚动容器。
  *
  * 一律不显示滚动条：Android 上 ScrollView 默认画一条灰色竖条，落在卡内或弹层里很脏。
@@ -224,6 +301,33 @@ export function AdaptiveScroll({
 const styles = StyleSheet.create({
   sheetBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay },
   sheetHandle: { alignSelf: "center", width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(20,20,20,0.16)", marginBottom: -14, zIndex: 2 },
+  topSheetBackdrop: { flex: 1, backgroundColor: colors.overlay },
+  topSheetAvoid: { flex: 1 },
+  topSheet: {
+    flexShrink: 1,
+    backgroundColor: colors.background,
+    borderBottomLeftRadius: radius.sheet,
+    borderBottomRightRadius: radius.sheet,
+    // 面板下沿要投一层轻影，否则与被遮住的页面之间没有分界，看着像浮在空中。
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.16,
+    shadowRadius: 12,
+    elevation: 12,
+    overflow: "hidden",
+  },
+  topSheetHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  topSheetTitleWrap: { flex: 1, minWidth: 0 },
+  topSheetTitle: { color: colors.text, fontSize: 17, fontWeight: "700" },
+  topSheetSubtitle: { marginTop: 2, color: colors.textMuted, fontSize: 12 },
+  topSheetClose: { width: 40, height: 40, alignItems: "flex-end", justifyContent: "flex-start" },
   screen: { flex: 1, backgroundColor: colors.background },
   scroll: { paddingBottom: 40 },
   header: {

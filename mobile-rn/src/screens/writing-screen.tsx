@@ -17,7 +17,7 @@ import {
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
-import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, SheetBackdrop } from "@/components/ui";
+import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, SheetBackdrop, TopSheet } from "@/components/ui";
 import { ensureEditorFontLoaded } from "@/settings/font-loader";
 import { exportNovel, type ExportScope, type NovelExportFormat } from "@/lib/export";
 import { countNotesUnder, deleteNotesUnder } from "@/data/note-repositories";
@@ -978,80 +978,73 @@ export function WritingScreen() {
         </SheetBackdrop>
       </Modal>
 
-      <Modal visible={historyVisible} transparent animationType="slide" onRequestClose={() => setHistoryVisible(false)}>
-        <SheetBackdrop onPress={() => setHistoryVisible(false)}>
-          <View style={styles.directorySheet}>
-            <View style={styles.sheetHeader}>
-              <View style={styles.historyHeaderCopy}>
-                <Text style={styles.sheetTitle}>{historyPreview ? "版本预览" : "历史版本"}</Text>
-                <Text numberOfLines={1} style={styles.styleSheetMeta}>
-                  {(activeChapter?.title ?? "未选择章节") + " · 每章保留最近 30 版"}
+      <Modal visible={historyVisible} transparent animationType="fade" onRequestClose={() => setHistoryVisible(false)}>
+        <TopSheet
+          title={historyPreview ? "版本预览" : "历史版本"}
+          subtitle={(activeChapter?.title ?? "未选择章节") + " · 每章保留最近 30 版"}
+          onClose={() => { setHistoryPreview(null); setHistoryVisible(false); }}
+        >
+          {historyPreview ? (
+            <>
+              {/* 面板顶栏只有标题与关闭，预览态要退回列表就放在内容首行，避免顶栏挤两颗按钮。 */}
+              <Pressable
+                accessibilityLabel="返回历史版本列表"
+                onPress={() => setHistoryPreview(null)}
+                style={({ pressed }) => [styles.historyBackRow, pressed && styles.rowPressed]}
+              >
+                <Ionicons name="arrow-back" size={18} color={colors.primary} />
+                <Text style={styles.historyBackText}>历史版本</Text>
+              </Pressable>
+              <PlainScrollView style={styles.historyScroll} contentContainerStyle={styles.historyPreviewContent}>
+                <Text style={styles.historyPreviewMeta}>
+                  {formatVersionTime(historyPreview.createdAt) + " · " + historyPreview.characterCount + " 字 · " + versionReasonLabel(historyPreview.reason)}
                 </Text>
-              </View>
-              <View style={styles.sheetHeaderActions}>
-                {historyPreview ? (
-                  <Pressable accessibilityLabel="返回历史版本列表" onPress={() => setHistoryPreview(null)} style={styles.iconButton}>
-                    <Ionicons name="arrow-back" size={22} color={colors.primary} />
-                  </Pressable>
-                ) : null}
-                <Pressable accessibilityLabel="关闭历史版本" onPress={() => setHistoryVisible(false)} style={styles.iconButton}>
-                  <Ionicons name="close" size={24} color={colors.textMuted} />
-                </Pressable>
-              </View>
-            </View>
-            {historyPreview ? (
-              <>
-                <PlainScrollView style={styles.historyScroll} contentContainerStyle={styles.historyPreviewContent}>
-                  <Text style={styles.historyPreviewMeta}>
-                    {formatVersionTime(historyPreview.createdAt) + " · " + historyPreview.characterCount + " 字 · " + versionReasonLabel(historyPreview.reason)}
-                  </Text>
-                  <Text style={styles.historyPreviewTitle}>{historyPreview.title}</Text>
-                  <Text selectable style={[styles.historyPreviewText, editorTextStyle]}>
-                    {historyPreview.content || "这一版正文为空。"}
-                  </Text>
-                </PlainScrollView>
-                <View style={styles.historyFooter}>
-                  <Button
-                    label={restoringVersion ? "恢复中" : "恢复这一版"}
-                    onPress={() => restoreVersion(historyPreview)}
-                    loading={restoringVersion}
-                  />
-                </View>
-              </>
-            ) : historyLoading ? (
-              <View style={styles.loading}><ActivityIndicator color={colors.primary} /></View>
-            ) : (
-              <PlainScrollView style={styles.historyScroll} contentContainerStyle={styles.historyList}>
-                {historyList.length ? historyList.map((version) => (
-                  <Pressable
-                    key={version.id}
-                    onPress={() => setHistoryPreview(version)}
-                    style={({ pressed }) => [styles.historyRow, pressed && styles.rowPressed]}
-                  >
-                    <View style={styles.historyRowCopy}>
-                      <View style={styles.historyRowTitleLine}>
-                        <Text style={styles.historyRowTime}>{formatVersionTime(version.createdAt)}</Text>
-                        <Text style={styles.historyRowBadge}>{versionReasonLabel(version.reason)}</Text>
-                      </View>
-                      <Text numberOfLines={1} style={styles.historyRowSummary}>{versionSummary(version.content)}</Text>
-                      <Text style={styles.historyRowMeta}>{version.characterCount + " 字"}</Text>
-                    </View>
-                    <Pressable
-                      accessibilityLabel="删除这一版历史"
-                      onPress={(event) => { event.stopPropagation(); removeVersion(version); }}
-                      hitSlop={8}
-                      style={styles.iconButton}
-                    >
-                      <Ionicons name="trash-outline" size={19} color={colors.textMuted} />
-                    </Pressable>
-                  </Pressable>
-                )) : (
-                  <EmptyState title="还没有历史版本" />
-                )}
+                <Text style={styles.historyPreviewTitle}>{historyPreview.title}</Text>
+                <Text selectable style={[styles.historyPreviewText, editorTextStyle]}>
+                  {historyPreview.content || "这一版正文为空。"}
+                </Text>
               </PlainScrollView>
-            )}
-          </View>
-        </SheetBackdrop>
+              <View style={styles.historyFooter}>
+                <Button
+                  label={restoringVersion ? "恢复中" : "恢复这一版"}
+                  onPress={() => restoreVersion(historyPreview)}
+                  loading={restoringVersion}
+                />
+              </View>
+            </>
+          ) : historyLoading ? (
+            <View style={styles.loading}><ActivityIndicator color={colors.primary} /></View>
+          ) : (
+            <PlainScrollView style={styles.historyScroll} contentContainerStyle={styles.historyList}>
+              {historyList.length ? historyList.map((version) => (
+                <Pressable
+                  key={version.id}
+                  onPress={() => setHistoryPreview(version)}
+                  style={({ pressed }) => [styles.historyRow, pressed && styles.rowPressed]}
+                >
+                  <View style={styles.historyRowCopy}>
+                    <View style={styles.historyRowTitleLine}>
+                      <Text style={styles.historyRowTime}>{formatVersionTime(version.createdAt)}</Text>
+                      <Text style={styles.historyRowBadge}>{versionReasonLabel(version.reason)}</Text>
+                    </View>
+                    <Text numberOfLines={1} style={styles.historyRowSummary}>{versionSummary(version.content)}</Text>
+                    <Text style={styles.historyRowMeta}>{version.characterCount + " 字"}</Text>
+                  </View>
+                  <Pressable
+                    accessibilityLabel="删除这一版历史"
+                    onPress={(event) => { event.stopPropagation(); removeVersion(version); }}
+                    hitSlop={8}
+                    style={styles.iconButton}
+                  >
+                    <Ionicons name="trash-outline" size={19} color={colors.textMuted} />
+                  </Pressable>
+                </Pressable>
+              )) : (
+                <EmptyState title="还没有历史版本" />
+              )}
+            </PlainScrollView>
+          )}
+        </TopSheet>
       </Modal>
 
       <Modal visible={exportPickerVisible} transparent animationType="slide" onRequestClose={() => setExportPickerVisible(false)}>
@@ -1205,7 +1198,11 @@ const styles = StyleSheet.create({
   headerMenuTextDisabled: { color: colors.textMuted },
   historyHeaderCopy: { flex: 1, minWidth: 0, gap: 2 },
   rowPressed: { backgroundColor: colors.surfaceMuted },
+  // 预览态退回列表的一行。顶栏只有标题与关闭两颗位置，入口放在内容首行。
+  historyBackRow: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  historyBackText: { color: colors.primary, fontSize: 14, fontWeight: "600" },
   historyScroll: { flex: 1 },
+  // 行自带左右内边距，列表层不再加，否则左侧会缩进两次。
   historyList: { paddingBottom: spacing.lg },
   historyRow: {
     minHeight: 76,

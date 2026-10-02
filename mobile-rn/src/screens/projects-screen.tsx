@@ -13,7 +13,7 @@ import { importProjectFromFile } from "@/lib/doc-import";
 import { downsampleToFile } from "@/lib/media-downsample";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
-import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen } from "@/components/ui";
+import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, TopSheet } from "@/components/ui";
 import { createCategory, createProject, deleteCategory, deleteProject, getProjectStats, getProjectStatsMap, getSetting, listCategories, listProjects, renameCategory, setProjectCategory, setSetting, updateProjectCover, updateProjectInfo, type ProjectStats } from "@/data/repositories";
 import type { RootStackParamList, RootTabParamList } from "@/navigation/types";
 import { useAppStore } from "@/store/app-store";
@@ -257,7 +257,7 @@ function bookTitleLines(title: string): string[] {
   return [clean.slice(0, half), clean.slice(half)];
 }
 
-/** 书架封面卡：无封面时按书名哈希取低饱和底色 + 首字水印（借鉴 QMAI / 51码字的书封卡片）。 */
+/** 书架封面卡：无封面时按书名哈希取低饱和底色 + 首字水印，同一批作品颜色分散开。 */
 const COVER_COLORS = ["#2E6B5A", "#8A5A4A", "#4A5B8A", "#7A6A4A", "#5F4A6B"];
 function coverColor(title: string): string {
   let hash = 0;
@@ -704,79 +704,75 @@ function coverColor(title: string): string {
         </Pressable>
       </Modal>
 
-      <Modal visible={categoryManagerVisible} transparent animationType="slide" onRequestClose={closeCategoryManager}>
-        <KeyboardAvoidingView style={styles.menuBackdrop} behavior="height" automaticOffset>
-          <Pressable accessibilityLabel="关闭分类管理" onPress={closeCategoryManager} style={styles.sheetBackdropFill} />
-          <View style={styles.menuSheet}>
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>{assignTarget ? "归入分类" : "分类管理"}</Text>
-              <Pressable accessibilityLabel="关闭" onPress={closeCategoryManager} style={styles.sheetClose}>
-                <Ionicons name="close" size={22} color={colors.textMuted} />
-              </Pressable>
-            </View>
-            <PlainScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetScrollContent} keyboardShouldPersistTaps="handled">
-              {assignTarget ? (
-                <>
-                  <Text style={styles.sheetSectionTitle}>归入</Text>
-                  <Text style={styles.categorySectionHint}>将《{assignTarget.title}》归入：</Text>
+      <Modal visible={categoryManagerVisible} transparent animationType="fade" onRequestClose={closeCategoryManager}>
+        <TopSheet
+          title={assignTarget ? "归入分类" : "分类管理"}
+          onClose={closeCategoryManager}
+          maxHeightRatio={0.7}
+          avoidKeyboard
+        >
+          <PlainScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetScrollContent} keyboardShouldPersistTaps="handled">
+            {assignTarget ? (
+              <>
+                <Text style={styles.sheetSectionTitle}>归入</Text>
+                <Text style={styles.categorySectionHint}>将《{assignTarget.title}》归入：</Text>
+                <Pressable
+                  accessibilityLabel="归入未分类"
+                  onPress={() => void assignToCategory(null)}
+                  style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
+                >
+                  <Ionicons name="albums-outline" size={20} color={colors.textMuted} />
+                  <Text style={styles.menuRowText}>未分类</Text>
+                </Pressable>
+                {categories.map((category) => (
                   <Pressable
-                    accessibilityLabel="归入未分类"
-                    onPress={() => void assignToCategory(null)}
+                    key={category.id}
+                    accessibilityLabel={`归入${category.name}`}
+                    onPress={() => void assignToCategory(category.id)}
                     style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
                   >
-                    <Ionicons name="albums-outline" size={20} color={colors.textMuted} />
-                    <Text style={styles.menuRowText}>未分类</Text>
+                    <Ionicons name="folder-outline" size={20} color={colors.primary} />
+                    <Text style={styles.menuRowText}>{category.name}</Text>
+                    {assignTarget.categoryId === category.id ? <Ionicons name="checkmark" size={20} color={colors.primary} /> : null}
                   </Pressable>
-                  {categories.map((category) => (
-                    <Pressable
-                      key={category.id}
-                      accessibilityLabel={`归入${category.name}`}
-                      onPress={() => void assignToCategory(category.id)}
-                      style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
-                    >
-                      <Ionicons name="folder-outline" size={20} color={colors.primary} />
-                      <Text style={styles.menuRowText}>{category.name}</Text>
-                      {assignTarget.categoryId === category.id ? <Ionicons name="checkmark" size={20} color={colors.primary} /> : null}
-                    </Pressable>
-                  ))}
-                </>
-              ) : (
-                <>
-                  <Text style={styles.sheetSectionTitle}>新建分类</Text>
-                  <Field label="分类名" value={newCategoryName} onChangeText={setNewCategoryName} />
-                  <Button label="创建分类" onPress={() => void addCategory()} disabled={!newCategoryName.trim()} />
-                  <Text style={styles.sheetSectionTitle}>已有分类</Text>
-                  {categories.length ? categories.map((category) => {
-                    const count = projects.filter((project) => project.categoryId === category.id).length;
-                    const renaming = renamingCategory?.id === category.id;
-                    return renaming ? (
-                      <View key={category.id} style={styles.categoryEditRow}>
-                        <Field label="分类名" value={renamingCategory.name} onChangeText={(value) => setRenamingCategory({ id: category.id, name: value })} />
-                        <View style={styles.categoryActions}>
-                          <Button label="取消" variant="secondary" onPress={() => setRenamingCategory(null)} />
-                          <Button label="保存" onPress={() => void saveCategoryRename()} disabled={!renamingCategory.name.trim()} />
-                        </View>
+                ))}
+              </>
+            ) : (
+              <>
+                <Text style={styles.sheetSectionTitle}>新建分类</Text>
+                <Field label="分类名" value={newCategoryName} onChangeText={setNewCategoryName} />
+                <Button label="创建分类" onPress={() => void addCategory()} disabled={!newCategoryName.trim()} />
+                <Text style={styles.sheetSectionTitle}>已有分类</Text>
+                {categories.length ? categories.map((category) => {
+                  const count = projects.filter((project) => project.categoryId === category.id).length;
+                  const renaming = renamingCategory?.id === category.id;
+                  return renaming ? (
+                    <View key={category.id} style={styles.categoryEditRow}>
+                      <Field label="分类名" value={renamingCategory.name} onChangeText={(value) => setRenamingCategory({ id: category.id, name: value })} />
+                      <View style={styles.categoryActions}>
+                        <Button label="取消" variant="secondary" onPress={() => setRenamingCategory(null)} />
+                        <Button label="保存" onPress={() => void saveCategoryRename()} disabled={!renamingCategory.name.trim()} />
                       </View>
-                    ) : (
-                      <View key={category.id} style={styles.categoryRow}>
-                        <View style={[styles.categoryRow, { flex: 1 }]}>
-                          <Text style={[styles.title, { fontSize: 14 }]}>{category.name}</Text>
-                          <Text style={styles.categoryMeta}>{count} 部作品</Text>
-                        </View>
-                        <Pressable accessibilityLabel={`重命名 ${category.name}`} onPress={() => setRenamingCategory({ id: category.id, name: category.name })} style={styles.iconButton}>
-                          <Ionicons name="create-outline" size={19} color={colors.textMuted} />
-                        </Pressable>
-                        <Pressable accessibilityLabel={`删除 ${category.name}`} onPress={() => removeCategory(category)} style={styles.iconButton}>
-                          <Ionicons name="trash-outline" size={19} color={colors.textMuted} />
-                        </Pressable>
+                    </View>
+                  ) : (
+                    <View key={category.id} style={styles.categoryRow}>
+                      <View style={[styles.categoryRow, { flex: 1 }]}>
+                        <Text style={[styles.title, { fontSize: 14 }]}>{category.name}</Text>
+                        <Text style={styles.categoryMeta}>{count} 部作品</Text>
                       </View>
-                    );
-                  }) : <Text style={styles.categorySectionHint}>还没有分类，先创建一个。</Text>}
-                </>
-              )}
-            </PlainScrollView>
-          </View>
-        </KeyboardAvoidingView>
+                      <Pressable accessibilityLabel={`重命名 ${category.name}`} onPress={() => setRenamingCategory({ id: category.id, name: category.name })} style={styles.iconButton}>
+                        <Ionicons name="create-outline" size={19} color={colors.textMuted} />
+                      </Pressable>
+                      <Pressable accessibilityLabel={`删除 ${category.name}`} onPress={() => removeCategory(category)} style={styles.iconButton}>
+                        <Ionicons name="trash-outline" size={19} color={colors.textMuted} />
+                      </Pressable>
+                    </View>
+                  );
+                }) : <Text style={styles.categorySectionHint}>还没有分类，先创建一个。</Text>}
+              </>
+            )}
+          </PlainScrollView>
+        </TopSheet>
       </Modal>
 
       <Modal visible={showCreate} transparent animationType="fade" onRequestClose={() => setShowCreate(false)}>
@@ -835,10 +831,6 @@ const styles = StyleSheet.create({
   shelfMenuBackdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9 },
   shelfMenuCard: { position: "absolute", top: 100, right: 18, width: 176, backgroundColor: colors.background, borderRadius: 12, borderWidth: 1, borderColor: colors.border, paddingVertical: 4, zIndex: 10, elevation: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 10 },
   menuBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay },
-  sheetBackdropFill: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
-  sheetHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.xs, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-  sheetTitle: { color: colors.text, fontSize: 16, fontWeight: "700" },
-  sheetClose: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
   sheetScroll: { maxHeight: 460 },
   sheetScrollContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.lg, gap: spacing.sm },
   sheetSectionTitle: { marginTop: spacing.xs, color: colors.textMuted, fontSize: 12, fontWeight: "700" },
