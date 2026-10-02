@@ -20,8 +20,27 @@ import { useAppStore } from "@/store/app-store";
 import { colors, radius, shadow, spacing } from "@/theme";
 import type { Category, Project } from "@/types";
 
+/** 书架样式：网格（书封朝上）／列表（书封朝左）／书脊（只看书脊，竖排书名）。 */
+type ShelfViewMode = "grid" | "list" | "spine";
+
+const SHELF_VIEW_LABELS: Record<ShelfViewMode, string> = {
+  grid: "网格",
+  list: "列表",
+  spine: "书脊",
+};
+
+const SHELF_VIEW_ICONS: Record<ShelfViewMode, keyof typeof Ionicons.glyphMap> = {
+  grid: "list-outline",
+  list: "bookmark-outline",
+  spine: "library-outline",
+};
+
+// 书脊视图的基准尺寸：宽度按字数缩放（spineThickness），高度同理（spineHeight）。
+const SPINE_BASE_WIDTH = 34;
+const SPINE_BASE_HEIGHT = 150;
+const SPINE_PLANK_BELOW = 5;
+
 const PLANK_IMAGE = require("../../assets/images/shelf-plank.png");
-const BOOK_SHADOW = require("../../assets/images/book-shadow.png");
 
 export function ProjectsScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList>>();
@@ -29,7 +48,7 @@ export function ProjectsScreen() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [stats, setStats] = useState<Record<string, ProjectStats>>({});
   // 书架视图：网格（封面墙）/ 列表（信息行），选择存进设置，重启保留
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [viewMode, setViewMode] = useState<ShelfViewMode>("grid");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -69,7 +88,7 @@ export function ProjectsScreen() {
       setStats(await getProjectStatsMap());
       setCategories(await listCategories());
       void getSetting("general.shelfView")
-        .then((value) => setViewMode(value === "list" ? "list" : "grid"))
+        .then((value) => setViewMode(value === "list" ? "list" : value === "spine" ? "spine" : "grid"))
         .catch(() => {});
       void getSetting("general.shelfSort")
         .then((value) => setShelfSort(value === "created" || value === "words" ? value : "recent"))
@@ -90,7 +109,7 @@ export function ProjectsScreen() {
 
   /** 网格 / 列表切换：选择写进设置，重启保留。 */
   const toggleViewMode = () => {
-    const next = viewMode === "grid" ? "list" : "grid";
+    const next: ShelfViewMode = viewMode === "grid" ? "list" : viewMode === "list" ? "spine" : "grid";
     setViewMode(next);
     void setSetting("general.shelfView", next);
   };
@@ -172,8 +191,13 @@ export function ProjectsScreen() {
         ? !project.categoryId || !categories.some((category) => category.id === project.categoryId)
         : project.categoryId === selectedCategoryId);
     const items: Array<{ kind: "row"; row: Project[] } | { kind: "project"; project: Project }> = [];
-    if (viewMode === "grid") for (const row of chunkProjects(visible, 4)) items.push({ kind: "row", row });
-    else for (const project of visible) items.push({ kind: "project", project });
+    // 网格每行 4 本；书脊窄一些，每行 6 本。两者都是"一行一条层板"。
+    if (viewMode === "list") {
+      for (const project of visible) items.push({ kind: "project", project });
+      return items;
+    }
+    const perRow = viewMode === "grid" ? 4 : 6;
+    for (const row of chunkProjects(visible, perRow)) items.push({ kind: "row", row });
     return items;
   }, [projects, sortedProjects, categories, selectedCategoryId, viewMode]);
 
@@ -255,6 +279,51 @@ function bookTitleLines(title: string): string[] {
   if (clean.length <= 4) return [clean];
   const half = Math.ceil(clean.length / 2);
   return [clean.slice(0, half), clean.slice(half)];
+}
+
+/**
+ * 书脊的尺寸映射。
+ *
+ * 真实书柜里每本书厚薄高矮都不同，一排书等高等宽就成了复制粘贴。所以按
+ * **字数取对数**再归一：十万字的书脊明显厚于一万字，差距随字数放缓，不会出现
+ * 一本撑破整排。取对数而不是线性，是因为字数跨两个数量级时线性映射会让
+ * 小书完全看不见。
+ */
+function spineThickness(characters: number): number {
+  const ratio = Math.min(1, Math.log2(characters / 8000 + 1) / 4);
+  return 0.42 + ratio * 0.58;
+}
+
+function spineHeight(characters: number): number {
+  const ratio = Math.min(1, Math.log2(characters / 8000 + 1) / 4);
+  return 0.74 + ratio * 0.26;
+}
+
+/**
+ * 竖排书名要显示的字符。
+ *
+ * 原生没有 `writing-mode: vertical-rl`，所以书名按字拆开、一字一行地渲染。
+ * 超过能放下的字数就截断 —— 窄书脊放不下十四个字，再多也是看不清。
+ */
+function spineTitleChars(title: string): string[] {
+  const clean = title.trim();
+  return (clean.length > 8 ? clean.slice(0, 8) : clean).split("");
+}
+
+/**
+ * 由书名决定这本书微微往哪边斜、以及露出多少白口。
+ *
+ * 真实书架上没有一本是绝对垂直的，全对齐反而像刚排版完。按名字哈希取值，
+ * 同一本书每次进来斜度一致，不会刷新一次变一次。
+ */
+function spineLean(title: string): number {
+  let hash = 0;
+  for (let index = 0; index < title.length; index += 1) hash = (hash * 31 + title.charCodeAt(index)) >>> 0;
+  const seed = hash % 11;
+  if (seed === 0) return 3.2;
+  if (seed === 3) return -2.4;
+  if (seed === 7) return 1.6;
+  return 0;
 }
 
 /** 书架封面卡：无封面时按书名哈希取低饱和底色 + 首字水印，同一批作品颜色分散开。 */
@@ -416,11 +485,11 @@ function coverColor(title: string): string {
               <Text style={styles.menuRowText}>本机导入</Text>
             </Pressable>
             <Pressable
-              accessibilityLabel={viewMode === "grid" ? "书架样式：切换为列表" : "书架样式：切换为网格"}
+              accessibilityLabel={`书架样式：当前为${SHELF_VIEW_LABELS[viewMode]}，点击切换`}
               onPress={() => { toggleViewMode(); setShelfMenuVisible(false); }}
               style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed]}
             >
-              <Ionicons name={viewMode === "grid" ? "list-outline" : "grid-outline"} size={20} color={colors.primary} />
+              <Ionicons name={SHELF_VIEW_ICONS[viewMode]} size={20} color={colors.primary} />
               <Text style={styles.menuRowText}>书架样式</Text>
             </Pressable>
             <Pressable
@@ -470,7 +539,7 @@ function coverColor(title: string): string {
         data={shelfItems}
         keyExtractor={(item, index) => (item.kind === "row" ? `row-${index}` : item.project.id)}
         contentContainerStyle={projects.length ? styles.list : styles.emptyList}
-        ItemSeparatorComponent={viewMode === "grid" ? () => null : () => <View style={styles.separator} />}
+        ItemSeparatorComponent={viewMode === "list" ? () => <View style={styles.separator} /> : () => null}
         ListHeaderComponent={
           <View>
             <View style={styles.quickActions}>
@@ -532,9 +601,12 @@ function coverColor(title: string): string {
             const row = item.kind === "row" ? item.row : [];
             // 书架 = 一行的背景层（照书架类应用的画法）：层板贴图铺在行底部、全宽贯通，
             // 书格底对齐站在板上；与本书数无关——1 本书板也贯通。
-            const cellWidth = Math.max(60, Math.floor((shelfInnerWidth - 28 - 12 - 3 * 10) / 4));
+            // 4 格 + 3 个间隙，两侧只留 6：原先两侧留 28 加 12，格子被压窄显得书小。
+            const cellGap = 6;
+            const cellWidth = Math.max(60, Math.floor((shelfInnerWidth - 12 - 3 * cellGap) / 4));
             const plankStrip = Math.round(shelfInnerWidth / (3322 / 383));
-            const plankBelow = Math.round(plankStrip * 0.62);
+            // 层板下沿只留一小截让书脚踩在线上；原先占 62%，架子显得厚。
+            const plankBelow = Math.round(plankStrip * 0.28);
             const rowHeight = Math.round((cellWidth * 4) / 3) + plankBelow;
             return (
               <View
@@ -550,12 +622,11 @@ function coverColor(title: string): string {
                   resizeMode="stretch"
                   style={{ position: "absolute", left: -60, right: -60, bottom: 0, height: plankStrip }}
                 />
-                <View style={[styles.shelfBooks, { paddingBottom: plankBelow }]}>
+                <View style={[styles.shelfBooks, { paddingBottom: plankBelow, gap: cellGap }]}>
                   {row.map((project) => {
                     const lines = bookTitleLines(project.title);
                     return (
                       <Pressable key={project.id} onPress={() => openProject(project)} onLongPress={() => openProjectMenu(project)} style={({ pressed }) => [styles.shelfCell, { width: cellWidth }, pressed && styles.rowPressed]}>
-                        <Image source={BOOK_SHADOW} style={styles.bookShadowImage} resizeMode="stretch" />
                         <View style={[styles.bookObject, { backgroundColor: coverColor(project.title) }]}>
                           <View style={styles.bookSpine} />
                           {project.coverPath ? (
@@ -573,7 +644,7 @@ function coverColor(title: string): string {
                   })}
                 </View>
                 </View>
-                <View style={styles.shelfLabels}>
+                <View style={[styles.shelfLabels, { gap: cellGap }]}>
                   {row.map((project) => {
                     const st = stats[project.id];
                     const statsLine = st ? `${st.volumes} 卷 · ${st.chapters} 章 · ${(st.characters / 10000).toFixed(1)} 万字` : "…";
@@ -588,6 +659,73 @@ function coverColor(title: string): string {
               </View>
             );
           }
+          // 书脊视图：一整排立着的书脊，竖排书名，厚薄高矮按字数来。
+          if (viewMode === "spine") {
+            const row = item.kind === "row" ? item.row : [];
+            const spinePlankHeight = Math.max(10, Math.round(shelfInnerWidth / (3322 / 383)));
+            return (
+              <View
+                style={styles.spineShelfRow}
+                onLayout={(event) => {
+                  const width = event.nativeEvent.layout.width;
+                  if (Math.abs(width - shelfInnerWidth) > 1) setShelfInnerWidth(width);
+                }}
+              >
+                <View style={{ height: SPINE_BASE_HEIGHT + SPINE_PLANK_BELOW, justifyContent: "flex-end" }}>
+                  <ImageBackground
+                    source={PLANK_IMAGE}
+                    resizeMode="stretch"
+                    // 层板按行宽折算，与网格同一套比例；写死 14 会在宽行上被拉扁。
+                    style={{ position: "absolute", left: -60, right: -60, bottom: 0, height: spinePlankHeight }}
+                  />
+                  <View style={styles.spineBooks}>
+                    {row.map((project) => {
+                      const characters = stats[project.id]?.characters ?? 0;
+                      const lean = spineLean(project.title);
+                      return (
+                        <Pressable
+                          key={project.id}
+                          accessibilityLabel={`打开《${project.title}》`}
+                          onPress={() => openProject(project)}
+                          onLongPress={() => openProjectMenu(project)}
+                          style={({ pressed }) => [
+                            styles.spineBook,
+                            {
+                              width: Math.round(SPINE_BASE_WIDTH * spineThickness(characters)),
+                              height: Math.round(SPINE_BASE_HEIGHT * spineHeight(characters)),
+                              backgroundColor: coverColor(project.title),
+                              transform: lean ? [{ rotate: `${lean}deg` }] : undefined,
+                            },
+                            pressed && styles.rowPressed,
+                          ]}
+                        >
+                          {/* 书脊的圆柱感：左侧一道浅高光、右侧一道暗面。 */}
+                          <View style={styles.spineHighlight} />
+                          <View style={styles.spineShade} />
+                          <View style={styles.spineTitleWrap}>
+                            {spineTitleChars(project.title).map((char, index) => (
+                              <Text key={index} style={styles.spineTitle}>{char}</Text>
+                            ))}
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+                <View style={styles.spineLabels}>
+                  {row.map((project) => (
+                    <View key={project.id} style={styles.spineLabelCell}>
+                      <Text style={styles.spineLabel} numberOfLines={1}>{project.title}</Text>
+                      <Text style={styles.spineStats} numberOfLines={1}>
+                        {stats[project.id] ? `${stats[project.id].chapters} 章 · ${((stats[project.id]?.characters ?? 0) / 10000).toFixed(1)} 万字` : "…"}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            );
+          }
+
           const project = item.kind === "project" ? item.project : (item as unknown as Project);
           const statsLine = (() => { const st = stats[project.id]; return st ? `${st.volumes} 卷 · ${st.chapters} 章 · ${(st.characters / 10000).toFixed(1)} 万字` : "…"; })();
           const progress = Math.min(100, Math.round(((stats[project.id]?.characters ?? 0) / 100000) * 100));
@@ -812,15 +950,32 @@ const styles = StyleSheet.create({
   statsText: { flex: 1, color: colors.textMuted, fontSize: 10.5 },
   headerActions: { flexDirection: "row", alignItems: "center" },
   shelfRow: { paddingHorizontal: 14, marginBottom: 2 },
-  shelfBooks: { flexDirection: "row", alignItems: "flex-end", gap: 10, paddingHorizontal: 6 },
+  shelfBooks: { flexDirection: "row", alignItems: "flex-end", paddingHorizontal: 6 },
   shelfCell: { alignItems: "center" },
-  bookObject: { width: "100%", aspectRatio: 3 / 4, borderRadius: 10, overflow: "hidden", justifyContent: "center" },
-  bookShadowImage: { position: "absolute", left: 4, top: 0, width: "100%", height: "100%", borderRadius: 10 },
+  bookObject: { width: "100%", aspectRatio: 3 / 4, borderRadius: 6, overflow: "hidden", justifyContent: "center" },
   bookSpine: { position: "absolute", left: 0, top: 0, bottom: 0, width: "9%", backgroundColor: "#EDE6D8", borderRightWidth: 1, borderRightColor: "rgba(0,0,0,0.10)" },
   bookCoverTextWrap: { alignSelf: "stretch", alignItems: "center", gap: 2, paddingHorizontal: 18 },
   bookCoverLine: { color: "rgba(255,255,255,0.95)", fontSize: 16, fontWeight: "800", letterSpacing: 1 },
   bookCoverLineLead: { fontSize: 20 },
-  shelfLabels: { flexDirection: "row", gap: 10, marginTop: 8 },
+  shelfLabels: { flexDirection: "row", marginTop: 8 },
+  // 书脊视图：一行 = 一条全宽层板 + 上面立着的若干书脊。
+  spineShelfRow: { paddingLeft: 6, paddingRight: 6, paddingBottom: 10 },
+  spineBooks: { flexDirection: "row", alignItems: "flex-end", gap: 1 },
+  spineBook: {
+    overflow: "hidden",
+    borderTopLeftRadius: 2,
+    borderTopRightRadius: 2,
+    justifyContent: "center",
+  },
+  spineHighlight: { position: "absolute", left: 0, top: 0, bottom: 0, width: "26%", backgroundColor: "rgba(255,255,255,0.28)" },
+  spineShade: { position: "absolute", right: 0, top: 0, bottom: 0, width: "34%", backgroundColor: "rgba(0,0,0,0.20)" },
+  // 竖排书名：逐字一行，读起来就是书脊上竖着印的字。
+  spineTitleWrap: { width: "100%", alignItems: "center", overflow: "hidden" },
+  spineTitle: { color: "rgba(255,255,255,0.96)", fontSize: 11, fontWeight: "700", lineHeight: 13, height: 13, textAlign: "center" },
+  spineLabels: { flexDirection: "row", marginTop: 8 },
+  spineLabelCell: { flex: 1, minWidth: 0 },
+  spineLabel: { color: colors.text, fontSize: 11, fontWeight: "600", textAlign: "center" },
+  spineStats: { marginTop: 2, color: colors.textMuted, fontSize: 10, textAlign: "center" },
   shelfLabelCell: { alignItems: "center" },
   gridCover: { width: "100%", aspectRatio: 3 / 4, borderRadius: 10, alignItems: "flex-end", justifyContent: "center", overflow: "hidden" },
   gridCoverImage: { width: "100%", height: "100%" },
