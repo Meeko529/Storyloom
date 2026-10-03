@@ -1,7 +1,8 @@
 // 本文件基于 OpenFicM（Apache-2.0）修改
 // 改动说明见仓库根目录 docs/上游来源与改动清单.md
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -9,7 +10,6 @@ import {
   AppState,
   Modal,
   Pressable,
-  SectionList,
   StyleSheet,
   Text,
   TextInput,
@@ -19,7 +19,8 @@ import {
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
-import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, SheetBackdrop, BottomSheet, PanelScroll , TopSheet} from "@/components/ui";
+import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, BottomSheet, TopSheet } from "@/components/ui";
+import { ChapterDrawer } from "@/components/chapter-drawer";
 import { ensureEditorFontLoaded } from "@/settings/font-loader";
 import { debounce } from "@/lib/debounce";
 import { exportNovel, type ExportScope, type NovelExportFormat } from "@/lib/export";
@@ -29,6 +30,7 @@ import {
   createVolume,
   deleteChapter,
   deleteChapterVersion,
+  deleteProject,
   deleteVolume,
   getProject,
   getSetting,
@@ -40,6 +42,7 @@ import {
   restoreChapterVersion,
   saveChapter,
   listProjects,
+  updateProjectInfo,
 } from "@/data/repositories";
 import {
   getPendingChapterStyleEvolution,
@@ -53,6 +56,7 @@ import {
   setActiveStyleProfile,
 } from "@/data/style-repositories";
 import { resolveModelSelection } from "@/llm/selection";
+import type { RootStackParamList } from "@/navigation/types";
 import { editorFontFamily, readEditorPrefs, type EditorFontId } from "@/settings/editor-prefs";
 import { evolveAuthorStyle } from "@/settings/lorn-style-plugin";
 import { useAppStore } from "@/store/app-store";
@@ -145,15 +149,12 @@ type DraftState = {
   version: number;
 };
 
-type DirectoryTarget =
-  | { kind: "volume"; volume: Volume }
-  | { kind: "chapter"; chapter: Chapter };
-
 type NameDialog =
-  | { kind: "create-volume" }
+  | { kind: "create-volume"; project: Project }
   | { kind: "rename-volume"; volume: Volume }
   | { kind: "create-chapter"; volume: Volume }
-  | { kind: "rename-chapter"; chapter: Chapter };
+  | { kind: "rename-chapter"; chapter: Chapter }
+  | { kind: "rename-project"; project: Project };
 
 export function WritingScreen() {
   const projectId = useAppStore((state) => state.currentProjectId);
@@ -162,6 +163,8 @@ export function WritingScreen() {
   const setCurrentChapter = useAppStore((state) => state.setCurrentChapter);
   const refreshData = useAppStore((state) => state.refreshData);
   const revision = useAppStore((state) => state.dataRevision);
+  /** 资料页挂在 Stack 上，写作页是 Tab 里的一屏，跳转要从这里往上冒泡。 */
+  const rootNavigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [project, setProject] = useState<Project | null>(null);
   const [volumes, setVolumes] = useState<Volume[]>([]);
   const [chapters, setChapters] = useState<Chapter[]>([]);
@@ -180,17 +183,19 @@ export function WritingScreen() {
   const [autoSaveDelay, setAutoSaveDelay] = useState(AUTO_SAVE_DELAY_MS);
   const [editorFontSize, setEditorFontSize] = useState(17);
   const [editorFont, setEditorFont] = useState<EditorFontId>("system");
-  const [chapterPickerVisible, setChapterPickerVisible] = useState(false);
-  const [directoryTarget, setDirectoryTarget] = useState<DirectoryTarget | null>(null);
+  /** 作品结构抽屉：全部作品与它们各自的卷章都收在里面。 */
+  const [drawerVisible, setDrawerVisible] = useState(false);
+  /** 抽屉用的数据：全部作品，以及每部作品自己的卷与章。 */
+  const [drawerProjects, setDrawerProjects] = useState<Project[]>([]);
+  const [drawerVolumes, setDrawerVolumes] = useState<Record<string, Volume[]>>({});
+  const [drawerChapters, setDrawerChapters] = useState<Record<string, Chapter[]>>({});
   const [nameDialog, setNameDialog] = useState<NameDialog | null>(null);
   const [nameValue, setNameValue] = useState("");
   const [nameSaving, setNameSaving] = useState(false);
   const [exportPickerVisible, setExportPickerVisible] = useState(false);
-  const [headerMenuVisible, setHeaderMenuVisible] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportFormat, setExportFormat] = useState<NovelExportFormat>("markdown");
-  const [projectPickerVisible, setProjectPickerVisible] = useState(false);
-  const [projectPickerList, setProjectPickerList] = useState<Project[]>([]);
+  const [headerMenuVisible, setHeaderMenuVisible] = useState(false);
   const [editing, setEditing] = useState(false);
   const [styleProfiles, setStyleProfiles] = useState<StyleProfile[]>([]);
   const [activeStyleProfile, setActiveStyleProfileState] = useState<StyleProfile | null>(null);
@@ -249,16 +254,6 @@ export function WritingScreen() {
     () => volumes.find((volume) => volume.id === activeChapter?.volumeId) ?? null,
     [activeChapter?.volumeId, volumes],
   );
-
-  const directorySections = useMemo(() => {
-    const grouped = new Map<string, Chapter[]>();
-    for (const chapter of chapters) {
-      const items = grouped.get(chapter.volumeId) ?? [];
-      items.push(chapter);
-      grouped.set(chapter.volumeId, items);
-    }
-    return volumes.map((volume) => ({ volume, data: grouped.get(volume.id) ?? [] }));
-  }, [chapters, volumes]);
 
   useEffect(() => {
     let cancelled = false;
@@ -324,15 +319,38 @@ export function WritingScreen() {
     setEditing(false);
   }, [activeChapter?.id]);
 
-  // 目录里的「已进化」标识：面板打开时按作品查一次；章列表变化（进化后会刷新）也重查。
+  // 抽屉打开时把全部作品与它们各自的卷章读一遍。写操作后会 refreshData，
+  // revision 一变这里就重查，所以新建、改名、删除之后列表会跟上。
   useEffect(() => {
-    if (!chapterPickerVisible || !projectId) return;
+    if (!drawerVisible) return;
     let cancelled = false;
-    void listEvolvedChapterIds(projectId)
-      .then((ids) => { if (!cancelled) setEvolvedChapterIds(new Set(ids)); })
-      .catch(() => undefined);
+    void (async () => {
+      try {
+        const list = await listProjects();
+        const volumeMap: Record<string, Volume[]> = {};
+        const chapterMap: Record<string, Chapter[]> = {};
+        const evolved = new Set<string>();
+        await Promise.all(list.map(async (item) => {
+          const [itemVolumes, itemChapters, itemEvolved] = await Promise.all([
+            listVolumes(item.id),
+            listChapters(item.id),
+            listEvolvedChapterIds(item.id),
+          ]);
+          volumeMap[item.id] = itemVolumes;
+          chapterMap[item.id] = itemChapters;
+          for (const id of itemEvolved) evolved.add(id);
+        }));
+        if (cancelled) return;
+        setDrawerProjects(list);
+        setDrawerVolumes(volumeMap);
+        setDrawerChapters(chapterMap);
+        setEvolvedChapterIds(evolved);
+      } catch {
+        // 抽屉数据读失败不打断写作：沿用上一次读到的结果。
+      }
+    })();
     return () => { cancelled = true; };
-  }, [chapterPickerVisible, projectId, chapters]);
+  }, [drawerVisible, revision]);
 
   const clearDraft = () => {
     setTitle("");
@@ -466,7 +484,7 @@ export function WritingScreen() {
 
   const selectChapter = async (chapterId: string) => {
     if (chapterId === activeChapter?.id) {
-      setChapterPickerVisible(false);
+      setDrawerVisible(false);
       return;
     }
     if (savingRef.current) {
@@ -475,7 +493,7 @@ export function WritingScreen() {
     }
     if (!await persistDraft(false)) return;
     setCurrentChapter(chapterId);
-    setChapterPickerVisible(false);
+    setDrawerVisible(false);
   };
 
   const openNameDialog = async (dialog: NameDialog, initialValue: string) => {
@@ -484,8 +502,7 @@ export function WritingScreen() {
       return;
     }
     if (!await persistDraft(false)) return;
-    setDirectoryTarget(null);
-    setChapterPickerVisible(false);
+    setDrawerVisible(false);
     setNameValue(initialValue);
     setNameDialog(dialog);
   };
@@ -496,15 +513,23 @@ export function WritingScreen() {
     setError(null);
     try {
       if (nameDialog.kind === "create-volume") {
-        const volume = await createVolume(projectId, nameValue);
-        setVolumes((current) => [...current, volume].sort((left, right) => left.orderIndex - right.orderIndex));
+        // 抽屉里按下的是某一部作品的 ＋，新卷归那部作品。
+        const volume = await createVolume(nameDialog.project.id, nameValue);
+        if (nameDialog.project.id === projectId) {
+          setVolumes((current) => [...current, volume].sort((left, right) => left.orderIndex - right.orderIndex));
+        }
+      } else if (nameDialog.kind === "rename-project") {
+        await updateProjectInfo(nameDialog.project.id, nameValue, nameDialog.project.description);
       } else if (nameDialog.kind === "rename-volume") {
         const volume = await renameVolume(nameDialog.volume.id, nameValue);
         setVolumes((current) => current.map((item) => item.id === volume.id ? volume : item));
       } else if (nameDialog.kind === "create-chapter") {
-        const chapter = await createChapter(projectId, nameDialog.volume.id, nameValue);
-        setChapters((current) => [...current, chapter]);
-        setCurrentChapter(chapter.id);
+        const volume = nameDialog.volume;
+        const chapter = await createChapter(volume.projectId, volume.id, nameValue);
+        if (volume.projectId === projectId) {
+          setChapters((current) => [...current, chapter]);
+          setCurrentChapter(chapter.id);
+        }
       } else {
         const chapter = await renameChapter(nameDialog.chapter.id, nameValue);
         setChapters((current) => current.map((item) => item.id === chapter.id ? chapter : item));
@@ -554,8 +579,7 @@ export function WritingScreen() {
   };
 
   const confirmDeleteChapter = async (chapter: Chapter) => {
-    setDirectoryTarget(null);
-    setChapterPickerVisible(false);
+    setDrawerVisible(false);
     const noteCount = await countNotesUnder({ chapterId: chapter.id }).catch(() => 0);
     if (!noteCount) {
       Alert.alert("删除章节", "确定删除《" + chapter.title + "》？正文和本地索引会一并删除。", [
@@ -602,8 +626,7 @@ export function WritingScreen() {
   };
 
   const confirmDeleteVolume = (volume: Volume) => {
-    setDirectoryTarget(null);
-    setChapterPickerVisible(false);
+    setDrawerVisible(false);
     if (volumes.length <= 1) {
       Alert.alert("无法删除", "每部作品至少需要保留一卷，可以改为重命名。");
       return;
@@ -632,6 +655,35 @@ export function WritingScreen() {
     });
   };
 
+  const removeProject = async (target: Project) => {
+    if (savingRef.current) {
+      setError("章节正在保存，请稍后再删除");
+      return;
+    }
+    if (target.id === projectId && !await persistDraft(false)) return;
+    setError(null);
+    try {
+      await deleteProject(target.id);
+      // 删掉的正是正打开的那部：交给上层回到"还没有选作品"的状态。
+      if (target.id === projectId) setCurrentProject(null);
+      refreshData();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : String(deleteError));
+    }
+  };
+
+  const confirmDeleteProject = (target: Project) => {
+    setDrawerVisible(false);
+    Alert.alert(
+      "删除作品",
+      "确定删除《" + target.title + "》？这部作品的卷、章节与本地索引会一并删除。",
+      [
+        { text: "取消", style: "cancel" },
+        { text: "删除", style: "destructive", onPress: () => { void removeProject(target); } },
+      ],
+    );
+  };
+
   const openNewChapter = () => {
     const volume = activeVolume ?? volumes[0];
     if (volume) {
@@ -639,8 +691,8 @@ export function WritingScreen() {
         { kind: "create-chapter", volume },
         "第" + (chapters.length + 1) + "章",
       );
-    } else {
-      void openNameDialog({ kind: "create-volume" }, "第一卷");
+    } else if (project) {
+      void openNameDialog({ kind: "create-volume", project }, "第一卷");
     }
   };
 
@@ -703,7 +755,6 @@ export function WritingScreen() {
   const openChapterHistory = async () => {
     const chapter = activeChapter;
     if (!chapter) return;
-    setHeaderMenuVisible(false);
     setHistoryPreview(null);
     setHistoryList([]);
     setHistoryVisible(true);
@@ -777,10 +828,14 @@ export function WritingScreen() {
       ? "重命名卷"
       : nameDialog?.kind === "create-chapter"
         ? "新建章节"
-        : "重命名章节";
+        : nameDialog?.kind === "rename-chapter"
+          ? "重命名章节"
+          : "重命名作品";
   const nameDialogLabel = nameDialog?.kind === "create-volume" || nameDialog?.kind === "rename-volume"
     ? "卷名"
-    : "章节名";
+    : nameDialog?.kind === "rename-project"
+      ? "作品名"
+      : "章节名";
 
   if (!projectId) return <Screen><EmptyState title="请先从书架选择一部作品" /></Screen>;
   if (loading) return <Screen><Header title="写作" /><View style={styles.loading}><Text style={styles.muted}>正在打开作品...</Text></View></Screen>;
@@ -788,36 +843,26 @@ export function WritingScreen() {
   return (
     <Screen>
       <Header
+        leading={(
+          <Pressable accessibilityLabel="作品结构" onPress={() => setDrawerVisible(true)} style={styles.iconButton}>
+            {/* 两条线，一长一短：与多数阅读类应用的入口一致，不与返回箭头混。 */}
+            <View style={styles.menuGlyph}>
+              <View style={[styles.menuGlyphBar, styles.menuGlyphBarLong]} />
+              <View style={[styles.menuGlyphBar, styles.menuGlyphBarShort]} />
+            </View>
+          </Pressable>
+        )}
         title={project?.title ?? "写作"}
         action={(
-          <View style={styles.headerActions}>
-            <Pressable
-              accessibilityLabel="切换作品"
-              onPress={() => {
-                void listProjects().then((list) => { setProjectPickerList(list); setProjectPickerVisible(true); }).catch(() => {});
-              }}
-              style={styles.iconButton}
-            >
-              <Ionicons name="swap-horizontal-outline" size={20} color={colors.primary} />
-            </Pressable>
-            <Pressable accessibilityLabel="更多操作" onPress={() => setHeaderMenuVisible((value) => !value)} style={styles.iconButton}>
-              <Ionicons name="ellipsis-horizontal" size={20} color={colors.primary} />
-            </Pressable>
-          </View>
+          <Pressable accessibilityLabel="更多操作" onPress={() => setHeaderMenuVisible((value) => !value)} style={styles.iconButton}>
+            <Ionicons name="ellipsis-horizontal" size={20} color={colors.primary} />
+          </Pressable>
         )}
       />
       {headerMenuVisible ? (
         <>
           <Pressable accessibilityLabel="关闭更多操作" onPress={() => setHeaderMenuVisible(false)} style={styles.headerMenuBackdrop} />
           <View style={styles.headerMenuCard}>
-            <Pressable
-              accessibilityLabel="作品目录"
-              onPress={() => { setHeaderMenuVisible(false); setChapterPickerVisible(true); }}
-              style={({ pressed }) => [styles.headerMenuRow, pressed && styles.headerMenuRowPressed]}
-            >
-              <Ionicons name="list-outline" size={20} color={colors.primary} />
-              <Text style={styles.headerMenuText}>作品目录</Text>
-            </Pressable>
             <Pressable
               accessibilityLabel="导出作品"
               onPress={() => { setHeaderMenuVisible(false); setExportPickerVisible(true); }}
@@ -827,25 +872,9 @@ export function WritingScreen() {
               <Text style={styles.headerMenuText}>导出作品</Text>
             </Pressable>
             <Pressable
-              accessibilityLabel="新建卷"
-              onPress={() => { setHeaderMenuVisible(false); void openNameDialog({ kind: "create-volume" }, "第一卷"); }}
-              style={({ pressed }) => [styles.headerMenuRow, pressed && styles.headerMenuRowPressed]}
-            >
-              <Ionicons name="folder-open-outline" size={20} color={colors.primary} />
-              <Text style={styles.headerMenuText}>新建卷</Text>
-            </Pressable>
-            <Pressable
-              accessibilityLabel="新建章节"
-              onPress={() => { setHeaderMenuVisible(false); openNewChapter(); }}
-              style={({ pressed }) => [styles.headerMenuRow, pressed && styles.headerMenuRowPressed]}
-            >
-              <Ionicons name="document-text-outline" size={20} color={colors.primary} />
-              <Text style={styles.headerMenuText}>新建章节</Text>
-            </Pressable>
-            <Pressable
               accessibilityLabel="章节历史版本"
               disabled={!activeChapter}
-              onPress={() => { void openChapterHistory(); }}
+              onPress={() => { setHeaderMenuVisible(false); void openChapterHistory(); }}
               style={({ pressed }) => [styles.headerMenuRow, pressed && styles.headerMenuRowPressed]}
             >
               <Ionicons name="time-outline" size={20} color={activeChapter ? colors.primary : colors.textMuted} />
@@ -936,116 +965,58 @@ export function WritingScreen() {
         ) : (
           <EmptyState
             title="还没有卷"
-            action={<Button label="新建卷" onPress={() => { void openNameDialog({ kind: "create-volume" }, "第一卷"); }} />}
+            action={<Button label="新建卷" onPress={() => { if (project) void openNameDialog({ kind: "create-volume", project }, "第一卷"); }} />}
           />
         )}
       </KeyboardAvoidingView>
 
-      <BottomSheet
-        visible={projectPickerVisible}
-        title="切换作品"
-        onClose={() => setProjectPickerVisible(false)}
-      >
-          <PanelScroll contentStyle={panelPadContent}>
-              {projectPickerList.map((item) => (
-                <Pressable
-                  key={item.id}
-                  onPress={() => {
-                    setProjectPickerVisible(false);
-                    if (item.id !== projectId) setCurrentProject(item.id);
-                  }}
-                  style={{ flexDirection: "row", alignItems: "center", gap: 10, padding: 10, borderRadius: 12, backgroundColor: colors.surfaceMuted, marginBottom: 6 }}
-                >
-                  <Ionicons name={item.id === projectId ? "radio-button-on" : "radio-button-off"} size={20} color={item.id === projectId ? colors.primary : colors.textMuted} />
-                  <View style={{ flex: 1 }}>
-                    <Text numberOfLines={1} style={{ color: colors.text, fontSize: 15, fontWeight: "600" }}>{item.title}</Text>
-                    <Text numberOfLines={1} style={{ color: colors.textMuted, fontSize: 11 }}>{item.description || "暂无简介"}</Text>
-                  </View>
-                </Pressable>
-              ))}
-          </PanelScroll>
-        </BottomSheet>
-
-      <BottomSheet
-        visible={chapterPickerVisible}
-        title="作品目录"
-        subtitle={project?.title ?? "当前作品"}
-        onClose={() => setChapterPickerVisible(false)}
-      >
-            {/* 面板顶栏只有标题与关闭，「新建卷」放在内容首行。 */}
-            <Pressable
-              accessibilityLabel="新建卷"
-              onPress={() => { void openNameDialog({ kind: "create-volume" }, "第" + (volumes.length + 1) + "卷"); }}
-              style={({ pressed }) => [topSheetActionRow, pressed && styles.rowPressed]}
-            >
-              <Ionicons name="folder-open-outline" size={19} color={colors.primary} />
-              <Text style={topSheetActionText}>新建卷</Text>
-            </Pressable>
-            <SectionList
-              style={styles.panelScroll}
-              sections={directorySections}
-              keyExtractor={(item) => item.id}
-              stickySectionHeadersEnabled={false}
-              contentContainerStyle={styles.directoryList}
-              renderSectionHeader={({ section }) => (
-                <View style={styles.volumeHeader}>
-                  <Ionicons name="folder-open-outline" size={18} color={colors.accent} />
-                  <Text numberOfLines={1} style={styles.volumeTitle}>{section.volume.title}</Text>
-                  <Text style={styles.volumeCount}>{section.data.length + " 章"}</Text>
-                  <Pressable
-                    accessibilityLabel={"在" + section.volume.title + "中新建章节"}
-                    onPress={() => {
-                      void openNameDialog(
-                        { kind: "create-chapter", volume: section.volume },
-                        "第" + (chapters.length + 1) + "章",
-                      );
-                    }}
-                    style={styles.rowAction}
-                  >
-                    <Ionicons name="add" size={21} color={colors.primary} />
-                  </Pressable>
-                  <Pressable
-                    accessibilityLabel={"管理" + section.volume.title}
-                    onPress={() => setDirectoryTarget({ kind: "volume", volume: section.volume })}
-                    style={styles.rowAction}
-                  >
-                    <Ionicons name="ellipsis-horizontal" size={20} color={colors.textMuted} />
-                  </Pressable>
-                </View>
-              )}
-              renderItem={({ item }) => (
-                <Pressable
-                  onPress={() => { void selectChapter(item.id); }}
-                  style={[styles.chapterRow, item.id === activeChapter?.id && styles.chapterRowActive]}
-                >
-                  <Ionicons name="document-text-outline" size={18} color={colors.textMuted} />
-                  <Text numberOfLines={1} style={styles.chapterRowText}>
-                    {item.title}
-                  </Text>
-                  {/* 已进化＝纯标识：只有该章最新那条记录进化过才亮，不可点。 */}
-                  {evolvedChapterIds.has(item.id) ? (
-                    <Ionicons name="sparkles-outline" size={19} color={colors.primary} />
-                  ) : null}
-                  <Pressable
-                    accessibilityLabel={"管理" + item.title}
-                    onPress={(event) => {
-                      event.stopPropagation();
-                      setDirectoryTarget({ kind: "chapter", chapter: item });
-                    }}
-                    style={styles.rowAction}
-                  >
-                    <Ionicons name="ellipsis-horizontal" size={20} color={colors.textMuted} />
-                  </Pressable>
-                </Pressable>
-              )}
-              ListEmptyComponent={(
-                <EmptyState
-                  title="还没有卷"
-                  action={<Button label="新建卷" onPress={() => { void openNameDialog({ kind: "create-volume" }, "第一卷"); }} />}
-                />
-              )}
-            />
-        </BottomSheet>
+      <ChapterDrawer
+        visible={drawerVisible}
+        projects={drawerProjects}
+        currentProjectId={projectId}
+        volumesByProject={drawerVolumes}
+        chaptersByProject={drawerChapters}
+        activeChapterId={activeChapter?.id ?? null}
+        evolvedChapterIds={evolvedChapterIds}
+        onClose={() => setDrawerVisible(false)}
+        onSelectProject={(target) => {
+          if (target.id === projectId) return;
+          // 换作品前先把当前草稿落盘，否则没保存的字会跟着整页重载一起没。
+          void (async () => {
+            if (!await persistDraft(false)) return;
+            setCurrentProject(target.id);
+          })();
+        }}
+        onSelectChapter={(_target, chapter) => { void selectChapter(chapter.id); }}
+        onCreateVolume={(target) => {
+          const count = drawerVolumes[target.id]?.length ?? 0;
+          void openNameDialog({ kind: "create-volume", project: target }, "第" + (count + 1) + "卷");
+        }}
+        onCreateChapter={(_target, volume) => {
+          const count = (drawerChapters[volume.projectId] ?? []).filter((item) => item.volumeId === volume.id).length;
+          void openNameDialog({ kind: "create-chapter", volume }, "第" + (count + 1) + "章");
+        }}
+        onRenameProject={(target) => { void openNameDialog({ kind: "rename-project", project: target }, target.title); }}
+        onExportProject={(target) => {
+          // 导出面板导出的是"正打开的那部"，所以先切过去再开面板。
+          void (async () => {
+            if (target.id !== projectId) {
+              if (!await persistDraft(false)) return;
+              setCurrentProject(target.id);
+            }
+            setExportPickerVisible(true);
+          })();
+        }}
+        onDeleteProject={confirmDeleteProject}
+        onRenameVolume={(_target, volume) => { void openNameDialog({ kind: "rename-volume", volume }, volume.title); }}
+        onDeleteVolume={(_target, volume) => confirmDeleteVolume(volume)}
+        onRenameChapter={(_target, chapter) => { void openNameDialog({ kind: "rename-chapter", chapter }, chapter.title); }}
+        onOpenHistory={(_target, chapter) => {
+          // 恢复会把版本内容灌进编辑器，所以只对正打开的那一章放行。
+          if (chapter.id === activeChapter?.id) void openChapterHistory();
+        }}
+        onDeleteChapter={(_target, chapter) => { void confirmDeleteChapter(chapter); }}
+      />
 
       <Modal visible={historyVisible} transparent animationType="fade" onRequestClose={() => { setHistoryPreview(null); setHistoryVisible(false); }}>
         <TopSheet
@@ -1177,53 +1148,6 @@ export function WritingScreen() {
               <Ionicons name="chevron-forward" size={19} color={colors.textMuted} />
             </Pressable>
         </BottomSheet>
-      <Modal visible={Boolean(directoryTarget)} transparent animationType="slide" onRequestClose={() => setDirectoryTarget(null)}>
-        <SheetBackdrop onPress={() => setDirectoryTarget(null)}>
-          <View style={styles.actionSheet}>
-            <Text numberOfLines={2} style={styles.actionTitle}>
-              {directoryTarget?.kind === "volume" ? directoryTarget.volume.title : directoryTarget?.chapter.title}
-            </Text>
-            {directoryTarget?.kind === "volume" ? (
-              <Pressable
-                onPress={() => {
-                  void openNameDialog(
-                    { kind: "create-chapter", volume: directoryTarget.volume },
-                    "第" + (chapters.length + 1) + "章",
-                  );
-                }}
-                style={styles.actionRow}
-              >
-                <Ionicons name="add-circle-outline" size={22} color={colors.primary} />
-                <Text style={styles.actionText}>新建章节</Text>
-              </Pressable>
-            ) : null}
-            <Pressable
-              onPress={() => {
-                if (directoryTarget?.kind === "volume") {
-                  void openNameDialog({ kind: "rename-volume", volume: directoryTarget.volume }, directoryTarget.volume.title);
-                } else if (directoryTarget?.kind === "chapter") {
-                  void openNameDialog({ kind: "rename-chapter", chapter: directoryTarget.chapter }, directoryTarget.chapter.title);
-                }
-              }}
-              style={styles.actionRow}
-            >
-              <Ionicons name="create-outline" size={22} color={colors.text} />
-              <Text style={styles.actionText}>重命名</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => {
-                if (directoryTarget?.kind === "volume") confirmDeleteVolume(directoryTarget.volume);
-                else if (directoryTarget?.kind === "chapter") void confirmDeleteChapter(directoryTarget.chapter);
-              }}
-              style={styles.actionRow}
-            >
-              <Ionicons name="trash-outline" size={22} color={colors.danger} />
-              <Text style={styles.actionTextDanger}>{directoryTarget?.kind === "volume" ? "删除卷" : "删除章节"}</Text>
-            </Pressable>
-          </View>
-        </SheetBackdrop>
-      </Modal>
-
       <Modal visible={Boolean(nameDialog)} transparent animationType="fade" onRequestClose={() => setNameDialog(null)}>
         <KeyboardAvoidingView style={styles.centeredBackdrop} behavior="height" automaticOffset>
           <View style={styles.nameDialog}>
@@ -1254,6 +1178,11 @@ const styles = StyleSheet.create({
   muted: { color: colors.textMuted, fontSize: 15, padding: spacing.lg, textAlign: "center" },
   iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   headerActions: { flexDirection: "row", alignItems: "center" },
+  // 顶栏入口：两条线，上长下短。
+  menuGlyph: { width: 20, gap: 5 },
+  menuGlyphBar: { height: 2, borderRadius: 2, backgroundColor: colors.primary },
+  menuGlyphBarLong: { width: 20 },
+  menuGlyphBarShort: { width: 13 },
   headerMenuBackdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9 },
   headerMenuCard: { position: "absolute", top: 100, right: 18, width: 176, backgroundColor: colors.background, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingVertical: 4, zIndex: 10, elevation: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 10 },
   headerMenuRow: { minHeight: 46, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md },
@@ -1310,43 +1239,6 @@ const styles = StyleSheet.create({
   previewActions: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end", gap: spacing.sm },
   counter: { flex: 1, color: colors.textMuted, fontSize: 12 },
   centeredBackdrop: { flex: 1, justifyContent: "center", padding: spacing.lg, backgroundColor: colors.overlay },
-  directoryList: { paddingBottom: spacing.lg },
-  volumeHeader: {
-    minHeight: 50,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingLeft: spacing.lg,
-    paddingRight: spacing.xs,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.surfaceMuted,
-  },
-  volumeTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: 15, fontWeight: "700" },
-  volumeCount: { color: colors.textMuted, fontSize: 12 },
-  chapterRow: {
-    minHeight: 52,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingLeft: spacing.xl,
-    paddingRight: spacing.xs,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.background,
-  },
-  chapterRowActive: { backgroundColor: colors.surface },
-  chapterRowText: { flex: 1, minWidth: 0, color: colors.text, fontSize: 15 },
-  rowAction: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  actionSheet: {
-    maxHeight: "80%",
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xl,
-    borderTopLeftRadius: radius.sheet,
-    borderTopRightRadius: radius.sheet,
-    backgroundColor: colors.background,
-  },
   exportFormatRow: { flexDirection: "row", gap: spacing.xs, paddingHorizontal: spacing.sm, paddingBottom: spacing.xs },
   exportFormatChip: { flex: 1, minHeight: 38, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, backgroundColor: colors.surface },
   exportFormatChipActive: { borderColor: colors.primary, backgroundColor: "#E6F3EF" },
@@ -1358,31 +1250,7 @@ const styles = StyleSheet.create({
   exportOptionText: { flex: 1, minWidth: 0, gap: 2 },
   exportOptionTitle: { color: colors.text, fontSize: 16, fontWeight: "700" },
   exportOptionMeta: { color: colors.textMuted, fontSize: 12 },
-  actionTitle: {
-    color: colors.textMuted,
-    fontSize: 13,
-    lineHeight: 20,
-    paddingHorizontal: spacing.sm,
-    paddingBottom: spacing.sm,
-  },
-  actionRow: {
-    minHeight: 54,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingHorizontal: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  actionText: { color: colors.text, fontSize: 16, fontWeight: "600" },
-  actionTextDanger: { color: colors.danger, fontSize: 16, fontWeight: "600" },
   nameDialog: { gap: spacing.lg, padding: spacing.xl, borderRadius: radius.md, backgroundColor: colors.background },
   nameDialogTitle: { color: colors.text, fontSize: 20, fontWeight: "700" },
   nameDialogActions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm },
 });
-
-// 顶部面板的两处共用样式：内容留白与首行动作入口。放本地而非组件库，
-// 因为只有写作页的作品目录需要首行那颗「新建卷」。
-const panelPadContent = { paddingHorizontal: spacing.lg, paddingTop: spacing.xs, paddingBottom: spacing.xl } as const;
-const topSheetActionRow = { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm } as const;
-const topSheetActionText = { color: colors.primary, fontSize: 14, fontWeight: "600" } as const;

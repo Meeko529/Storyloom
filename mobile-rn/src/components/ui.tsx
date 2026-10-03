@@ -40,7 +40,7 @@ export function Screen({ children, scroll = false }: PropsWithChildren<{ scroll?
   );
 }
 
-export function Header({ title, action, onBack }: { title?: ReactNode; action?: ReactNode; onBack?: () => void }) {
+export function Header({ title, action, onBack, leading }: { title?: ReactNode; action?: ReactNode; onBack?: () => void; leading?: ReactNode }) {
   return (
     <View style={styles.header}>
       <View style={styles.headerLeading}>
@@ -49,6 +49,7 @@ export function Header({ title, action, onBack }: { title?: ReactNode; action?: 
             <Ionicons name="chevron-back" size={24} color={colors.text} />
           </Pressable>
         ) : null}
+        {leading}
         <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
       </View>
       {action}
