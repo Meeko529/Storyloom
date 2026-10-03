@@ -36,8 +36,11 @@ const SHELF_VIEW_ICONS: Record<ShelfViewMode, keyof typeof Ionicons.glyphMap> = 
 };
 
 // 书脊视图的基准尺寸：宽度按字数缩放（spineThickness），高度同理（spineHeight）。
-const SPINE_BASE_WIDTH = 34;
-const SPINE_BASE_HEIGHT = 150;
+const SPINE_BASE_WIDTH = 48;
+const SPINE_BASE_HEIGHT = 180;
+/** 书脊一排几本、书与书之间的基准间距（歪出去的书会把那一侧占掉一部分）。 */
+const SPINE_PER_ROW = 5;
+const SPINE_GAP = 4;
 
 /**
  * 层板贴图里「板上棱高光线」距贴图底边的比例（该图 3322×383，最亮行在 y=246）。
@@ -198,12 +201,12 @@ export function ProjectsScreen() {
         ? !project.categoryId || !categories.some((category) => category.id === project.categoryId)
         : project.categoryId === selectedCategoryId);
     const items: Array<{ kind: "row"; row: Project[] } | { kind: "project"; project: Project }> = [];
-    // 网格每行 4 本；书脊窄一些，每行 6 本。两者都是"一行一条层板"。
+    // 网格每行 4 本；书脊书更宽，每行 5 本。两者都是"一行一条层板"。
     if (viewMode === "list") {
       for (const project of visible) items.push({ kind: "project", project });
       return items;
     }
-    const perRow = viewMode === "grid" ? 4 : 6;
+    const perRow = viewMode === "grid" ? 4 : SPINE_PER_ROW;
     for (const row of chunkProjects(visible, perRow)) items.push({ kind: "row", row });
     return items;
   }, [projects, sortedProjects, categories, selectedCategoryId, viewMode]);
@@ -289,21 +292,36 @@ function bookTitleLines(title: string): string[] {
 }
 
 /**
+ * 由书名决定的固定扰动（0~1）。
+ *
+ * 只按字数映射时，"零字"的书会全部落到下限、一整排长得一模一样。再按书名取一个
+ * 固定值叠上去，宽窄与高矮才错得开；同一本书每次进来一致，不会刷新一次变个样。
+ * 哈希取满 32 位再归一 —— 只取低位时短书名之间会挤在同一小段里，扰动等于没有。
+ */
+function spineJitter(title: string, salt: number): number {
+  let hash = 0;
+  for (let index = 0; index < title.length; index += 1) hash = (hash * 31 + title.charCodeAt(index) + salt) >>> 0;
+  hash = Math.imul(hash ^ (hash >>> 15), 2246822507) >>> 0;
+  hash = Math.imul(hash ^ (hash >>> 13), 3266489909) >>> 0;
+  return ((hash ^ (hash >>> 16)) >>> 0) / 4294967296;
+}
+
+/**
  * 书脊的尺寸映射。
  *
  * 真实书柜里每本书厚薄高矮都不同，一排书等高等宽就成了复制粘贴。所以按
  * **字数取对数**再归一：十万字的书脊明显厚于一万字，差距随字数放缓，不会出现
  * 一本撑破整排。取对数而不是线性，是因为字数跨两个数量级时线性映射会让
- * 小书完全看不见。
+ * 小书完全看不见。零字的书再叠一层书名扰动，一排才参差。
  */
-function spineThickness(characters: number): number {
+function spineThickness(characters: number, title: string): number {
   const ratio = Math.min(1, Math.log2(characters / 8000 + 1) / 4);
-  return 0.42 + ratio * 0.58;
+  return (0.72 + ratio * 0.28) * (0.7 + spineJitter(title, 7) * 0.6);
 }
 
-function spineHeight(characters: number): number {
+function spineHeight(characters: number, title: string): number {
   const ratio = Math.min(1, Math.log2(characters / 8000 + 1) / 4);
-  return 0.74 + ratio * 0.26;
+  return (0.74 + ratio * 0.26) * (0.86 + spineJitter(title, 23) * 0.28);
 }
 
 /**
@@ -318,19 +336,22 @@ function spineTitleChars(title: string): string[] {
 }
 
 /**
- * 由书名决定这本书微微往哪边斜、以及露出多少白口。
+ * 由书名决定这本书歪不歪。
  *
- * 真实书架上没有一本是绝对垂直的，全对齐反而像刚排版完。按名字哈希取值，
- * 同一本书每次进来斜度一致，不会刷新一次变一次。
+ * 真实书架上整排书是笔直的，偶尔一本没靠稳才微微外倾；整排都歪看着像被推过。
+ * 所以先摇一个 0~1 的值，约五分之一的书中签（向右 1.5~2.5° 或向左 1~2°），
+ * 其余保持笔直。同一本书每次进来一致，不会刷新一次变一次。
  */
 function spineLean(title: string): number {
-  let hash = 0;
-  for (let index = 0; index < title.length; index += 1) hash = (hash * 31 + title.charCodeAt(index)) >>> 0;
-  const seed = hash % 11;
-  if (seed === 0) return 3.2;
-  if (seed === 3) return -2.4;
-  if (seed === 7) return 1.6;
+  const roll = spineJitter(title, 53);
+  if (roll < 0.14) return 1.5 + spineJitter(title, 61);
+  if (roll < 0.22) return -(1 + spineJitter(title, 67));
   return 0;
+}
+
+/** 倾角换算成书顶的横向偏移：绕书底旋转时，偏移量 = 书高 × sin(角度)。 */
+function spineLeanShift(lean: number, height: number): number {
+  return Math.abs(Math.sin((lean * Math.PI) / 180)) * height;
 }
 
 /** 书架封面卡：无封面时按书名哈希取低饱和底色 + 首字水印，同一批作品颜色分散开。 */
@@ -672,6 +693,8 @@ function coverColor(title: string): string {
             const spinePlankHeight = Math.max(10, Math.round(shelfInnerWidth / (3322 / 383)));
             // 书脊与网格同一套落脚点：书底落在板的上棱线上，板的前立面留在书下。
             const spinePlankTop = Math.round(spinePlankHeight * PLANK_TOP_RATIO);
+            // 一排书的总宽不越过行宽：字数多的书吃到这个上限为止。
+            const spineMaxWidth = Math.floor((shelfInnerWidth - SPINE_GAP * (SPINE_PER_ROW - 1)) / SPINE_PER_ROW);
             return (
               <View
                 style={styles.spineShelfRow}
@@ -688,9 +711,18 @@ function coverColor(title: string): string {
                     style={{ position: "absolute", left: -60, right: -60, bottom: 0, height: spinePlankHeight }}
                   />
                   <View style={styles.spineBooks}>
-                    {row.map((project) => {
+                    {row.map((project, index) => {
                       const characters = stats[project.id]?.characters ?? 0;
                       const lean = spineLean(project.title);
+                      const height = Math.round(SPINE_BASE_HEIGHT * spineHeight(characters, project.title));
+                      // 书顶向哪边偏，那一侧的间距就被占掉多少：歪出去的书正好搭在邻书上。
+                      const previous = index > 0 ? row[index - 1] : null;
+                      const previousLean = previous ? spineLean(previous.title) : 0;
+                      const previousShift = previous
+                        ? spineLeanShift(previousLean, Math.round(SPINE_BASE_HEIGHT * spineHeight(stats[previous.id]?.characters ?? 0, previous.title)))
+                        : 0;
+                      const used = (previousLean > 0 ? previousShift : 0) + (lean < 0 ? spineLeanShift(lean, height) : 0);
+                      const marginLeft = index === 0 ? 0 : Math.max(1, Math.round(SPINE_GAP - used));
                       return (
                         <Pressable
                           key={project.id}
@@ -700,10 +732,12 @@ function coverColor(title: string): string {
                           style={({ pressed }) => [
                             styles.spineBook,
                             {
-                              width: Math.round(SPINE_BASE_WIDTH * spineThickness(characters)),
-                              height: Math.round(SPINE_BASE_HEIGHT * spineHeight(characters)),
+                              marginLeft,
+                              width: Math.min(spineMaxWidth, Math.round(SPINE_BASE_WIDTH * spineThickness(characters, project.title))),
+                              height,
                               backgroundColor: coverColor(project.title),
                               transform: lean ? [{ rotate: `${lean}deg` }] : undefined,
+                              zIndex: lean ? 1 : 0,
                             },
                             pressed && styles.rowPressed,
                           ]}
@@ -974,12 +1008,14 @@ const styles = StyleSheet.create({
   shelfLabels: { flexDirection: "row", marginTop: 8 },
   // 书脊视图：一行 = 一条全宽层板 + 上面立着的若干书脊。
   spineShelfRow: { paddingLeft: 6, paddingRight: 6, paddingBottom: 10 },
-  spineBooks: { flexDirection: "row", alignItems: "flex-end", gap: 1 },
+  spineBooks: { flexDirection: "row", alignItems: "flex-end" },
   spineBook: {
     overflow: "hidden",
     borderTopLeftRadius: 1,
     borderTopRightRadius: 1,
     justifyContent: "center",
+    // 绕书底旋转：歪出去的是书顶，书底始终踩在板上棱线上。
+    transformOrigin: "bottom",
   },
   // 圆柱感用四层半透明带叠出来（外暗 → 亮脊 → 收 → 内暗）：书脊只有十几到三十几 dp 宽，
   // 四层已经接得上，不必为此引入渐变依赖。
