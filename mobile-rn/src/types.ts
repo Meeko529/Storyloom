@@ -86,6 +86,8 @@ export interface StyleProfile {
   seriesId: string;
   projectId: string | null;
   sourceId: string | null;
+  /** 作者文风的来源章节；为空表示没有章节上下文（例如由助手工具直接发起）。 */
+  sourceChapterId: string | null;
   kind: StyleProfileKind;
   name: string;
   version: number;

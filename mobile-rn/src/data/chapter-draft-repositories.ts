@@ -130,6 +130,29 @@ export async function getPendingChapterStyleEvolution(
   return row ? mapChapterDraft(row) : null;
 }
 
+/**
+ * 作品目录里标「已进化」用的集合。
+ *
+ * 口径与 getPendingChapterStyleEvolution 一致：只看该章**最新那条**记录的状态。
+ * 这样 AI 之后重写这一章会生成新记录（状态回到 generated），图标随之熄灭，
+ * 不会出现"旧记录已进化过、新稿还没处理"时仍然谎报已完成。
+ */
+export async function listEvolvedChapterIds(projectId: string): Promise<string[]> {
+  const database = await getDatabase();
+  const rows = await database.getAllAsync<{ chapter_id: string }>(
+    `SELECT d.chapter_id FROM chapter_drafts d
+     WHERE d.project_id = ?
+       AND d.rowid = (
+         SELECT d2.rowid FROM chapter_drafts d2
+         WHERE d2.chapter_id = d.chapter_id
+         ORDER BY d2.created_at DESC, d2.rowid DESC LIMIT 1
+       )
+       AND d.status = 'evolved'`,
+    projectId,
+  );
+  return rows.map((row) => row.chapter_id);
+}
+
 export async function markChapterStyleEvolved(id: string): Promise<void> {
   const database = await getDatabase();
   const result = await database.runAsync(

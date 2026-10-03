@@ -25,6 +25,7 @@ import {
   setActiveStyleProfile,
 } from "@/data/style-repositories";
 import { resolveModelSelection } from "@/llm/selection";
+import { listChapters } from "@/data/repositories";
 import type { RootStackParamList } from "@/navigation/types";
 import {
   distillReferenceStyle,
@@ -80,6 +81,8 @@ export function StyleLibraryScreen() {
   const [editingSource, setEditingSource] = useState(false);
   const [editingAuthorGuide, setEditingAuthorGuide] = useState(false);
   const [authorGuide, setAuthorGuide] = useState("");
+  /** 章节 id → 章节名，用来把作者文风的来源章节显示成人能读的名字。 */
+  const [chapterTitles, setChapterTitles] = useState<Map<string, string>>(new Map());
 
   const authorProfiles = useMemo(
     () => profiles.filter((profile) => profile.kind === "author"),
@@ -89,6 +92,15 @@ export function StyleLibraryScreen() {
     () => profiles.filter((profile) => profile.kind === "reference"),
     [profiles],
   );
+  /**
+   * 作者文风的来源章节标题。没有来源（例如助手在对话里直接发起）不显示；
+   * 章节已被删除时明确写出来，避免看起来像"没记录"。
+   */
+  const sourceLabelFor = (profile: StyleProfile | null): string | null => {
+    if (!profile || profile.kind !== "author" || !profile.sourceChapterId || !projectId) return null;
+    const chapterTitle = chapterTitles.get(profile.sourceChapterId);
+    return chapterTitle ? "来自：" + chapterTitle : "来源章节已删除";
+  };
   const coverageStarted = Boolean(distillationCoverage && distillationCoverage.coveredUntil > 0);
   const coverageFinished = Boolean(distillationCoverage
     && distillationCoverage.coveredUntil >= distillationCoverage.totalUnits);
@@ -101,8 +113,10 @@ export function StyleLibraryScreen() {
       const nextSources = await listStyleSources();
       const nextProfiles = await listStyleProfiles(projectId ?? "");
       const nextActive = projectId ? await getActiveStyleProfile(projectId) : null;
+      const nextChapters = projectId ? await listChapters(projectId) : [];
       setSources(nextSources);
       setProfiles(nextProfiles);
+      setChapterTitles(new Map(nextChapters.map((chapter) => [chapter.id, chapter.title])));
       setActiveProfile(nextActive);
       if (nextActive?.kind === "author") setAuthorGuide(nextActive.guide);
       // 蒸馏跟随全局默认模型，界面上要说清楚是哪一个。
@@ -372,6 +386,7 @@ export function StyleLibraryScreen() {
                 onPress={() => openProfile(profile)}
                 onActivate={() => void activate(profile)}
                 disabled={busy || !projectId}
+                sourceLabel={sourceLabelFor(profile)}
                 inset
               />
             ))}
@@ -492,7 +507,9 @@ export function StyleLibraryScreen() {
       <BottomSheet
         visible={Boolean(selectedProfile)}
         title={selectedProfile ? selectedProfile.name + " V" + selectedProfile.version : ""}
-        subtitle={selectedProfile?.kind === "author" ? "作者文风版本" : "参考小说文风版本"}
+        subtitle={selectedProfile?.kind === "author"
+          ? ["作者文风版本", sourceLabelFor(selectedProfile)].filter(Boolean).join(" · ")
+          : "参考小说文风版本"}
         onClose={() => setSelectedProfile(null)}
       >
             <PlainScrollView style={styles.sheetScroll} contentContainerStyle={styles.profileContent}>
@@ -535,6 +552,7 @@ function ProfileRow({
   onPress,
   onActivate,
   disabled,
+  sourceLabel = null,
   inset = false,
 }: {
   profile: StyleProfile;
@@ -542,6 +560,8 @@ function ProfileRow({
   onPress: () => void;
   onActivate: () => void;
   disabled: boolean;
+  /** 作者文风的来源章节文案（「来自：第一章 残魂」）；没有来源时为 null。 */
+  sourceLabel?: string | null;
   /** 列表页使用时补左右留白；弹层里的调用已有内边距，保持 false。 */
   inset?: boolean;
 }) {
@@ -552,6 +572,7 @@ function ProfileRow({
         <View style={styles.profileCopy}>
           <Text style={styles.profileName} numberOfLines={1}>{profile.name} V{profile.version}</Text>
           <Text style={styles.profileMeta} numberOfLines={2}>{profile.guide.slice(0, 120).replace(/\s+/g, " ")}</Text>
+          {sourceLabel ? <Text style={styles.profileSource} numberOfLines={1}>{sourceLabel}</Text> : null}
         </View>
       </Pressable>
       <Pressable accessibilityLabel={active ? "当前使用的文风" : "使用这个文风"} onPress={onActivate} disabled={disabled || active} style={styles.useButton}>
@@ -597,6 +618,7 @@ const styles = StyleSheet.create({
   profileCopy: { flex: 1, minWidth: 0, gap: 3 },
   profileName: { color: colors.text, fontSize: 14, fontWeight: "700" },
   profileMeta: { color: colors.textMuted, fontSize: 12, lineHeight: 18 },
+  profileSource: { color: colors.textMuted, fontSize: 11 },
   useButton: { minWidth: 54, minHeight: 44, alignItems: "center", justifyContent: "center", marginRight: spacing.xs },
   useButtonText: { color: colors.primary, fontSize: 13, fontWeight: "700" },
   useButtonTextActive: { color: colors.textMuted },

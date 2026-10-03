@@ -460,6 +460,8 @@ export async function evolveAuthorStyle(input: {
   aiDraft: string;
   authorRevision: string;
   selection: ModelSelection;
+  /** 这一版是从哪一章蒸馏出来的；助手在对话里直接调用时没有章节上下文，留空。 */
+  sourceChapterId?: string | null;
 }): Promise<{ profile: StyleProfile; guide: string; source: "current-model" }> {
   const aiDraft = boundedText(input.aiDraft, "AI 原稿");
   const authorRevision = boundedText(input.authorRevision, "作者定稿");
@@ -473,6 +475,7 @@ export async function evolveAuthorStyle(input: {
     kind: "author",
     name: "我的作者文风",
     guide,
+    sourceChapterId: input.sourceChapterId ?? null,
     activateForProjectId: input.projectId,
   });
   return { profile, guide, source: "current-model" };

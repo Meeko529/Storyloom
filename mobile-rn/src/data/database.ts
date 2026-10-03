@@ -120,6 +120,8 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
       name TEXT NOT NULL,
       version INTEGER NOT NULL,
       guide TEXT NOT NULL,
+      /* 作者文风的来源章节：这一版是从哪一章的改稿蒸馏出来的；为空表示没有章节上下文。 */
+      source_chapter_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       UNIQUE(series_id, version)
@@ -342,6 +344,7 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
   await migrateProjectCover(database);
   await migrateCategories(database);
   await migrateWorldInfoKeywords(database);
+  await migrateStyleProfileSource(database);
 }
 
 /** 世界书条目触发关键词：JSON 字符串数组，SillyTavern 导入时保留原 key[]。 */
@@ -363,6 +366,17 @@ async function migrateWorldInfoKeywords(database: SQLite.SQLiteDatabase): Promis
   }
   if (!names.has("scan_depth")) {
     await database.execAsync("ALTER TABLE world_info_entries ADD COLUMN scan_depth INTEGER NOT NULL DEFAULT 4;");
+  }
+}
+
+/**
+ * 作者文风来源：老库补一列，记下这一版是从哪一章的改稿蒸馏出来的。
+ * 只补列、不迁移既有数据——历史版本没有来源，界面上按"未记录"呈现。
+ */
+async function migrateStyleProfileSource(database: SQLite.SQLiteDatabase): Promise<void> {
+  const columns = await database.getAllAsync<{ name: string }>("PRAGMA table_info(style_profiles)");
+  if (!columns.some((column) => column.name === "source_chapter_id")) {
+    await database.execAsync("ALTER TABLE style_profiles ADD COLUMN source_chapter_id TEXT;");
   }
 }
 

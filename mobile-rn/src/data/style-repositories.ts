@@ -35,6 +35,7 @@ type StyleProfileRow = {
   series_id: string;
   project_id: string | null;
   source_id: string | null;
+  source_chapter_id: string | null;
   kind: StyleProfileKind;
   name: string;
   version: number;
@@ -61,6 +62,7 @@ const mapStyleProfile = (row: StyleProfileRow): StyleProfile => ({
   seriesId: row.series_id,
   projectId: row.project_id,
   sourceId: row.source_id,
+  sourceChapterId: row.source_chapter_id,
   kind: row.kind,
   name: row.name,
   version: row.version,
@@ -208,6 +210,7 @@ export async function getLatestAuthorStyleProfile(projectId: string): Promise<St
 export async function createStyleProfileVersion(input: {
   projectId?: string | null;
   sourceId?: string | null;
+  sourceChapterId?: string | null;
   kind: StyleProfileKind;
   name: string;
   guide: string;
@@ -221,6 +224,7 @@ export async function createStyleProfileVersion(input: {
   }
   const projectId = input.projectId?.trim() || null;
   const sourceId = input.sourceId?.trim() || null;
+  const sourceChapterId = input.sourceChapterId?.trim() || null;
   if (input.kind === "author" && (!projectId || sourceId)) throw new Error("作者文风必须绑定作品且不能绑定参考书");
   if (input.kind === "reference" && (!sourceId || projectId)) throw new Error("参考文风必须绑定参考书且不能绑定作品");
   const seriesId = input.seriesId?.trim()
@@ -248,12 +252,13 @@ export async function createStyleProfileVersion(input: {
       const version = (latest?.version ?? 0) + 1;
       await transaction.runAsync(
         `INSERT INTO style_profiles(
-          id, series_id, project_id, source_id, kind, name, version, guide, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          id, series_id, project_id, source_id, source_chapter_id, kind, name, version, guide, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         id,
         seriesId,
         projectId,
         sourceId,
+        sourceChapterId,
         input.kind,
         name,
         version,
@@ -266,6 +271,7 @@ export async function createStyleProfileVersion(input: {
         seriesId,
         projectId,
         sourceId,
+        sourceChapterId,
         kind: input.kind,
         name,
         version,

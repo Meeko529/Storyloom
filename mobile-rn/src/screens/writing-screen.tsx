@@ -43,6 +43,7 @@ import {
 } from "@/data/repositories";
 import {
   getPendingChapterStyleEvolution,
+  listEvolvedChapterIds,
   markChapterStyleEvolved,
   recordLatestAuthorRevision,
 } from "@/data/chapter-draft-repositories";
@@ -194,6 +195,8 @@ export function WritingScreen() {
   const [styleProfiles, setStyleProfiles] = useState<StyleProfile[]>([]);
   const [activeStyleProfile, setActiveStyleProfileState] = useState<StyleProfile | null>(null);
   const [pendingEvolution, setPendingEvolution] = useState<ChapterDraftSnapshot | null>(null);
+  /** 目录里标「已进化」的章节集合；纯标识，不参与点击。 */
+  const [evolvedChapterIds, setEvolvedChapterIds] = useState<Set<string>>(new Set());
   const [evolvingStyle, setEvolvingStyle] = useState(false);
   const [fontReadyTick, setFontReadyTick] = useState(0);
   const [historyVisible, setHistoryVisible] = useState(false);
@@ -320,6 +323,16 @@ export function WritingScreen() {
   useEffect(() => {
     setEditing(false);
   }, [activeChapter?.id]);
+
+  // 目录里的「已进化」标识：面板打开时按作品查一次；章列表变化（进化后会刷新）也重查。
+  useEffect(() => {
+    if (!chapterPickerVisible || !projectId) return;
+    let cancelled = false;
+    void listEvolvedChapterIds(projectId)
+      .then((ids) => { if (!cancelled) setEvolvedChapterIds(new Set(ids)); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [chapterPickerVisible, projectId, chapters]);
 
   const clearDraft = () => {
     setTitle("");
@@ -648,6 +661,7 @@ export function WritingScreen() {
         aiDraft: pendingEvolution.aiDraft,
         authorRevision: pendingEvolution.authorRevision ?? content,
         selection,
+        sourceChapterId: pendingEvolution.chapterId,
       });
       await markChapterStyleEvolved(pendingEvolution.id);
       setStyleProfiles((current) => [
@@ -851,6 +865,18 @@ export function WritingScreen() {
               <Text style={styles.previewTitle}>{title || "未命名章节"}</Text>
               <Text style={styles.previewMeta}>{characterCount + " 字" + (savedAt ? " · " + savedAt + " 已保存" : "")}</Text>
             </View>
+            {pendingEvolution ? (
+              <Pressable
+                accessibilityLabel="进化作者文风"
+                disabled={saving || evolvingStyle}
+                onPress={() => { void evolveFromRevision(); }}
+                style={styles.chapterIconAction}
+              >
+                {evolvingStyle
+                  ? <ActivityIndicator size="small" color={colors.primary} />
+                  : <Ionicons name="sparkles-outline" size={22} color={colors.primary} />}
+              </Pressable>
+            ) : null}
             <Pressable accessibilityLabel="编辑章节" onPress={() => setEditing(true)} style={styles.editButton}>
               <Ionicons name="create-outline" size={22} color={colors.primary} />
               <Text style={styles.editButtonText}>编辑</Text>
@@ -896,9 +922,6 @@ export function WritingScreen() {
                 <View style={styles.editorFooter}>
                   <Text style={styles.counter}>{dirty ? "正在保存修改..." : "预览模式"}</Text>
                   <View style={styles.previewActions}>
-                    {pendingEvolution ? (
-                      <Button label="进化作者文风" variant="secondary" onPress={() => { void evolveFromRevision(); }} disabled={saving || evolvingStyle} loading={evolvingStyle} />
-                    ) : null}
                     {dirty ? <Button label="保存" onPress={() => { void persistDraft(true); }} disabled={saving} loading={saving} /> : null}
                   </View>
                 </View>
@@ -995,15 +1018,14 @@ export function WritingScreen() {
                   onPress={() => { void selectChapter(item.id); }}
                   style={[styles.chapterRow, item.id === activeChapter?.id && styles.chapterRowActive]}
                 >
-                  <Ionicons
-                    name="document-text-outline"
-                    size={18}
-                    color={item.id === activeChapter?.id ? colors.primary : colors.textMuted}
-                  />
-                  <Text numberOfLines={1} style={[styles.chapterRowText, item.id === activeChapter?.id && styles.chapterRowTextActive]}>
+                  <Ionicons name="document-text-outline" size={18} color={colors.textMuted} />
+                  <Text numberOfLines={1} style={styles.chapterRowText}>
                     {item.title}
                   </Text>
-                  {item.id === activeChapter?.id ? <Ionicons name="checkmark" size={20} color={colors.primary} /> : null}
+                  {/* 已进化＝纯标识：只有该章最新那条记录进化过才亮，不可点。 */}
+                  {evolvedChapterIds.has(item.id) ? (
+                    <Ionicons name="sparkles-outline" size={19} color={colors.primary} />
+                  ) : null}
                   <Pressable
                     accessibilityLabel={"管理" + item.title}
                     onPress={(event) => {
@@ -1277,6 +1299,8 @@ const styles = StyleSheet.create({
   previewMeta: { color: colors.textMuted, fontSize: 12 },
   editButton: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.sm },
   editButtonText: { color: colors.primary, fontSize: 14, fontWeight: "700" },
+  // 章头的文风进化入口：与「编辑」同一行，只在有待进化素材时出现。
+  chapterIconAction: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   previewScroll: { flex: 1 },
   previewContent: { paddingVertical: spacing.md, paddingBottom: spacing.xl },
   previewText: { minHeight: 220, color: colors.text },
@@ -1313,7 +1337,6 @@ const styles = StyleSheet.create({
   },
   chapterRowActive: { backgroundColor: colors.surface },
   chapterRowText: { flex: 1, minWidth: 0, color: colors.text, fontSize: 15 },
-  chapterRowTextActive: { color: colors.primary, fontWeight: "700" },
   rowAction: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   actionSheet: {
     maxHeight: "80%",
