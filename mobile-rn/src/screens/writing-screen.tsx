@@ -6,7 +6,6 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   AppState,
   Modal,
   Pressable,
@@ -750,7 +749,10 @@ export function WritingScreen() {
       setActiveStyleProfileState(evolved.profile);
       setPendingEvolution(null);
       refreshData();
-      Alert.alert("作者文风已进化", "已保存为“" + evolved.profile.name + " V" + evolved.profile.version + "”，后续创作将使用这个版本。");
+      setConfirmRequest({
+        title: "作者文风已进化",
+        message: "已保存为“" + evolved.profile.name + " V" + evolved.profile.version + "”，后续创作将使用这个版本。",
+      });
     } catch (evolutionError) {
       setError(evolutionError instanceof Error ? evolutionError.message : String(evolutionError));
     } finally {

@@ -41,12 +41,13 @@ import { AgentQuestionSheet, AgentTraceView } from "@/components/agent-run-view"
 import { appendCrashLog } from "@/lib/crash-log";
 import { throttle } from "@/lib/debounce";
 import { MessageActionBar } from "@/components/message-action-bar";
-import { AdaptiveScroll, BottomSheet, Button, EmptyState, ErrorNotice, Field, Header, Screen, SheetBackdrop, TopSheet } from "@/components/ui";
+import { SessionDrawer } from "@/components/session-drawer";
+import { AdaptiveScroll, BottomSheet, Button, ConfirmDialog, EmptyState, ErrorNotice, Field, Header, Screen, SheetBackdrop, TopSheet } from "@/components/ui";
 import {
   addMessage,
   createChatSession,
   deleteChatSession,
-  getChatMessageCounts,
+  deleteProject,
   ensureScratchProject,
   listProjects,
   deleteMessagesFrom,
@@ -60,6 +61,7 @@ import {
   replaceUserMessageBranch,
   setSetting,
   updateChatSession,
+  updateProjectInfo,
 } from "@/data/repositories";
 import {
   getActiveStyleProfile,
@@ -98,6 +100,23 @@ type WriteCardRequest = {
   actionOnly?: boolean;
   details?: string;
   resolve: (ok: boolean) => void;
+};
+
+/**
+ * 居中确认卡的内容。
+ *
+ * 除工具调用授权（那一处是阻塞式的，仍是系统弹窗）外，助手页的确认与告知统一走这张卡，
+ * 尺寸与颜色与写作页那张一致。
+ */
+type ConfirmRequest = {
+  title: string;
+  message: string;
+  /** 不传即纯告知，只剩一颗「知道了」。 */
+  confirmLabel?: string;
+  onConfirm?: () => void;
+  danger?: boolean;
+  extraLabel?: string;
+  onExtra?: () => void;
 };
 
 /** 红绿行统计：after 有而 before 没有的行计新增，反之计删除。 */
@@ -190,13 +209,6 @@ function activeSessionSettingKey(projectId: string): string {
 
 function generatedSessionTitle(content: string): string {
   return content.replace(/\s+/g, " ").trim().slice(0, 24) || "新对话";
-}
-
-function formatSessionTime(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? ""
-    : date.toLocaleString([], { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
 async function resolveSelection(
@@ -299,17 +311,19 @@ export function AssistantScreen() {
   const [thinkingSeconds, setThinkingSeconds] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [sessionPickerVisible, setSessionPickerVisible] = useState(false);
-  // 历史对话里当前展开行内菜单的那一条；同一时刻只展开一条。
-  const [sessionMenuId, setSessionMenuId] = useState<string | null>(null);
-  const [headerMenuVisible, setHeaderMenuVisible] = useState(false);
-  const [messageCounts, setMessageCounts] = useState<Record<string, number>>({});
-  const [renaming, setRenaming] = useState<ChatSession | null>(null);
+  /** 作品与对话抽屉：全部作品与它们各自的对话都收在里面。 */
+  const [drawerVisible, setDrawerVisible] = useState(false);
+  const [drawerProjects, setDrawerProjects] = useState<Project[]>([]);
+  const [drawerSessions, setDrawerSessions] = useState<Record<string, ChatSession[]>>({});
+  /** 重命名目标：对话与作品共用同一个输入入口，标题与保存分支随 kind 走。 */
+  const [renaming, setRenaming] = useState<
+    { kind: "session"; session: ChatSession } | { kind: "project"; project: Project } | null
+  >(null);
+  /** 居中确认卡：新建与删除对话、删除作品、附件归处、完成与失败告知。 */
+  const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const [mascotEnabled, setMascotEnabled] = useState(true);
   const [mascotKind, setMascotKind] = useState<string>("cat");
   const [mascotOffset, setMascotOffset] = useState({ x: 0, y: 0 });
-  const [projectPickerVisible, setProjectPickerVisible] = useState(false);
-  const [projectsForPicker, setProjectsForPicker] = useState<Project[]>([]);
   const [renameTitle, setRenameTitle] = useState("");
   const [modelPickerVisible, setModelPickerVisible] = useState(false);
   const [stylePickerVisible, setStylePickerVisible] = useState(false);
@@ -605,52 +619,89 @@ export function AssistantScreen() {
       setRetryRequest(lastFailed ? retryRequestForMessage(lastFailed, nextMessages, session, nextSelection, activeAgentId) : null);
       setSelection(nextSelection);
       setError(selectionError);
-      setSessionMenuId(null);
-      setSessionPickerVisible(false);
+      setDrawerVisible(false);
     } catch (switchError) {
       setError(switchError instanceof Error ? switchError.message : String(switchError));
     }
   };
 
-  // 消息条数：面板打开或会话增删时刷新（目录里要显示每条对话聊了多少）。
+  // 抽屉打开时把全部作品与它们各自的对话读一遍。写操作后会 refreshData，
+  // revision 一变这里就重查，所以新建、改名、删除之后列表会跟上。
   useEffect(() => {
-    if (!effectiveProjectId || !sessionPickerVisible) return;
-    void getChatMessageCounts(effectiveProjectId).then(setMessageCounts).catch(() => setMessageCounts({}));
-  }, [effectiveProjectId, sessionPickerVisible, sessions.length]);
+    if (!drawerVisible) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await listProjects();
+        const sessionMap: Record<string, ChatSession[]> = {};
+        await Promise.all(list.map(async (item) => {
+          sessionMap[item.id] = await listChatSessions(item.id);
+        }));
+        if (cancelled) return;
+        setDrawerProjects(list);
+        setDrawerSessions(sessionMap);
+      } catch {
+        // 抽屉数据读失败不打断对话：沿用上一次读到的结果。
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [drawerVisible, revision]);
 
-  /** 新建对话前先确认：误触会立刻切走，且每次点都会新建。 */
-  const confirmNewSession = () => {
-    if (!effectiveProjectId || sending) return;
-    Alert.alert("新建对话？", "当前对话不会被删除，之后可在历史对话里找回。", [
-      { text: "取消", style: "cancel" },
-      { text: "新建", onPress: () => void newSession() },
-    ]);
+  /**
+   * 新建对话前先确认：误触会立刻切走，且每次点都会新建。
+   * 带 target 时是抽屉里某部作品行的 ＋，新对话归那部作品。
+   */
+  const confirmNewSession = (target?: Project) => {
+    if (sending) return;
+    if (!target && !effectiveProjectId) return;
+    setConfirmRequest({
+      title: "新建对话？",
+      message: "当前对话不会被删除，之后可在历史对话里找回。",
+      confirmLabel: "新建",
+      onConfirm: () => { void newSession(target); },
+    });
   };
 
-  /** 重命名对话：改完即时更新列表与当前会话标题。 */
+  /** 重命名对话或作品：改完即时更新抽屉列表与当前的会话 / 作品标题。 */
   const saveRename = async () => {
     if (!renaming || !renameTitle.trim()) return;
+    const nextTitle = renameTitle.trim();
     try {
-      const updated = await updateChatSession({ id: renaming.id, title: renameTitle.trim() });
-      setSessions((current) => current.map((session) => (session.id === updated.id ? updated : session)));
-      if (activeSession?.id === updated.id) setActiveSession(updated);
+      if (renaming.kind === "project") {
+        const target = renaming.project;
+        await updateProjectInfo(target.id, nextTitle, target.description);
+        setDrawerProjects((current) => current.map((item) => (item.id === target.id ? { ...item, title: nextTitle } : item)));
+        if (project?.id === target.id) setProject({ ...project, title: nextTitle });
+      } else {
+        const updated = await updateChatSession({ id: renaming.session.id, title: nextTitle });
+        setSessions((current) => current.map((session) => (session.id === updated.id ? updated : session)));
+        if (activeSession?.id === updated.id) setActiveSession(updated);
+      }
       setRenaming(null);
+      refreshData();
     } catch (renameError) {
       setError(renameError instanceof Error ? renameError.message : String(renameError));
     }
   };
 
-  const newSession = async () => {
-    if (!effectiveProjectId || sending) return;
+  /** 新对话归到 target 那部作品；不带 target 时归当前作品。 */
+  const newSession = async (target?: Project) => {
+    const targetProjectId = target?.id ?? effectiveProjectId;
+    if (!targetProjectId || sending) return;
     setError(null);
     try {
-      const session = await createChatSession(effectiveProjectId, selection?.model.id ?? defaultModelId);
-      await setSetting(activeSessionSettingKey(effectiveProjectId), session.id);
-      setSessions((current) => [session, ...current]);
-      setActiveSession(session);
-      setMessages([]);
-      setRetryRequest(null);
-      setSessionPickerVisible(false);
+      const session = await createChatSession(targetProjectId, selection?.model.id ?? defaultModelId);
+      await setSetting(activeSessionSettingKey(targetProjectId), session.id);
+      if (targetProjectId === effectiveProjectId) {
+        setSessions((current) => [session, ...current]);
+        setActiveSession(session);
+        setMessages([]);
+        setRetryRequest(null);
+      } else {
+        // 给别的作品新建：切过去，加载时会按上面的设置把这条新对话选为当前。
+        setCurrentProject(targetProjectId);
+      }
+      setDrawerVisible(false);
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : String(createError));
     }
@@ -687,18 +738,25 @@ export function AssistantScreen() {
   };
 
   const removeSession = async (session: ChatSession) => {
-    if (!projectId || sending) return;
+    if (sending) return;
+    const targetProjectId = effectiveProjectId;
+    if (!targetProjectId) return;
     try {
-      if (session.projectId !== effectiveProjectId || !sessions.some((item) => item.id === session.id)) {
-        throw new Error("对话不属于当前作品");
-      }
       await deleteChatSession(session.id);
+      // 抽屉里那一行同时消失，不必等下一次全量重读。
+      setDrawerSessions((current) => {
+        const list = current[session.projectId];
+        if (!list) return current;
+        return { ...current, [session.projectId]: list.filter((item) => item.id !== session.id) };
+      });
+      // 删的是别的作品的对话：它不在当前列表里，当前对话不受影响。
+      if (session.projectId !== targetProjectId) return;
       const remaining = sessions.filter((item) => item.id !== session.id);
       setSessions(remaining);
       if (activeSession?.id !== session.id) return;
-      const replacement = remaining[0] ?? await createChatSession(effectiveProjectId, selection?.model.id ?? defaultModelId);
+      const replacement = remaining[0] ?? await createChatSession(targetProjectId, selection?.model.id ?? defaultModelId);
       if (!remaining.length) setSessions([replacement]);
-      await setSetting(activeSessionSettingKey(effectiveProjectId), replacement.id);
+      await setSetting(activeSessionSettingKey(targetProjectId), replacement.id);
       const effectiveModelId = models.some((model) => model.id === replacement.modelId) ? replacement.modelId : defaultModelId;
       const nextMessages = await listMessages(replacement.id);
       setActiveSession(replacement);
@@ -717,10 +775,36 @@ export function AssistantScreen() {
   };
 
   const confirmDeleteSession = (session: ChatSession) => {
-    Alert.alert("删除对话", `确定删除“${session.title}”及其中的全部消息？`, [
-      { text: "取消", style: "cancel" },
-      { text: "删除", style: "destructive", onPress: () => void removeSession(session) },
-    ]);
+    setConfirmRequest({
+      title: "删除对话",
+      message: `确定删除“${session.title}”及其中的全部消息？`,
+      confirmLabel: "删除",
+      danger: true,
+      onConfirm: () => { void removeSession(session); },
+    });
+  };
+
+  const removeProject = async (target: Project) => {
+    if (sending) return;
+    setError(null);
+    try {
+      await deleteProject(target.id);
+      // 删掉的正是正打开的那部：回到"还没有选作品"的状态，助手下次使用时自建「未命名」。
+      if (target.id === effectiveProjectId) setCurrentProject(null);
+      refreshData();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : String(deleteError));
+    }
+  };
+
+  const confirmDeleteProject = (target: Project) => {
+    setConfirmRequest({
+      title: "删除作品",
+      message: "确定删除《" + target.title + "》？这部作品的章节、笔记与全部对话会一并删除。",
+      confirmLabel: "删除",
+      danger: true,
+      onConfirm: () => { setDrawerVisible(false); void removeProject(target); },
+    });
   };
 
   const beginEditMessage = (message: ChatMessage) => {
@@ -743,42 +827,43 @@ export function AssistantScreen() {
     try {
       picked = await pickTextAttachment();
     } catch (pickError) {
-      Alert.alert("无法读取文件", pickError instanceof Error ? pickError.message : String(pickError));
+      setConfirmRequest({
+        title: "无法读取文件",
+        message: pickError instanceof Error ? pickError.message : String(pickError),
+      });
       return;
     }
     if (!picked) return;
     const attachment = picked;
-    Alert.alert(
-      attachment.name,
-      `共 ${attachment.characters} 字${attachment.truncated ? "（内容较长，已截取前 10 万字）" : ""}\n\n「加入本次对话」：随下一条消息发给助手，不写入数据库。\n「存入资料」：写成本作品的笔记，之后助手可长期检索引用。`,
-      [
-        { text: "取消", style: "cancel" },
-        {
-          text: "存入资料",
-          onPress: () => {
-            void (async () => {
-              if (!project) return;
-              try {
-                const title = await saveAttachmentAsNote(project.id, attachment);
-                refreshData();
-                Alert.alert("已存入资料", `「${title}」已写成本作品的笔记，助手可在需要时检索到。`);
-              } catch (saveError) {
-                Alert.alert("存入失败", saveError instanceof Error ? saveError.message : String(saveError));
-              }
-            })();
-          },
-        },
-        {
-          text: "加入本次对话",
-          onPress: () => setAttachments((current) => (
-            current.some((item) => item.name === attachment.name) || current.length >= MAX_ATTACHMENTS_PER_MESSAGE
-              ? current
-              : [...current, attachment]
-          )),
-        },
-      ],
-      { cancelable: true },
-    );
+    setConfirmRequest({
+      title: attachment.name,
+      message: `共 ${attachment.characters} 字${attachment.truncated ? "（内容较长，已截取前 10 万字）" : ""}\n\n「加入本次对话」：随下一条消息发给助手，不写入数据库。\n「存入资料」：写成本作品的笔记，之后助手可长期检索引用。`,
+      confirmLabel: "存入资料",
+      extraLabel: "加入本次对话",
+      onConfirm: () => {
+        void (async () => {
+          if (!project) return;
+          try {
+            const title = await saveAttachmentAsNote(project.id, attachment);
+            refreshData();
+            setConfirmRequest({
+              title: "已存入资料",
+              message: `「${title}」已写成本作品的笔记，助手可在需要时检索到。`,
+            });
+          } catch (saveError) {
+            setConfirmRequest({
+              title: "存入失败",
+              message: saveError instanceof Error ? saveError.message : String(saveError),
+            });
+          }
+        })();
+      },
+      onExtra: () => setAttachments((current) => (
+        current.some((item) => item.name === attachment.name) || current.length >= MAX_ATTACHMENTS_PER_MESSAGE
+          ? current
+          : [...current, attachment]
+      )),
+    });
   };
 
   /** 撤销最近一次被接受的 AI 写入，把对象还原为改动前的内容。 */
@@ -789,12 +874,15 @@ export function AssistantScreen() {
         if (label) {
           setUndoTarget(null);
           refreshData();
-          Alert.alert("已撤销", `「${label}」已还原为改动前的内容。`);
+          setConfirmRequest({ title: "已撤销", message: `「${label}」已还原为改动前的内容。` });
         } else {
           setUndoTarget(null);
         }
       } catch (error) {
-        Alert.alert("撤销失败", error instanceof Error ? error.message : String(error));
+        setConfirmRequest({
+          title: "撤销失败",
+          message: error instanceof Error ? error.message : String(error),
+        });
       }
     })();
   };
@@ -1006,61 +1094,26 @@ export function AssistantScreen() {
     [contextWindow, historyLimit, messages],
   );
 
-  if (loading) return <Screen><Header title="创作助手" /><View style={styles.loading}><ActivityIndicator color={colors.primary} /></View></Screen>;
+  if (loading) return <Screen><Header title="助手" /><View style={styles.loading}><ActivityIndicator color={colors.primary} /></View></Screen>;
   return (
     <Screen>
       <Header
-        title="创作助手"
-        action={
-          <View style={styles.headerActions}>
-            <Pressable
-              accessibilityLabel="切换作品"
-              onPress={() => {
-                void listProjects().then((list) => { setProjectsForPicker(list); setProjectPickerVisible(true); }).catch(() => {});
-              }}
-              style={styles.iconButton}
-            >
-              <Ionicons name="swap-horizontal-outline" size={20} color={colors.primary} />
-            </Pressable>
-            <Pressable accessibilityLabel="更多操作" onPress={() => setHeaderMenuVisible((value) => !value)} style={styles.iconButton}>
-              <Ionicons name="ellipsis-horizontal" size={20} color={colors.primary} />
-            </Pressable>
-          </View>
-        }
+        leading={(
+          <Pressable accessibilityLabel="作品与对话" onPress={() => setDrawerVisible(true)} style={styles.iconButton}>
+            {/* 两条线，一长一短：与写作页左上角同一个入口画法，两页手势一致。 */}
+            <View style={styles.menuGlyph}>
+              <View style={[styles.menuGlyphBar, styles.menuGlyphBarLong]} />
+              <View style={[styles.menuGlyphBar, styles.menuGlyphBarShort]} />
+            </View>
+          </Pressable>
+        )}
+        title="助手"
+        action={(
+          <Pressable accessibilityLabel="上下文占用" onPress={() => setContextSheetVisible(true)} style={styles.iconButton}>
+            <Ionicons name="pie-chart-outline" size={20} color={colors.primary} />
+          </Pressable>
+        )}
       />
-      {headerMenuVisible ? (
-        <>
-          <Pressable accessibilityLabel="关闭更多操作" onPress={() => setHeaderMenuVisible(false)} style={styles.headerMenuBackdrop} />
-          <View style={styles.headerMenuCard}>
-            <Pressable
-              accessibilityLabel="新建对话"
-              disabled={sending}
-              onPress={() => { setHeaderMenuVisible(false); confirmNewSession(); }}
-              style={({ pressed }) => [styles.headerMenuRow, pressed && styles.headerMenuRowPressed]}
-            >
-              <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
-              <Text style={styles.headerMenuText}>新建对话</Text>
-            </Pressable>
-            <Pressable
-              accessibilityLabel="历史对话"
-              disabled={sending}
-              onPress={() => { setHeaderMenuVisible(false); setSessionPickerVisible(true); }}
-              style={({ pressed }) => [styles.headerMenuRow, pressed && styles.headerMenuRowPressed]}
-            >
-              <Ionicons name="chatbubbles-outline" size={20} color={colors.primary} />
-              <Text style={styles.headerMenuText}>历史对话</Text>
-            </Pressable>
-            <Pressable
-              accessibilityLabel="上下文占用"
-              onPress={() => { setHeaderMenuVisible(false); setContextSheetVisible(true); }}
-              style={({ pressed }) => [styles.headerMenuRow, pressed && styles.headerMenuRowPressed]}
-            >
-              <Ionicons name="pie-chart-outline" size={20} color={colors.primary} />
-              <Text style={styles.headerMenuText}>上下文占用</Text>
-            </Pressable>
-          </View>
-        </>
-      ) : null}
       <View style={styles.contextBar}>
         <View style={styles.projectContext}>
           <Ionicons name="book-outline" size={19} color={colors.primary} />
@@ -1483,47 +1536,17 @@ export function AssistantScreen() {
         </TopSheet>
       </Modal>
 
-      <BottomSheet
-        visible={projectPickerVisible}
-        title="切换作品"
-        onClose={() => setProjectPickerVisible(false)}
-      >
-          <FlatList
-            style={styles.panelList}
-            data={projectsForPicker}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.panelListBottom}
-            renderItem={({ item }) => (
-              <Pressable
-                onPress={() => {
-                  setProjectPickerVisible(false);
-                  if (item.id !== projectId) {
-                    setCurrentProject(item.id);
-                    void load(item.id);
-                  }
-                }}
-                style={[styles.sheetRow, item.id === (project?.id ?? projectId) && styles.sheetRowActive]}
-              >
-                <Ionicons name={item.id === (project?.id ?? projectId) ? "radio-button-on" : "radio-button-off"} size={20} color={item.id === (project?.id ?? projectId) ? colors.primary : colors.textMuted} />
-                <View style={styles.sheetRowText}>
-                  <Text style={styles.sheetRowTitle} numberOfLines={1}>{item.title}</Text>
-                  <Text style={styles.sheetRowMeta} numberOfLines={1}>{item.description || "暂无简介"}</Text>
-                </View>
-              </Pressable>
-            )}
-          />
-        </BottomSheet>
-
+      {/* 切换作品已由抽屉承担：顶栏不再单开一个选择器，抽屉里直接点作品行就是切换。 */}
       <Modal visible={renaming !== null} transparent animationType="slide" onRequestClose={() => setRenaming(null)}>
         <SheetBackdrop onPress={() => setRenaming(null)}>
           <View style={styles.sheet}>
             <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>重命名对话</Text>
+              <Text style={styles.sheetTitle}>{renaming?.kind === "project" ? "重命名作品" : "重命名对话"}</Text>
               <Pressable accessibilityLabel="关闭重命名" onPress={() => setRenaming(null)} style={styles.iconButton}>
                 <Ionicons name="close" size={24} color={colors.textMuted} />
               </Pressable>
             </View>
-            <Field label="对话标题" value={renameTitle} onChangeText={setRenameTitle} autoFocus />
+            <Field label={renaming?.kind === "project" ? "作品名" : "对话标题"} value={renameTitle} onChangeText={setRenameTitle} autoFocus />
             <View style={styles.renameActions}>
               <Button label="取消" variant="secondary" onPress={() => setRenaming(null)} />
               <Button label="保存" onPress={() => void saveRename()} disabled={!renameTitle.trim()} />
@@ -1532,79 +1555,7 @@ export function AssistantScreen() {
         </SheetBackdrop>
       </Modal>
 
-      <Modal visible={sessionPickerVisible} transparent animationType="fade" onRequestClose={() => setSessionPickerVisible(false)}>
-        <TopSheet
-          title="历史对话"
-          subtitle={`${sessions.length} 个对话`}
-          onClose={() => setSessionPickerVisible(false)}
-        >
-          <FlatList
-            data={sessions}
-            keyExtractor={(item) => item.id}
-            style={styles.panelList}
-            contentContainerStyle={styles.panelListBottom}
-            renderItem={({ item }) => {
-              const sessionModelId = item.modelId ?? defaultModelId;
-              const sessionModel = models.find((model) => model.id === sessionModelId);
-              const selected = item.id === activeSession?.id;
-              const menuOpen = sessionMenuId === item.id;
-              return (
-                <Pressable
-                  accessibilityLabel={`切换到对话 ${item.title}`}
-                  onPress={() => { if (menuOpen) return; void switchSession(item); }}
-                  style={[styles.sessionItem, selected && styles.sessionItemActive]}
-                >
-                  <View style={styles.sessionItemRow}>
-                    <View style={[styles.sessionItemIcon, selected && styles.sessionItemIconActive]}>
-                      <Ionicons name="chatbubble-ellipses-outline" size={18} color={selected ? "#FFFFFF" : colors.primary} />
-                    </View>
-                    <View style={styles.sessionItemCopy}>
-                      <View style={styles.sessionItemTitleLine}>
-                        <Text style={styles.sessionItemTitle} numberOfLines={1}>{item.title}</Text>
-                        {selected ? <Text style={styles.sessionItemBadge}>当前</Text> : null}
-                      </View>
-                      <Text style={styles.sessionItemMeta} numberOfLines={1}>
-                        {sessionModel?.name ?? "未选择模型"} · {messageCounts[item.id] ?? 0} 条消息 · {formatSessionTime(item.updatedAt)}
-                      </Text>
-                    </View>
-                    <Pressable
-                      accessibilityLabel={`对话 ${item.title} 的更多操作`}
-                      hitSlop={8}
-                      onPress={(event) => { event.stopPropagation(); setSessionMenuId(menuOpen ? null : item.id); }}
-                      style={styles.iconButton}
-                    >
-                      <Ionicons name="ellipsis-vertical" size={18} color={colors.textMuted} />
-                    </Pressable>
-                  </View>
-                  {/* 菜单在行下方展开，不做绝对定位：绝对定位贴着行尾时，最后一行会被面板
-                      下沿裁掉，菜单点不到。 */}
-                  {menuOpen ? (
-                    <View style={styles.sessionItemMenu}>
-                      <Pressable
-                        accessibilityLabel={`重命名对话 ${item.title}`}
-                        onPress={(event) => { event.stopPropagation(); setSessionMenuId(null); setRenaming(item); setRenameTitle(item.title); }}
-                        style={styles.sessionItemMenuRow}
-                      >
-                        <Ionicons name="pencil-outline" size={16} color={colors.text} />
-                        <Text style={styles.sessionItemMenuText}>重命名</Text>
-                      </Pressable>
-                      <Pressable
-                        accessibilityLabel={`删除对话 ${item.title}`}
-                        onPress={(event) => { event.stopPropagation(); setSessionMenuId(null); confirmDeleteSession(item); }}
-                        style={styles.sessionItemMenuRow}
-                      >
-                        <Ionicons name="trash-outline" size={16} color={colors.danger} />
-                        <Text style={[styles.sessionItemMenuText, { color: colors.danger }]}>删除</Text>
-                      </Pressable>
-                    </View>
-                  ) : null}
-                </Pressable>
-              );
-            }}
-          />
-        </TopSheet>
-      </Modal>
-
+      {/* 历史对话已由抽屉承担：抽屉按作品列出全部对话，顶栏不再单开一个面板。 */}
       <BottomSheet
         visible={modelPickerVisible}
         title="选择模型"
@@ -1674,6 +1625,55 @@ export function AssistantScreen() {
               }}
             />
         </BottomSheet>
+
+      <SessionDrawer
+        visible={drawerVisible}
+        projects={drawerProjects}
+        currentProjectId={effectiveProjectId ?? ""}
+        sessionsByProject={drawerSessions}
+        activeSessionId={activeSession?.id ?? null}
+        onClose={() => setDrawerVisible(false)}
+        onSelectProject={(target) => {
+          if (target.id === effectiveProjectId) return;
+          setCurrentProject(target.id);
+        }}
+        onSelectSession={(target, session) => {
+          setDrawerVisible(false);
+          if (target.id === effectiveProjectId) {
+            void switchSession(session);
+            return;
+          }
+          // 换到那部作品，并把它的当前对话指向这一条：加载时按这个设置选中。
+          setCurrentProject(target.id);
+          void setSetting(activeSessionSettingKey(target.id), session.id);
+        }}
+        onCreateSession={(target) => { confirmNewSession(target); }}
+        onRenameProject={(target) => { setRenaming({ kind: "project", project: target }); setRenameTitle(target.title); }}
+        onDeleteProject={confirmDeleteProject}
+        onRenameSession={(_target, session) => { setRenaming({ kind: "session", session }); setRenameTitle(session.title); }}
+        onDeleteSession={(_target, session) => { confirmDeleteSession(session); }}
+      />
+
+      {/* 先把卡收掉再执行动作：动作里可能再弹一张（例如存入资料的结果）。 */}
+      <ConfirmDialog
+        visible={Boolean(confirmRequest)}
+        title={confirmRequest?.title ?? ""}
+        message={confirmRequest?.message ?? ""}
+        confirmLabel={confirmRequest?.confirmLabel}
+        danger={confirmRequest?.danger}
+        extraLabel={confirmRequest?.extraLabel}
+        onClose={() => setConfirmRequest(null)}
+        onConfirm={() => {
+          const request = confirmRequest;
+          setConfirmRequest(null);
+          request?.onConfirm?.();
+        }}
+        onExtra={() => {
+          const request = confirmRequest;
+          setConfirmRequest(null);
+          request?.onExtra?.();
+        }}
+      />
     </Screen>
   );
 }
@@ -1681,8 +1681,12 @@ export function AssistantScreen() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   loading: { flex: 1, alignItems: "center", justifyContent: "center" },
-  headerActions: { flexDirection: "row", alignItems: "center" },
   iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  // 顶栏入口：两条线，上长下短，与写作页左上角同一套画法。
+  menuGlyph: { width: 20, gap: 5 },
+  menuGlyphBar: { height: 2, borderRadius: 2, backgroundColor: colors.primary },
+  menuGlyphBarLong: { width: 20 },
+  menuGlyphBarShort: { width: 13 },
   contextBar: {
     minHeight: 50,
     flexDirection: "row",
@@ -1875,32 +1879,10 @@ const styles = StyleSheet.create({
   panelList: { flexShrink: 1 },
   // 列表容器：行自带左右内边距，这里只补底部留白，不重复缩进。
   panelListBottom: { paddingBottom: spacing.xl },
-  sessionItem: {
-    paddingVertical: 10,
-    paddingHorizontal: spacing.md,
-    marginBottom: 8,
-  },
-  sessionItemRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  sessionItemActive: { backgroundColor: colors.surfaceMuted },
-  sessionItemIcon: { width: 34, height: 34, borderRadius: radius.sm, alignItems: "center", justifyContent: "center", backgroundColor: "#E8F2EE" },
-  sessionItemIconActive: { backgroundColor: colors.primary },
-  sessionItemCopy: { flex: 1, minWidth: 0 },
-  sessionItemTitleLine: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  sessionItemTitle: { flexShrink: 1, color: colors.text, fontSize: 15, fontWeight: "600" },
-  sessionItemBadge: { overflow: "hidden", borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1, backgroundColor: "#E6F3EF", color: colors.primary, fontSize: 11, fontWeight: "700" },
-  sessionItemMeta: { marginTop: 3, color: colors.textMuted, fontSize: 12 },
-  sessionItemMenu: { marginTop: spacing.sm, paddingVertical: 2, borderRadius: radius.sm, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border },
-  sessionItemMenuRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 40, paddingHorizontal: spacing.md },
-  sessionItemMenuText: { color: colors.text, fontSize: 13 },
-    sheetRowActive: { backgroundColor: colors.surfaceMuted },
+  sheetRowActive: { backgroundColor: colors.surfaceMuted },
   sheetRowText: { flex: 1, minWidth: 0 },
   sheetRowTitle: { color: colors.text, fontSize: 15, fontWeight: "600" },
   sheetRowMeta: { marginTop: 3, color: colors.textMuted, fontSize: 12 },
-  headerMenuBackdrop: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9 },
-  headerMenuCard: { position: "absolute", top: 100, right: 18, width: 176, backgroundColor: colors.background, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingVertical: 4, zIndex: 10, elevation: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 10 },
-  headerMenuRow: { minHeight: 46, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md },
-  headerMenuRowPressed: { backgroundColor: colors.surfaceMuted },
-  headerMenuText: { color: colors.text, fontSize: 14, fontWeight: "600" },
   contextMeter: { height: 8, marginHorizontal: spacing.lg, borderRadius: 4, overflow: "hidden", backgroundColor: colors.surfaceMuted },
   contextMeterFill: { height: 8, borderRadius: 4 },
   contextPercent: { marginTop: spacing.sm, marginHorizontal: spacing.lg, color: colors.text, fontSize: 26, fontWeight: "700" },
