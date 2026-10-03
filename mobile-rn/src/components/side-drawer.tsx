@@ -79,7 +79,9 @@ export function SideDrawer({
       onMoveShouldSetPanResponder: (_event, gesture) =>
         Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
       onPanResponderMove: (_event, gesture) => {
-        if (gesture.dx < 0) translateX.setValue(Math.max(gesture.dx, -width));
+        // 夹在 [-width, 0]：往右拉时 dx 为正数，不夹取的话面板会被推出右边界、
+        // 抽屉左侧露出空白。左滑到最宽处也停住，不会拉出屏幕。
+        translateX.setValue(Math.min(0, Math.max(gesture.dx, -width)));
       },
       onPanResponderRelease: (_event, gesture) => {
         if (gesture.dx < -width * 0.3) {

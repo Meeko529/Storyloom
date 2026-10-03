@@ -42,7 +42,7 @@ import { appendCrashLog } from "@/lib/crash-log";
 import { throttle } from "@/lib/debounce";
 import { MessageActionBar } from "@/components/message-action-bar";
 import { SessionDrawer } from "@/components/session-drawer";
-import { AdaptiveScroll, BottomSheet, Button, ConfirmDialog, EmptyState, ErrorNotice, Field, Header, Screen, SheetBackdrop, TopSheet } from "@/components/ui";
+import { AdaptiveScroll, BottomSheet, Button, ConfirmDialog, EmptyState, ErrorNotice, Header, PromptDialog, Screen, TopSheet } from "@/components/ui";
 import {
   addMessage,
   createChatSession,
@@ -1536,26 +1536,19 @@ export function AssistantScreen() {
         </TopSheet>
       </Modal>
 
-      {/* 切换作品已由抽屉承担：顶栏不再单开一个选择器，抽屉里直接点作品行就是切换。 */}
-      <Modal visible={renaming !== null} transparent animationType="slide" onRequestClose={() => setRenaming(null)}>
-        <SheetBackdrop onPress={() => setRenaming(null)}>
-          <View style={styles.sheet}>
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>{renaming?.kind === "project" ? "重命名作品" : "重命名对话"}</Text>
-              <Pressable accessibilityLabel="关闭重命名" onPress={() => setRenaming(null)} style={styles.iconButton}>
-                <Ionicons name="close" size={24} color={colors.textMuted} />
-              </Pressable>
-            </View>
-            <Field label={renaming?.kind === "project" ? "作品名" : "对话标题"} value={renameTitle} onChangeText={setRenameTitle} autoFocus />
-            <View style={styles.renameActions}>
-              <Button label="取消" variant="secondary" onPress={() => setRenaming(null)} />
-              <Button label="保存" onPress={() => void saveRename()} disabled={!renameTitle.trim()} />
-            </View>
-          </View>
-        </SheetBackdrop>
-      </Modal>
+      {/* 重命名作品与重命名对话共用同一张居中输入卡，与写作页是同一个组件、同一套数值。 */}
+      <PromptDialog
+        visible={renaming !== null}
+        title={renaming?.kind === "project" ? "重命名作品" : "重命名对话"}
+        label={renaming?.kind === "project" ? "作品名" : "对话标题"}
+        value={renameTitle}
+        onChangeText={setRenameTitle}
+        onClose={() => setRenaming(null)}
+        onConfirm={() => { void saveRename(); }}
+        confirmLabel="保存"
+        confirmDisabled={!renameTitle.trim()}
+      />
 
-      {/* 历史对话已由抽屉承担：抽屉按作品列出全部对话，顶栏不再单开一个面板。 */}
       <BottomSheet
         visible={modelPickerVisible}
         title="选择模型"
@@ -1626,6 +1619,7 @@ export function AssistantScreen() {
             />
         </BottomSheet>
 
+      {/* 切换作品与历史对话都由抽屉承担：顶栏不再单开选择器与面板，点作品行即切换。 */}
       <SessionDrawer
         visible={drawerVisible}
         projects={drawerProjects}
@@ -1648,9 +1642,18 @@ export function AssistantScreen() {
           void setSetting(activeSessionSettingKey(target.id), session.id);
         }}
         onCreateSession={(target) => { confirmNewSession(target); }}
-        onRenameProject={(target) => { setRenaming({ kind: "project", project: target }); setRenameTitle(target.title); }}
+        onRenameProject={(target) => {
+          // 与写作页一致：先把抽屉收掉再弹居中卡，避免两层浮层同时占屏。
+          setDrawerVisible(false);
+          setRenaming({ kind: "project", project: target });
+          setRenameTitle(target.title);
+        }}
         onDeleteProject={confirmDeleteProject}
-        onRenameSession={(_target, session) => { setRenaming({ kind: "session", session }); setRenameTitle(session.title); }}
+        onRenameSession={(_target, session) => {
+          setDrawerVisible(false);
+          setRenaming({ kind: "session", session });
+          setRenameTitle(session.title);
+        }}
         onDeleteSession={(_target, session) => { confirmDeleteSession(session); }}
       />
 
@@ -1845,22 +1848,6 @@ const styles = StyleSheet.create({
   composerInput: { flex: 1, maxHeight: 130, minHeight: 40, paddingHorizontal: spacing.sm, paddingVertical: 10, color: colors.text, fontSize: 16 },
   sendButton: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary },
   sendDisabled: { opacity: 0.48 },
-  sheet: {
-    maxHeight: "80%",
-    paddingBottom: spacing.xl,
-    borderTopLeftRadius: radius.sheet,
-    borderTopRightRadius: radius.sheet,
-    backgroundColor: colors.background,
-  },
-  sheetHeader: {
-    minHeight: 64,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingLeft: spacing.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  sheetTitle: { color: colors.text, fontSize: 18, fontWeight: "700" },
   sheetList: { paddingBottom: spacing.xl },
   sheetRow: {
     minHeight: 62,
@@ -1872,9 +1859,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  renameActions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm },
-  // 历史对话行：左侧圆角图标块 + 标题与摘要 + 最右一个 ⋯。
-  // 重命名与删除收进 ⋯ 的行内菜单，因此行内只留一颗按钮。
   // 弹层里的列表：高度上限由面板给，超出在这里滚。
   panelList: { flexShrink: 1 },
   // 列表容器：行自带左右内边距，这里只补底部留白，不重复缩进。

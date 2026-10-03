@@ -18,7 +18,7 @@ import {
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
-import { Button, ConfirmDialog, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, BottomSheet, TopSheet } from "@/components/ui";
+import { Button, ConfirmDialog, EmptyState, ErrorNotice, Header, PlainScrollView, PromptDialog, Screen, BottomSheet, TopSheet } from "@/components/ui";
 import { ChapterDrawer } from "@/components/chapter-drawer";
 import { ensureEditorFontLoaded } from "@/settings/font-loader";
 import { debounce } from "@/lib/debounce";
@@ -1174,26 +1174,18 @@ export function WritingScreen() {
               <Ionicons name="chevron-forward" size={19} color={colors.textMuted} />
             </Pressable>
         </BottomSheet>
-      <Modal visible={Boolean(nameDialog)} transparent animationType="fade" onRequestClose={() => setNameDialog(null)}>
-        <KeyboardAvoidingView style={styles.centeredBackdrop} behavior="height" automaticOffset>
-          <View style={styles.nameDialog}>
-            <Text style={styles.nameDialogTitle}>{nameDialogTitle}</Text>
-            <Field
-              label={nameDialogLabel}
-              value={nameValue}
-              onChangeText={setNameValue}
-              maxLength={200}
-              autoFocus
-              returnKeyType="done"
-              onSubmitEditing={() => { void submitNameDialog(); }}
-            />
-            <View style={styles.nameDialogActions}>
-              <Button label="取消" variant="secondary" onPress={() => setNameDialog(null)} />
-              <Button label="确定" onPress={() => { void submitNameDialog(); }} disabled={!nameValue.trim()} loading={nameSaving} />
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      {/* 新建与重命名共用同一张居中输入卡：写作页与助手页用的是同一个组件。 */}
+      <PromptDialog
+        visible={Boolean(nameDialog)}
+        title={nameDialogTitle}
+        label={nameDialogLabel}
+        value={nameValue}
+        onChangeText={setNameValue}
+        onClose={() => setNameDialog(null)}
+        onConfirm={() => { void submitNameDialog(); }}
+        confirmDisabled={!nameValue.trim()}
+        loading={nameSaving}
+      />
 
       {/* 先把卡收掉再执行动作：动作里可能开别的弹层，卡片留在上面会挡住新开的那一层。 */}
       <ConfirmDialog
@@ -1285,7 +1277,6 @@ const styles = StyleSheet.create({
   editorFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: spacing.md },
   previewActions: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end", gap: spacing.sm },
   counter: { flex: 1, color: colors.textMuted, fontSize: 12 },
-  centeredBackdrop: { flex: 1, justifyContent: "center", padding: spacing.lg, backgroundColor: colors.overlay },
   exportFormatRow: { flexDirection: "row", gap: spacing.xs, paddingHorizontal: spacing.sm, paddingBottom: spacing.xs },
   exportFormatChip: { flex: 1, minHeight: 38, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, backgroundColor: colors.surface },
   exportFormatChipActive: { borderColor: colors.primary, backgroundColor: "#E6F3EF" },
@@ -1297,7 +1288,4 @@ const styles = StyleSheet.create({
   exportOptionText: { flex: 1, minWidth: 0, gap: 2 },
   exportOptionTitle: { color: colors.text, fontSize: 16, fontWeight: "700" },
   exportOptionMeta: { color: colors.textMuted, fontSize: 12 },
-  nameDialog: { gap: spacing.lg, padding: spacing.xl, borderRadius: radius.md, backgroundColor: colors.background },
-  nameDialogTitle: { color: colors.text, fontSize: 20, fontWeight: "700" },
-  nameDialogActions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm },
 });

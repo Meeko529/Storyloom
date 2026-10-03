@@ -250,7 +250,8 @@ const styles = StyleSheet.create({
   iconButton: { width: 30, height: 30, alignItems: "center", justifyContent: "center", borderRadius: 8 },
   iconButtonPressed: { backgroundColor: colors.surfaceMuted },
   menu: { paddingLeft: spacing.xl, paddingBottom: spacing.sm },
-  sessionMenu: { paddingLeft: 46, paddingBottom: spacing.sm },
+  // 与所属对话行左对齐（行内左内边距 26），菜单不额外右移。
+  sessionMenu: { paddingLeft: 26, paddingBottom: spacing.sm },
   action: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 34, paddingHorizontal: 2 },
   actionPressed: { opacity: 0.6 },
   actionText: { color: colors.text, fontSize: 13 },

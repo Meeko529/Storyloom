@@ -17,7 +17,7 @@ import {
   type TextInputProps,
   type ViewStyle,
 } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { KeyboardAwareScrollView, KeyboardAvoidingView as KeyboardAvoider } from "react-native-keyboard-controller";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors, radius, spacing } from "@/theme";
@@ -182,6 +182,66 @@ export function ConfirmDialog({
           )}
         </View>
       </View>
+    </Modal>
+  );
+}
+
+/**
+ * 居中的输入卡。
+ *
+ * 与 `ConfirmDialog` 同一套外框（同一层遮罩浓度、同一张卡、同一个圆角与底色），
+ * 只多一个输入框：新建与重命名这类「打几个字就够」的动作两页共用它，换页不换观感。
+ *
+ * 卡内间距用 `spacing.lg`（比纯文本的确认卡宽一档）：标题、输入组、按钮行三块
+ * 之间要留得开，否则输入框会贴着标题或按钮。
+ *
+ * 键盘避让用 `react-native-keyboard-controller` 的实现（带 `automaticOffset`）：
+ * 居中卡在键盘弹起时整体上移，输入框不会被盖住。
+ */
+export function PromptDialog({
+  visible,
+  title,
+  label,
+  value,
+  onChangeText,
+  onClose,
+  onConfirm,
+  confirmLabel = "确定",
+  confirmDisabled = false,
+  loading = false,
+}: {
+  visible: boolean;
+  title: string;
+  label: string;
+  value: string;
+  onChangeText: (next: string) => void;
+  /** 取消、点遮罩、系统返回键都走这里。 */
+  onClose: () => void;
+  onConfirm: () => void;
+  confirmLabel?: string;
+  confirmDisabled?: boolean;
+  loading?: boolean;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <KeyboardAvoider style={styles.promptBackdrop} behavior="height" automaticOffset>
+        <View style={styles.promptCard}>
+          <Text style={styles.promptTitle}>{title}</Text>
+          <Field
+            label={label}
+            value={value}
+            onChangeText={onChangeText}
+            maxLength={200}
+            autoFocus
+            returnKeyType="done"
+            onSubmitEditing={onConfirm}
+          />
+          <View style={styles.promptActions}>
+            <Button label="取消" variant="secondary" onPress={onClose} />
+            <Button label={confirmLabel} onPress={onConfirm} disabled={confirmDisabled} loading={loading} />
+          </View>
+        </View>
+      </KeyboardAvoider>
     </Modal>
   );
 }
@@ -460,6 +520,11 @@ const styles = StyleSheet.create({
   dialogMessage: { color: colors.textMuted, fontSize: 14, lineHeight: 21 },
   dialogActions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, marginTop: spacing.xs },
   dialogActionsStacked: { flexDirection: "column", alignItems: "stretch" },
+  // 输入卡：外框与确认卡同一套，只有卡内间距宽一档（留给输入框）。
+  promptBackdrop: { flex: 1, justifyContent: "center", padding: spacing.lg, backgroundColor: colors.overlay },
+  promptCard: { gap: spacing.lg, padding: spacing.xl, borderRadius: radius.md, backgroundColor: colors.background },
+  promptTitle: { color: colors.text, fontSize: 20, fontWeight: "700" },
+  promptActions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm },
   sheetBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay },
   topSheetBackdrop: { flex: 1, backgroundColor: colors.overlaySoft },
   topSheetAvoid: { flex: 1 },
