@@ -38,7 +38,14 @@ const SHELF_VIEW_ICONS: Record<ShelfViewMode, keyof typeof Ionicons.glyphMap> = 
 // 书脊视图的基准尺寸：宽度按字数缩放（spineThickness），高度同理（spineHeight）。
 const SPINE_BASE_WIDTH = 34;
 const SPINE_BASE_HEIGHT = 150;
-const SPINE_PLANK_BELOW = 5;
+
+/**
+ * 层板贴图里「板上棱高光线」距贴图底边的比例（该图 3322×383，最亮行在 y=246）。
+ *
+ * 书要坐在板上，落脚点就是这条线：书底抬到这个高度，板的前立面才完整露在书的下方；
+ * 抬不到位书就压在板前，看上去与板平行。
+ */
+const PLANK_TOP_RATIO = 0.36;
 
 const PLANK_IMAGE = require("../../assets/images/shelf-plank.png");
 
@@ -600,13 +607,13 @@ function coverColor(title: string): string {
           if (viewMode === "grid") {
             const row = item.kind === "row" ? item.row : [];
             // 书架 = 一行的背景层（照书架类应用的画法）：层板贴图铺在行底部、全宽贯通，
-            // 书格底对齐站在板上；与本书数无关——1 本书板也贯通。
+            // 书格底坐在板上棱线；与本书数无关——1 本书板也贯通。
             // 4 格 + 3 个间隙，两侧只留 6：原先两侧留 28 加 12，格子被压窄显得书小。
             const cellGap = 6;
             const cellWidth = Math.max(60, Math.floor((shelfInnerWidth - 12 - 3 * cellGap) / 4));
             const plankStrip = Math.round(shelfInnerWidth / (3322 / 383));
-            // 层板下沿只留一小截让书脚踩在线上；原先占 62%，架子显得厚。
-            const plankBelow = Math.round(plankStrip * 0.28);
+            // 书底坐在板的上棱线上，板的前立面完整留在书下；抬不到位书就压在板前。
+            const plankBelow = Math.round(plankStrip * PLANK_TOP_RATIO);
             const rowHeight = Math.round((cellWidth * 4) / 3) + plankBelow;
             return (
               <View
@@ -663,6 +670,8 @@ function coverColor(title: string): string {
           if (viewMode === "spine") {
             const row = item.kind === "row" ? item.row : [];
             const spinePlankHeight = Math.max(10, Math.round(shelfInnerWidth / (3322 / 383)));
+            // 书脊与网格同一套落脚点：书底落在板的上棱线上，板的前立面留在书下。
+            const spinePlankTop = Math.round(spinePlankHeight * PLANK_TOP_RATIO);
             return (
               <View
                 style={styles.spineShelfRow}
@@ -671,7 +680,7 @@ function coverColor(title: string): string {
                   if (Math.abs(width - shelfInnerWidth) > 1) setShelfInnerWidth(width);
                 }}
               >
-                <View style={{ height: SPINE_BASE_HEIGHT + SPINE_PLANK_BELOW, justifyContent: "flex-end" }}>
+                <View style={{ height: SPINE_BASE_HEIGHT + spinePlankTop, justifyContent: "flex-end", paddingBottom: spinePlankTop }}>
                   <ImageBackground
                     source={PLANK_IMAGE}
                     resizeMode="stretch"
