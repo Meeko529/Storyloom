@@ -123,6 +123,70 @@ export function ErrorNotice({ message, onRetry }: { message: string; onRetry?: (
 }
 
 /**
+ * 居中的确认卡。
+ *
+ * 破坏性动作（删除卷、删除章节、删除作品、恢复历史版本）与必须让人看见的告知都用它，
+ * 尺寸与颜色与写作页的命名输入卡完全一致：同一层遮罩浓度、同一张卡，换页不换观感。
+ *
+ * 三颗按钮时改为竖排：横排在窄屏上会挤成两行、且删除键紧挨取消键。竖排把确认放在
+ * 最上、取消放在最下，误触代价最低的位置留给取消。
+ */
+export function ConfirmDialog({
+  visible,
+  title,
+  message,
+  onClose,
+  confirmLabel,
+  onConfirm,
+  danger = false,
+  extraLabel,
+  onExtra,
+}: {
+  visible: boolean;
+  title: string;
+  message: string;
+  /** 取消、点遮罩、系统返回键都走这里。 */
+  onClose: () => void;
+  /** 不传即纯告知，只剩一颗「知道了」。 */
+  confirmLabel?: string;
+  onConfirm?: () => void;
+  /** 主按钮为删除一类的破坏性动作时置为 true。 */
+  danger?: boolean;
+  /** 可选的第二个中性动作，例如删章节时的「保留笔记」。 */
+  extraLabel?: string;
+  onExtra?: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.dialogBackdrop}>
+        {/* 遮罩是兄弟节点、排在前：点卡外即取消，点卡内不会命中它。 */}
+        <Pressable accessibilityLabel="关闭对话框" style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View style={styles.dialogCard}>
+          <Text style={styles.dialogTitle}>{title}</Text>
+          <Text style={styles.dialogMessage}>{message}</Text>
+          {!confirmLabel ? (
+            <View style={[styles.dialogActions, styles.dialogActionsStacked]}>
+              <Button label="知道了" onPress={onClose} />
+            </View>
+          ) : extraLabel ? (
+            <View style={[styles.dialogActions, styles.dialogActionsStacked]}>
+              <Button label={confirmLabel} variant={danger ? "danger" : "primary"} onPress={onConfirm ?? onClose} />
+              <Button label={extraLabel} variant="secondary" onPress={onExtra ?? onClose} />
+              <Button label="取消" variant="secondary" onPress={onClose} />
+            </View>
+          ) : (
+            <View style={styles.dialogActions}>
+              <Button label="取消" variant="secondary" onPress={onClose} />
+              <Button label={confirmLabel} variant={danger ? "danger" : "primary"} onPress={onConfirm ?? onClose} />
+            </View>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+/**
  * 底部弹层的遮罩。遮罩是铺满全屏的兄弟节点并排在内容之前，内容自然盖在它上面，
  * 因此点击内容不会命中遮罩，点击内容之外才会关闭。
  *
@@ -389,6 +453,13 @@ export function AdaptiveScroll({
 }
 
 const styles = StyleSheet.create({
+  // 居中卡与写作页的命名输入卡同一套数值：遮罩 0.48、卡片内边距 24、圆角 14、底色跟页面一致。
+  dialogBackdrop: { flex: 1, justifyContent: "center", padding: spacing.lg, backgroundColor: colors.overlay },
+  dialogCard: { gap: spacing.md, padding: spacing.xl, borderRadius: radius.md, backgroundColor: colors.background },
+  dialogTitle: { color: colors.text, fontSize: 20, fontWeight: "700" },
+  dialogMessage: { color: colors.textMuted, fontSize: 14, lineHeight: 21 },
+  dialogActions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, marginTop: spacing.xs },
+  dialogActionsStacked: { flexDirection: "column", alignItems: "stretch" },
   sheetBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay },
   topSheetBackdrop: { flex: 1, backgroundColor: colors.overlaySoft },
   topSheetAvoid: { flex: 1 },

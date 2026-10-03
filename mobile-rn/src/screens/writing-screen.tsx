@@ -19,7 +19,7 @@ import {
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
-import { Button, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, BottomSheet, TopSheet } from "@/components/ui";
+import { Button, ConfirmDialog, EmptyState, ErrorNotice, Field, Header, PlainScrollView, Screen, BottomSheet, TopSheet } from "@/components/ui";
 import { ChapterDrawer } from "@/components/chapter-drawer";
 import { ensureEditorFontLoaded } from "@/settings/font-loader";
 import { debounce } from "@/lib/debounce";
@@ -156,6 +156,23 @@ type NameDialog =
   | { kind: "rename-chapter"; chapter: Chapter }
   | { kind: "rename-project"; project: Project };
 
+/**
+ * 居中确认卡的内容。删除与恢复都先落到这里，等人点了按钮才动手。
+ *
+ * 与命名输入卡一样是「屏幕正中一张卡」，不是系统弹窗 —— 系统弹窗在一部分机型上
+ * 长得完全另一副样子，而这两件事都发生在同一个页面里，形态要一致。
+ */
+type ConfirmRequest = {
+  title: string;
+  message: string;
+  /** 不传即纯告知，只剩一颗「知道了」。 */
+  confirmLabel?: string;
+  onConfirm?: () => void;
+  danger?: boolean;
+  extraLabel?: string;
+  onExtra?: () => void;
+};
+
 export function WritingScreen() {
   const projectId = useAppStore((state) => state.currentProjectId);
   const setCurrentProject = useAppStore((state) => state.setCurrentProject);
@@ -192,6 +209,8 @@ export function WritingScreen() {
   const [nameDialog, setNameDialog] = useState<NameDialog | null>(null);
   const [nameValue, setNameValue] = useState("");
   const [nameSaving, setNameSaving] = useState(false);
+  /** 居中确认卡：删除作品 / 卷 / 章节、恢复历史版本、以及「至少保留一卷」这类告知。 */
+  const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const [exportPickerVisible, setExportPickerVisible] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportFormat, setExportFormat] = useState<NovelExportFormat>("markdown");
@@ -578,25 +597,30 @@ export function WritingScreen() {
     }
   };
 
+  // 抽屉先留着：卡是在抽屉上面弹出来的，点取消后仍留在抽屉里。
+  // 收起抽屉放在按下按钮之后。
   const confirmDeleteChapter = async (chapter: Chapter) => {
-    setDrawerVisible(false);
     const noteCount = await countNotesUnder({ chapterId: chapter.id }).catch(() => 0);
+    const tail = "正文和本地索引会一并删除。";
     if (!noteCount) {
-      Alert.alert("删除章节", "确定删除《" + chapter.title + "》？正文和本地索引会一并删除。", [
-        { text: "取消", style: "cancel" },
-        { text: "删除", style: "destructive", onPress: () => { void removeChapter(chapter, false); } },
-      ]);
+      setConfirmRequest({
+        title: "删除章节",
+        message: "确定删除《" + chapter.title + "》？" + tail,
+        confirmLabel: "删除",
+        danger: true,
+        onConfirm: () => { setDrawerVisible(false); void removeChapter(chapter, false); },
+      });
       return;
     }
-    Alert.alert(
-      "删除章节",
-      "《" + chapter.title + "》有 " + noteCount + " 条笔记。正文和本地索引会一并删除，笔记怎么处理？",
-      [
-        { text: "取消", style: "cancel" },
-        { text: "保留笔记", onPress: () => { void removeChapter(chapter, false); } },
-        { text: "一并删除", style: "destructive", onPress: () => { void removeChapter(chapter, true); } },
-      ],
-    );
+    setConfirmRequest({
+      title: "删除章节",
+      message: "《" + chapter.title + "》有 " + noteCount + " 条笔记。" + tail + "笔记怎么处理？",
+      confirmLabel: "一并删除",
+      danger: true,
+      extraLabel: "保留笔记",
+      onExtra: () => { setDrawerVisible(false); void removeChapter(chapter, false); },
+      onConfirm: () => { setDrawerVisible(false); void removeChapter(chapter, true); },
+    });
   };
 
   const removeVolume = async (volume: Volume, removeNotes: boolean) => {
@@ -626,9 +650,11 @@ export function WritingScreen() {
   };
 
   const confirmDeleteVolume = (volume: Volume) => {
-    setDrawerVisible(false);
     if (volumes.length <= 1) {
-      Alert.alert("无法删除", "每部作品至少需要保留一卷，可以改为重命名。");
+      setConfirmRequest({
+        title: "无法删除",
+        message: "每部作品至少需要保留一卷，可以改为重命名。",
+      });
       return;
     }
     const chapterCount = chapters.filter((chapter) => chapter.volumeId === volume.id).length;
@@ -637,21 +663,24 @@ export function WritingScreen() {
       : "该卷目前没有章节。";
     void countNotesUnder({ volumeId: volume.id }).catch(() => 0).then((noteCount) => {
       if (!noteCount) {
-        Alert.alert("删除卷", "确定删除《" + volume.title + "》？" + detail, [
-          { text: "取消", style: "cancel" },
-          { text: "删除", style: "destructive", onPress: () => { void removeVolume(volume, false); } },
-        ]);
+        setConfirmRequest({
+          title: "删除卷",
+          message: "确定删除《" + volume.title + "》？" + detail,
+          confirmLabel: "删除",
+          danger: true,
+          onConfirm: () => { setDrawerVisible(false); void removeVolume(volume, false); },
+        });
         return;
       }
-      Alert.alert(
-        "删除卷",
-        "《" + volume.title + "》及其章节共有 " + noteCount + " 条笔记。" + detail + "笔记怎么处理？",
-        [
-          { text: "取消", style: "cancel" },
-          { text: "保留笔记", onPress: () => { void removeVolume(volume, false); } },
-          { text: "一并删除", style: "destructive", onPress: () => { void removeVolume(volume, true); } },
-        ],
-      );
+      setConfirmRequest({
+        title: "删除卷",
+        message: "《" + volume.title + "》及其章节共有 " + noteCount + " 条笔记。" + detail + "笔记怎么处理？",
+        confirmLabel: "一并删除",
+        danger: true,
+        extraLabel: "保留笔记",
+        onExtra: () => { setDrawerVisible(false); void removeVolume(volume, false); },
+        onConfirm: () => { setDrawerVisible(false); void removeVolume(volume, true); },
+      });
     });
   };
 
@@ -673,15 +702,13 @@ export function WritingScreen() {
   };
 
   const confirmDeleteProject = (target: Project) => {
-    setDrawerVisible(false);
-    Alert.alert(
-      "删除作品",
-      "确定删除《" + target.title + "》？这部作品的卷、章节与本地索引会一并删除。",
-      [
-        { text: "取消", style: "cancel" },
-        { text: "删除", style: "destructive", onPress: () => { void removeProject(target); } },
-      ],
-    );
+    setConfirmRequest({
+      title: "删除作品",
+      message: "确定删除《" + target.title + "》？这部作品的卷、章节与本地索引会一并删除。",
+      confirmLabel: "删除",
+      danger: true,
+      onConfirm: () => { setDrawerVisible(false); void removeProject(target); },
+    });
   };
 
   const openNewChapter = () => {
@@ -770,47 +797,42 @@ export function WritingScreen() {
   };
 
   const restoreVersion = (version: ChapterVersion) => {
-    Alert.alert(
-      "恢复这一版",
-      `「${activeChapter?.title ?? "本章"}」的正文会替换为 ${formatVersionTime(version.createdAt)}（${version.characterCount} 字）那一版；当前正文会先留一版历史。`,
-      [
-        { text: "取消", style: "cancel" },
-        {
-          text: "恢复",
-          onPress: () => {
-            void (async () => {
-              setRestoringVersion(true);
-              setError(null);
-              try {
-                // 编辑器里还没落盘的字先保存，否则恢复会把这部分盖掉
-                await persistDraft(true);
-                const restored = await restoreChapterVersion(version.id);
-                setChapters((current) => current.map((chapter) => chapter.id === restored.id ? restored : chapter));
-                setTitle(restored.title);
-                setContent(restored.content);
-                setCharacterCount(countCharacters(restored.content));
-                setSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-                setDirty(false);
-                setEditing(true);
-                draftRef.current = {
-                  chapterId: restored.id,
-                  title: restored.title,
-                  content: restored.content,
-                  dirty: false,
-                  version: draftRef.current.version + 1,
-                };
-                setHistoryList(await listChapterVersions(restored.id));
-                setHistoryPreview(null);
-              } catch (restoreError) {
-                setError(restoreError instanceof Error ? restoreError.message : String(restoreError));
-              } finally {
-                setRestoringVersion(false);
-              }
-            })();
-          },
-        },
-      ],
-    );
+    setConfirmRequest({
+      title: "恢复这一版",
+      message: `「${activeChapter?.title ?? "本章"}」的正文会替换为 ${formatVersionTime(version.createdAt)}（${version.characterCount} 字）那一版；当前正文会先留一版历史。`,
+      confirmLabel: "恢复",
+      onConfirm: () => {
+        void (async () => {
+          setRestoringVersion(true);
+          setError(null);
+          try {
+            // 编辑器里还没落盘的字先保存，否则恢复会把这部分盖掉
+            await persistDraft(true);
+            const restored = await restoreChapterVersion(version.id);
+            setChapters((current) => current.map((chapter) => chapter.id === restored.id ? restored : chapter));
+            setTitle(restored.title);
+            setContent(restored.content);
+            setCharacterCount(countCharacters(restored.content));
+            setSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+            setDirty(false);
+            setEditing(true);
+            draftRef.current = {
+              chapterId: restored.id,
+              title: restored.title,
+              content: restored.content,
+              dirty: false,
+              version: draftRef.current.version + 1,
+            };
+            setHistoryList(await listChapterVersions(restored.id));
+            setHistoryPreview(null);
+          } catch (restoreError) {
+            setError(restoreError instanceof Error ? restoreError.message : String(restoreError));
+          } finally {
+            setRestoringVersion(false);
+          }
+        })();
+      },
+    });
   };
 
   const removeVersion = (version: ChapterVersion) => {
@@ -999,11 +1021,13 @@ export function WritingScreen() {
         onRenameProject={(target) => { void openNameDialog({ kind: "rename-project", project: target }, target.title); }}
         onExportProject={(target) => {
           // 导出面板导出的是"正打开的那部"，所以先切过去再开面板。
+          // 开之前把抽屉收掉：底部面板自带 Modal，两层叠在屏上会各占一半注意力。
           void (async () => {
             if (target.id !== projectId) {
               if (!await persistDraft(false)) return;
               setCurrentProject(target.id);
             }
+            setDrawerVisible(false);
             setExportPickerVisible(true);
           })();
         }}
@@ -1168,6 +1192,27 @@ export function WritingScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* 先把卡收掉再执行动作：动作里可能开别的弹层，卡片留在上面会挡住新开的那一层。 */}
+      <ConfirmDialog
+        visible={Boolean(confirmRequest)}
+        title={confirmRequest?.title ?? ""}
+        message={confirmRequest?.message ?? ""}
+        confirmLabel={confirmRequest?.confirmLabel}
+        danger={confirmRequest?.danger}
+        extraLabel={confirmRequest?.extraLabel}
+        onClose={() => setConfirmRequest(null)}
+        onConfirm={() => {
+          const request = confirmRequest;
+          setConfirmRequest(null);
+          request?.onConfirm?.();
+        }}
+        onExtra={() => {
+          const request = confirmRequest;
+          setConfirmRequest(null);
+          request?.onExtra?.();
+        }}
+      />
     </Screen>
   );
 }

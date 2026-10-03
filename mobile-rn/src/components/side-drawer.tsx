@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
-import { Animated, Dimensions, Easing, PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, BackHandler, Dimensions, Easing, PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PlainScrollView } from "@/components/ui";
@@ -56,6 +56,22 @@ export function SideDrawer({
       }),
     ]).start();
   }, [visible, width, translateX, backdropOpacity]);
+
+  /**
+   * 返回键 / 返回手势：抽屉开着时，先收起抽屉，这一下不落到页面导航上。
+   *
+   * 抽屉是自绘的一层，不是 Modal —— Modal 自带 onRequestClose，返回键会先关它；
+   * 抽屉没这个待遇，写作页又在导航栈根部，不拦的话按返回直接退出应用。
+   * 拦在外壳里：助手页接上同一套外壳就自动获得同一个行为。
+   */
+  useEffect(() => {
+    if (!visible) return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      closeRef.current();
+      return true; // 已处理，阻止默认的返回
+    });
+    return () => subscription.remove();
+  }, [visible]);
 
   /** 左滑关闭：位移超过抽屉宽度三成即收起，否则弹回；纵向滑动交给内容滚动。 */
   const pan = useRef(
