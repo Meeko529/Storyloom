@@ -1,12 +1,15 @@
 /**
  * 免费模型专区。
  *
- * 参照 DeepWrite 的「免费模型」入口：把常用平台**当前可免费使用的模型**做成一份清单，
- * 点一下就把供应商地址、模型 ID 全部填好，用户只剩"领一个 Key 粘进来"这一步。
+ * 把常用平台**当前可免费使用的模型**做成一份清单：点一下就把供应商地址、模型 ID 全部填好，
+ * 用户只剩"领一个 Key 粘进来"这一步。
  *
- * 与 DeepWrite 的关键差异（写在文档里，也写在这里）：
- * DeepWrite 由**官方代持 API Key**，随远端清单下发到客户端；我们没有服务端、也不中转用户请求，
- * 因此不做代持——免费额度仍需用户到自己注册的账号下领取。这是"数据只在本机"定位的必然取舍。
+ * 为什么不代持 Key：那需要一台能下发清单、能替用户保管密钥的服务器。本应用没有服务端、
+ * 也不中转用户请求，免费额度因此仍需用户到自己注册的账号下领取 —— 这是"数据只在本机"
+ * 定位的必然取舍。
+ *
+ * 这份清单是**本地模板**：各家的免费政策随时会调整，模型下架也不会自己从这里消失。
+ * 上一次逐条核对：2026-10-03。改动清单时记得一并更新这个日期。
  */
 export interface FreeModel {
   id: string;
@@ -41,59 +44,48 @@ export const FREE_MODELS: FreeModel[] = [
     signupUrl: "https://open.bigmodel.cn/",
   },
   {
-    id: "siliconflow-qwen",
+    id: "siliconflow-xing",
     platform: "硅基流动",
-    modelLabel: "Qwen2.5-7B",
-    note: "该模型免费额度长期有效，注册即可获得。",
+    modelLabel: "Xing4.0-29B",
+    note: "该模型当前免费，注册并完成实名认证后即可调用（29B，256K 上下文，支持工具调用）。",
     type: "openai-compatible",
     providerName: "硅基流动",
     baseUrl: "https://api.siliconflow.cn/v1",
-    modelId: "Qwen/Qwen2.5-7B-Instruct",
+    modelId: "XingChenAGI/Xing4.0-29B",
     signupUrl: "https://cloud.siliconflow.cn/",
   },
   {
-    id: "openrouter-deepseek",
-    platform: "OpenRouter",
-    modelLabel: "DeepSeek V3.1",
-    note: "带 :free 后缀的模型均可免费调用，无需充值。",
+    id: "hunyuan-lite",
+    platform: "腾讯混元",
+    modelLabel: "Hunyuan-Lite",
+    note: "Lite 版长期免费，适合轻量任务；需完成腾讯云实名认证后在控制台生成 API Key。",
     type: "openai-compatible",
-    providerName: "OpenRouter",
-    baseUrl: "https://openrouter.ai/api/v1",
-    modelId: "deepseek/deepseek-chat-v3.1:free",
-    signupUrl: "https://openrouter.ai/",
+    providerName: "腾讯混元",
+    baseUrl: "https://api.hunyuan.cloud.tencent.com/v1",
+    modelId: "hunyuan-lite",
+    signupUrl: "https://cloud.tencent.com/product/hunyuan",
+  },
+  {
+    id: "qianfan-ernie-speed",
+    platform: "百度千帆",
+    modelLabel: "ERNIE-Speed-8K",
+    note: "Speed / Lite / Tiny 三个系列对已实名用户免费开放（QPS 50）；控制台需先对该型号点一次「免费开通」。",
+    type: "openai-compatible",
+    providerName: "百度千帆",
+    baseUrl: "https://qianfan.baidubce.com/v2",
+    modelId: "ernie-speed-8k",
+    signupUrl: "https://console.bce.baidu.com/qianfan/",
   },
   {
     id: "dashscope-turbo",
     platform: "通义千问",
     modelLabel: "qwen-turbo",
-    note: "新用户赠送一定额度的免费 token，超出后按量计费。",
+    note: "新用户赠送一定额度的免费 token（有效期 180 天），超出后按量计费。",
     type: "openai-compatible",
     providerName: "阿里云百炼",
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     modelId: "qwen-turbo",
     signupUrl: "https://bailian.console.aliyun.com/",
-  },
-  {
-    id: "gemini-flash",
-    platform: "Google Gemini",
-    modelLabel: "Gemini 2.0 Flash",
-    note: "官方提供免费调用配额，需自行确保网络可达。",
-    type: "google-genai",
-    providerName: "Google Gemini",
-    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-    modelId: "gemini-2.0-flash",
-    signupUrl: "https://aistudio.google.com/apikey",
-  },
-  {
-    id: "agnes-flash",
-    platform: "Agnes AI",
-    modelLabel: "Agnes-2.0-Flash",
-    note: "2026 年 6 月起文本/图片/视频全模态无限期免费，无 Token 上限（1M 上下文）；有每分钟请求限流，高峰期可能变慢。",
-    type: "openai-compatible",
-    providerName: "Agnes AI",
-    baseUrl: "https://apihub.agnes-ai.com/v1",
-    modelId: "agnes-2.0-flash",
-    signupUrl: "https://platform.agnes-ai.com",
   },
   {
     id: "modelscope-qwen",
@@ -118,15 +110,59 @@ export const FREE_MODELS: FreeModel[] = [
     signupUrl: "https://xinghuo.xfyun.cn/sparkapi",
   },
   {
-    id: "siliconflow-r1-distill",
-    platform: "硅基流动",
-    modelLabel: "DeepSeek-R1-Distill-Qwen-7B",
-    note: "推理型模型永久免费（1000 RPM / 50K TPM）；与现有 Qwen2.5-7B 条目共用同一账号 Key。",
+    id: "agnes-flash",
+    platform: "Agnes AI",
+    modelLabel: "Agnes-2.5-Flash",
+    note: "官方定价为 0（输入输出均免费），512K 上下文；有每分钟请求限流，高峰期可能变慢。",
     type: "openai-compatible",
-    providerName: "硅基流动",
-    baseUrl: "https://api.siliconflow.cn/v1",
-    modelId: "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
-    signupUrl: "https://cloud.siliconflow.cn/",
+    providerName: "Agnes AI",
+    baseUrl: "https://apihub.agnes-ai.com/v1",
+    modelId: "agnes-2.5-flash",
+    signupUrl: "https://platform.agnes-ai.com",
+  },
+  {
+    id: "openrouter-space-bunny",
+    platform: "OpenRouter",
+    modelLabel: "Space Bunny Alpha",
+    note: "定价为 0，100 万上下文，支持工具调用与推理；注册后在 OpenRouter 的 Keys 页生成 API Key，同一账号的 Key 可用于全部免费条目。",
+    type: "openai-compatible",
+    providerName: "OpenRouter",
+    baseUrl: "https://openrouter.ai/api/v1",
+    modelId: "stealth/space-bunny-alpha",
+    signupUrl: "https://openrouter.ai/",
+  },
+  {
+    id: "openrouter-qwen-3-8",
+    platform: "OpenRouter",
+    modelLabel: "Qwen3.8-27B",
+    note: "定价为 0，通义千问 3.8 系列的 27B 版本，约 26 万上下文，支持工具调用与推理；Key 在 OpenRouter 的 Keys 页生成，同一账号的 Key 可用于全部免费条目。",
+    type: "openai-compatible",
+    providerName: "OpenRouter",
+    baseUrl: "https://openrouter.ai/api/v1",
+    modelId: "qwen/qwen3.8-27b:free",
+    signupUrl: "https://openrouter.ai/",
+  },
+  {
+    id: "openrouter-ling-sante",
+    platform: "OpenRouter",
+    modelLabel: "Ling 3.0 Flash Sante",
+    note: "定价为 0，inclusionAI 的 Ling 3.0 系列快速档，约 26 万上下文，支持工具调用与推理；Key 在 OpenRouter 的 Keys 页生成，同一账号的 Key 可用于全部免费条目。",
+    type: "openai-compatible",
+    providerName: "OpenRouter",
+    baseUrl: "https://openrouter.ai/api/v1",
+    modelId: "inclusionai/ling-3.0-flash-sante:free",
+    signupUrl: "https://openrouter.ai/",
+  },
+  {
+    id: "openrouter-gemma-4",
+    platform: "OpenRouter",
+    modelLabel: "Gemma 4 31B",
+    note: "定价为 0，Google Gemma 4 系列的 31B 版本，约 26 万上下文，支持工具调用与推理；Key 在 OpenRouter 的 Keys 页生成，同一账号的 Key 可用于全部免费条目。",
+    type: "openai-compatible",
+    providerName: "OpenRouter",
+    baseUrl: "https://openrouter.ai/api/v1",
+    modelId: "google/gemma-4-31b-it:free",
+    signupUrl: "https://openrouter.ai/",
   },
   {
     id: "groq-gpt-oss",
