@@ -50,6 +50,15 @@ const SPINE_GAP = 4;
  */
 const PLANK_TOP_RATIO = 0.36;
 
+/**
+ * 书脚被板上沿压住的量（dp）。
+ *
+ * 书底仍落在板上棱线上，但板画在书之上、上沿再往下压住书脚这么多 —— 书的底边因此
+ * 看不见，像插在板的槽里。只把书抬到板上、板却画在书身后的话，书底与板上沿会重合
+ * 在同一条线上，看着就是一张卡贴在板前、与板平行。
+ */
+const PLANK_COVER = 3;
+
 const PLANK_IMAGE = require("../../assets/images/shelf-plank.png");
 
 export function ProjectsScreen() {
@@ -645,12 +654,7 @@ function coverColor(title: string): string {
                 }}
               >
                 <View style={{ height: rowHeight, justifyContent: "flex-end" }}>
-                <ImageBackground
-                  source={PLANK_IMAGE}
-                  resizeMode="stretch"
-                  style={{ position: "absolute", left: -60, right: -60, bottom: 0, height: plankStrip }}
-                />
-                <View style={[styles.shelfBooks, { paddingBottom: plankBelow, gap: cellGap }]}>
+                <View style={[styles.shelfBooks, { paddingBottom: Math.max(0, plankBelow - PLANK_COVER), gap: cellGap }]}>
                   {row.map((project) => {
                     const lines = bookTitleLines(project.title);
                     return (
@@ -670,6 +674,14 @@ function coverColor(title: string): string {
                       </Pressable>
                     );
                   })}
+                </View>
+                {/* 板画在书之后（盖在书上），只取贴图下段（上棱线 + 前立面）：板上沿压住书脚。 */}
+                <View style={{ position: "absolute", left: -60, right: -60, bottom: 0, height: plankBelow, overflow: "hidden" }}>
+                  <ImageBackground
+                    source={PLANK_IMAGE}
+                    resizeMode="stretch"
+                    style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: plankStrip }}
+                  />
                 </View>
                 </View>
                 <View style={[styles.shelfLabels, { gap: cellGap }]}>
@@ -703,13 +715,7 @@ function coverColor(title: string): string {
                   if (Math.abs(width - shelfInnerWidth) > 1) setShelfInnerWidth(width);
                 }}
               >
-                <View style={{ height: SPINE_BASE_HEIGHT + spinePlankTop, justifyContent: "flex-end", paddingBottom: spinePlankTop }}>
-                  <ImageBackground
-                    source={PLANK_IMAGE}
-                    resizeMode="stretch"
-                    // 层板按行宽折算，与网格同一套比例；写死 14 会在宽行上被拉扁。
-                    style={{ position: "absolute", left: -60, right: -60, bottom: 0, height: spinePlankHeight }}
-                  />
+                <View style={{ height: SPINE_BASE_HEIGHT + spinePlankTop, justifyContent: "flex-end", paddingBottom: Math.max(0, spinePlankTop - PLANK_COVER) }}>
                   <View style={styles.spineBooks}>
                     {row.map((project, index) => {
                       const characters = stats[project.id]?.characters ?? 0;
@@ -742,11 +748,8 @@ function coverColor(title: string): string {
                             pressed && styles.rowPressed,
                           ]}
                         >
-                          {/* 书脊的圆柱感：外缘压暗、偏内一道亮脊、再收到内缘一道暗，四层叠出弧面。 */}
-                          <View style={styles.spineEdgeDark} />
-                          <View style={styles.spineRidgeLight} />
-                          <View style={styles.spineBodyLight} />
-                          <View style={styles.spineInnerDark} />
+                          {/* 书脊右缘一道淡暗：光从左侧来。 */}
+                          <View style={styles.spineShade} />
                           <View style={styles.spineTitleWrap}>
                             {spineTitleChars(project.title).map((char, index) => (
                               <Text key={index} style={styles.spineTitle}>{char}</Text>
@@ -755,6 +758,15 @@ function coverColor(title: string): string {
                         </Pressable>
                       );
                     })}
+                  </View>
+                  {/* 与网格同一套：板盖在书上、只露下段，上沿压住书脚。层板按行宽折算，
+                      写死 14 会在宽行上被拉扁。 */}
+                  <View style={{ position: "absolute", left: -60, right: -60, bottom: 0, height: spinePlankTop, overflow: "hidden" }}>
+                    <ImageBackground
+                      source={PLANK_IMAGE}
+                      resizeMode="stretch"
+                      style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: spinePlankHeight }}
+                    />
                   </View>
                 </View>
                 <View style={styles.spineLabels}>
@@ -1017,12 +1029,9 @@ const styles = StyleSheet.create({
     // 绕书底旋转：歪出去的是书顶，书底始终踩在板上棱线上。
     transformOrigin: "bottom",
   },
-  // 圆柱感用四层半透明带叠出来（外暗 → 亮脊 → 收 → 内暗）：书脊只有十几到三十几 dp 宽，
-  // 四层已经接得上，不必为此引入渐变依赖。
-  spineEdgeDark: { position: "absolute", left: "0%", top: 0, bottom: 0, width: "14%", backgroundColor: "rgba(0,0,0,0.22)" },
-  spineRidgeLight: { position: "absolute", left: "14%", top: 0, bottom: 0, width: "26%", backgroundColor: "rgba(255,255,255,0.22)" },
-  spineBodyLight: { position: "absolute", left: "40%", top: 0, bottom: 0, width: "30%", backgroundColor: "rgba(255,255,255,0.06)" },
-  spineInnerDark: { position: "absolute", left: "70%", top: 0, bottom: 0, width: "30%", backgroundColor: "rgba(0,0,0,0.24)" },
+  // 只留右缘一道很淡的暗（宽 20%），表示光从左侧来。原先的四层叠加（黑 0.22 / 白 0.22 /
+  // 白 0.06 / 黑 0.24）里段与左段亮度差太大，看着是三条硬色带，没有弧面的过渡。
+  spineShade: { position: "absolute", right: 0, top: 0, bottom: 0, width: "20%", backgroundColor: "rgba(0,0,0,0.12)" },
   // 竖排书名：逐字一行，读起来就是书脊上竖着印的字。
   spineTitleWrap: { width: "100%", alignItems: "center", overflow: "hidden" },
   spineTitle: { color: "rgba(255,255,255,0.96)", fontSize: 11, fontWeight: "700", lineHeight: 13, height: 13, textAlign: "center" },

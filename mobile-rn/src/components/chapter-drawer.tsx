@@ -29,7 +29,7 @@ function DrawerAction({
     >
       <Ionicons
         name={icon}
-        size={16}
+        size={17}
         color={disabled ? colors.textMuted : danger ? colors.danger : colors.primary}
       />
       <Text
@@ -47,7 +47,7 @@ function DrawerAction({
 
 /** 展开箭头：实心小三角，展开时朝下。 */
 function Caret({ open, color }: { open: boolean; color: string }) {
-  return <Ionicons name={open ? "caret-down" : "caret-forward"} size={13} color={color} />;
+  return <Ionicons name={open ? "caret-down" : "caret-forward"} size={14} color={color} />;
 }
 
 function RowButton({
@@ -67,7 +67,7 @@ function RowButton({
       onPress={onPress}
       style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
     >
-      <Ionicons name={icon} size={17} color={color} />
+      <Ionicons name={icon} size={18} color={color} />
     </Pressable>
   );
 }
@@ -240,7 +240,7 @@ export function ChapterDrawer({
                                 </Text>
                                 {/* 已进化＝纯标识：该章当前这稿进化过才亮，不参与点击。 */}
                                 {evolvedChapterIds.has(chapter.id) ? (
-                                  <Ionicons name="sparkles-outline" size={15} color={colors.primary} />
+                                  <Ionicons name="sparkles-outline" size={16} color={colors.primary} />
                                 ) : null}
                                 <RowButton
                                   icon="ellipsis-horizontal"
@@ -299,9 +299,9 @@ const styles = StyleSheet.create({
   projectRowActive: { backgroundColor: "#E6F3EF" },
   rowMain: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 44 },
   rowPressed: { backgroundColor: colors.surfaceMuted },
-  projectTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: 14, fontWeight: "600" },
+  projectTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: 16, fontWeight: "600" },
   projectTitleActive: { color: colors.primary },
-  count: { color: colors.textMuted, fontSize: 11 },
+  count: { color: colors.textMuted, fontSize: 12 },
   volumeRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -310,7 +310,7 @@ const styles = StyleSheet.create({
     paddingRight: 2,
     borderRadius: 8,
   },
-  volumeTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: 13, fontWeight: "600" },
+  volumeTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: 15, fontWeight: "600" },
   chapterRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -321,7 +321,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   // 当前章只把文字换成主色，不加底色。
-  chapterTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: 13 },
+  chapterTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: 15 },
   chapterTitleActive: { color: colors.primary },
   iconButton: { width: 30, height: 30, alignItems: "center", justifyContent: "center", borderRadius: 8 },
   iconButtonPressed: { backgroundColor: colors.surfaceMuted },
@@ -329,7 +329,7 @@ const styles = StyleSheet.create({
   chapterMenu: { paddingLeft: 40, paddingBottom: spacing.sm },
   action: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 34, paddingHorizontal: 2 },
   actionPressed: { opacity: 0.6 },
-  actionText: { color: colors.text, fontSize: 13 },
+  actionText: { color: colors.text, fontSize: 15 },
   actionTextDanger: { color: colors.danger },
   actionTextDisabled: { color: colors.textMuted },
   empty: { paddingHorizontal: spacing.sm, paddingVertical: spacing.sm, color: colors.textMuted, fontSize: 13, lineHeight: 20 },

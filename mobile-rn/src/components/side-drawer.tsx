@@ -35,11 +35,23 @@ export function SideDrawer({
   const width = useMemo(() => Math.round(Dimensions.get("window").width * DRAWER_WIDTH_RATIO), []);
   const translateX = useRef(new Animated.Value(-width)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  /** 是否已完成首次挂载：用来区分「正常打开」与「切作品导致的整页重挂」。 */
+  const mountedRef = useRef(false);
   // 手势回调是常驻闭包，用 ref 取最新的 onClose，避免拿到过期的那一个。
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
 
   useEffect(() => {
+    // 首帧即打开态＝切作品把整页连同抽屉一起重挂了：直接落到终值，不再播一遍出场，
+    // 否则数据一到就重放 260ms 滑入，看着就是"卡一下、侧边栏又弹出来一次"。
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      if (visible) {
+        translateX.setValue(0);
+        backdropOpacity.setValue(1);
+        return;
+      }
+    }
     Animated.parallel([
       Animated.timing(translateX, {
         toValue: visible ? 0 : -width,
@@ -155,7 +167,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   panelHeading: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "baseline", gap: spacing.sm },
-  panelTitle: { color: colors.text, fontSize: 17, fontWeight: "700" },
+  panelTitle: { color: colors.text, fontSize: 18, fontWeight: "700" },
   panelMeta: { color: colors.textMuted, fontSize: 12 },
   iconButton: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   panelBody: { paddingHorizontal: spacing.md, paddingBottom: spacing.xl },

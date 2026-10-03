@@ -926,7 +926,12 @@ export function WritingScreen() {
               <Pressable
                 accessibilityLabel="进化作者文风"
                 disabled={saving || evolvingStyle}
-                onPress={() => { void evolveFromRevision(); }}
+                onPress={() => setConfirmRequest({
+                  title: "进化作者文风",
+                  message: "会拿这一章的 AI 原稿和你改后的版本比对，由当前选中的模型总结你的用词、句式与节奏，输出新一版《我的作者文风》，并设为这部作品当前生效。正文不会被改动。",
+                  confirmLabel: "开始进化",
+                  onConfirm: () => { void evolveFromRevision(); },
+                })}
                 style={styles.chapterIconAction}
               >
                 {evolvingStyle

@@ -34,7 +34,7 @@ function DrawerAction({
       onPress={onPress}
       style={({ pressed }) => [styles.action, pressed && styles.actionPressed]}
     >
-      <Ionicons name={icon} size={16} color={danger ? colors.danger : colors.primary} />
+      <Ionicons name={icon} size={17} color={danger ? colors.danger : colors.primary} />
       <Text style={[styles.actionText, danger && styles.actionTextDanger]}>{label}</Text>
     </Pressable>
   );
@@ -42,7 +42,7 @@ function DrawerAction({
 
 /** 展开箭头：实心小三角，展开时朝下。 */
 function Caret({ open, color }: { open: boolean; color: string }) {
-  return <Ionicons name={open ? "caret-down" : "caret-forward"} size={13} color={color} />;
+  return <Ionicons name={open ? "caret-down" : "caret-forward"} size={14} color={color} />;
 }
 
 function RowButton({
@@ -62,7 +62,7 @@ function RowButton({
       onPress={onPress}
       style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
     >
-      <Ionicons name={icon} size={17} color={color} />
+      <Ionicons name={icon} size={18} color={color} />
     </Pressable>
   );
 }
@@ -230,11 +230,11 @@ const styles = StyleSheet.create({
   projectRowActive: { backgroundColor: "#E6F3EF" },
   rowMain: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 44 },
   rowPressed: { backgroundColor: colors.surfaceMuted },
-  projectTitle: { flexShrink: 1, minWidth: 0, color: colors.text, fontSize: 14, fontWeight: "600" },
+  projectTitle: { flexShrink: 1, minWidth: 0, color: colors.text, fontSize: 16, fontWeight: "600" },
   projectTitleActive: { color: colors.primary },
   // 「临时」这个小标记是给系统自建作品用的，比正文小一号、颜色压到最淡。
   scratchTag: { color: colors.textMuted, fontSize: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, borderRadius: 5, paddingHorizontal: 4, paddingVertical: 1 },
-  count: { flex: 1, color: colors.textMuted, fontSize: 11, textAlign: "right", marginRight: spacing.xs },
+  count: { flex: 1, color: colors.textMuted, fontSize: 12, textAlign: "right", marginRight: spacing.xs },
   sessionRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -245,7 +245,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   // 当前对话只把文字换主色，不加底色。
-  sessionTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: 13 },
+  sessionTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: 15 },
   sessionTitleActive: { color: colors.primary },
   iconButton: { width: 30, height: 30, alignItems: "center", justifyContent: "center", borderRadius: 8 },
   iconButtonPressed: { backgroundColor: colors.surfaceMuted },
@@ -254,7 +254,7 @@ const styles = StyleSheet.create({
   sessionMenu: { paddingLeft: 26, paddingBottom: spacing.sm },
   action: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 34, paddingHorizontal: 2 },
   actionPressed: { opacity: 0.6 },
-  actionText: { color: colors.text, fontSize: 13 },
+  actionText: { color: colors.text, fontSize: 15 },
   actionTextDanger: { color: colors.danger },
   empty: { paddingHorizontal: spacing.sm, paddingVertical: spacing.sm, color: colors.textMuted, fontSize: 13, lineHeight: 20 },
 });

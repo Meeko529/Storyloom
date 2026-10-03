@@ -516,14 +516,15 @@ const styles = StyleSheet.create({
   // 居中卡与写作页的命名输入卡同一套数值：遮罩 0.48、卡片内边距 24、圆角 14、底色跟页面一致。
   dialogBackdrop: { flex: 1, justifyContent: "center", padding: spacing.lg, backgroundColor: colors.overlay },
   dialogCard: { gap: spacing.md, padding: spacing.xl, borderRadius: radius.md, backgroundColor: colors.background },
-  dialogTitle: { color: colors.text, fontSize: 20, fontWeight: "700" },
+  // 居中卡标题 18：比顶栏（22）小一档、比正文（14）大一档。确认卡与输入卡同值。
+  dialogTitle: { color: colors.text, fontSize: 18, fontWeight: "700" },
   dialogMessage: { color: colors.textMuted, fontSize: 14, lineHeight: 21 },
   dialogActions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm, marginTop: spacing.xs },
   dialogActionsStacked: { flexDirection: "column", alignItems: "stretch" },
   // 输入卡：外框与确认卡同一套，只有卡内间距宽一档（留给输入框）。
   promptBackdrop: { flex: 1, justifyContent: "center", padding: spacing.lg, backgroundColor: colors.overlay },
   promptCard: { gap: spacing.lg, padding: spacing.xl, borderRadius: radius.md, backgroundColor: colors.background },
-  promptTitle: { color: colors.text, fontSize: 20, fontWeight: "700" },
+  promptTitle: { color: colors.text, fontSize: 18, fontWeight: "700" },
   promptActions: { flexDirection: "row", justifyContent: "flex-end", gap: spacing.sm },
   sheetBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay },
   topSheetBackdrop: { flex: 1, backgroundColor: colors.overlaySoft },
