@@ -233,6 +233,10 @@ export function WritingScreen() {
   /** 供事件监听与卸载清理使用：那里的闭包不会随 render 更新（与 persistDraftRef 同理）。 */
   const flushAutoSaveRef = useRef<() => void>(() => {});
 
+  // 离开写作页（切到别的 tab）时收起抽屉：抽屉不盖底部 tab 栏，状态留着的话，
+  // 返回键会被一个看不见的抽屉吃掉一次。
+  useFocusEffect(useCallback(() => () => setDrawerVisible(false), []));
+
   // 每次回到写作页都重读一次编辑器设置：
   // 原先只在挂载时读（useEffect + 空依赖），导致在设置里改了字号／字体后切回来不生效。
   useFocusEffect(useCallback(() => {

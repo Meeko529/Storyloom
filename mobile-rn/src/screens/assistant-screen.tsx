@@ -544,6 +544,10 @@ export function AssistantScreen() {
     }),
   ).current;
 
+  // 离开助手页（切到别的 tab）时收起抽屉：抽屉不盖底部 tab 栏，状态留着的话，
+  // 返回键会被一个看不见的抽屉吃掉一次。
+  useFocusEffect(useCallback(() => () => setDrawerVisible(false), []));
+
   useFocusEffect(useCallback(() => {
     void (async () => {
       const prefs = await readChatPrefs();
@@ -1545,7 +1549,6 @@ export function AssistantScreen() {
         onChangeText={setRenameTitle}
         onClose={() => setRenaming(null)}
         onConfirm={() => { void saveRename(); }}
-        confirmLabel="保存"
         confirmDisabled={!renameTitle.trim()}
       />
 
