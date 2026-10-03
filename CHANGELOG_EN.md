@@ -8,6 +8,31 @@ Important changes to this project. Format based on [Keep a Changelog](https://ke
 
 ---
 
+## [0.1.37] — 2026-10-03
+
+### Added
+
+- **Free models grouped by platform**: one card per platform, with the platform name and how many free models it has in the header; when a platform has several, you switch between them with tags inside the card (OpenRouter's four collapse from four cards into one, taking 14 models to 11 cards). The list itself was checked entry by entry: **four dead entries removed** — OpenRouter's `deepseek-chat-v3.1:free` (the ID is no longer in the catalogue), Google Gemini 2.0 Flash (shut down 2026-06-01), SiliconFlow's Qwen2.5-7B-Instruct and DeepSeek-R1-Distill-Qwen-7B (no longer on their pricing page); Agnes's model ID changed to `agnes-2.5-flash`; seven added — SiliconFlow Xing4.0-29B, Tencent Hunyuan-Lite, Baidu Qianfan ERNIE-Speed-8K, and OpenRouter's Space Bunny Alpha / Qwen3.8-27B / Ling 3.0 Flash Sante / Gemma 4 31B. Each OpenRouter entry now carries its own note (context length, where to get the key) instead of sharing one
+- **Long free-model notes can be read in full**: the card gives the note its own block with no line cap; the header shows a two-line preview while collapsed, and the note is not duplicated when expanded
+- **Larger drawer type**: work rows 14 → 16, volume / chapter / conversation rows 13 → 15, inline actions 13 → 15, counts 11 → 12, drawer header 17 → 18; row heights unchanged, icons one step larger
+
+### Fixed
+
+- **Tapping the "+" menu stuttered**: the menu was an ordinary block in the document flow, so appearing it shortened the inverted message list and reflowed every row. The menu and the input now share a positioning container, and the menu is absolutely positioned with its bottom aligned to the input's top edge, no longer taking document-flow height
+- **The "+" menu greyed out the whole column**: the 5% black scrim was nearly invisible and only served to darken. Its color is gone, keeping only the tap-to-close; the menu's background also changed from pure white to the page's off-white
+- **The drawer replayed its entrance when switching works**: both pages hit a loading early-return on switching, remounting the whole page including the drawer, so the entrance animation played again. When the first frame is already open it now lands in place without the 260 ms slide; opening normally is unchanged
+- **Books looked pasted in front of the plank instead of sitting on it**: the plank was drawn behind the book, with its top edge meeting the book's bottom on a single line. The plank is now drawn after the book and covers it, its top edge overlapping the book's foot by about 3 dp so the book's bottom is hidden; grid and spine views use the same rule
+- **Four hard bands on the spine**: the earlier four-layer stack had too much brightness difference between the middle and left bands and read as three hard edges. Now a single faint shade along the right edge (20% wide, 12% black) says light comes from the left
+- **"Evolve author style" ran on a single tap**: it had no explanation and a stray tap would start a model run. It now asks first with a centered confirmation card (title, what it does, cancel / start), and runs only after you confirm
+
+### Trade-offs
+
+- **Deletions deserve more mention than additions in the notes**: providers retire models and this list is a local template that never refreshes itself. The entry-by-entry check date is recorded at the top of the list file
+- **Switching platforms clears the input**: so a key meant for one provider is never saved to another
+- **Centered-card titles unified at 18**: confirmation and input cards share one size — a step below the 22 header, a step above the 14 body
+
+---
+
 ## [0.1.36] — 2026-10-03
 
 ### Added

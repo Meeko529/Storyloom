@@ -31,8 +31,8 @@ Storyloom **stands on OpenFicM's shoulders rather than rewriting it**: the UI, l
 
 **Writing**
 - Local bookshelf and project management with volume / chapter structure and preview-first editing (accident-proof); the header "⋯ menu" holds **local import / shelf style (grid / list / spine) / category management / show categories on shelf / shelf sorting**
-- **Grid view looks like a real bookshelf**: books stand on a single plank (lit top face + darker front edge), titles and volume / chapter / word counts sit **below the plank**; covers get rounded corners and a light spine, books without a cover get a generated typographic cover (color derived from the title — not a flat color block)
-- **Spine view**: one plank per row with a row of spines standing on it. Thickness and height are mapped from the work's word count on a log scale (100k words is visibly thicker than 10k), and a hash of the title decides a slight lean so a row looks like a real shelf; titles are printed vertically down each spine, and the rounded look is made with a highlight and a shade layer
+- **Grid view looks like a real bookshelf**: books stand on a single plank with their bottoms resting on the plank's top edge, so the plank's thickness shows fully below the books; titles and volume / chapter / word counts sit **below the plank**; covers get small rounded corners and a light spine, books without a cover get a generated typographic cover (color derived from the title — not a flat color block)
+- **Spine view**: one plank per row with a row of spines standing on it. Thickness and height are mapped from the work's word count on a log scale (100k words is visibly thicker than 10k), a hash of the title decides the width of each spine and gives about one in five a slight lean while the rest stand straight, so a row looks like a real shelf; titles are printed vertically down each spine, and the rounded look is made with four tone bands running dark-bright-bright-dark
 - Autosave with background saving and keyboard avoidance
 - **Chapter title pinned at the top**: volume name / chapter name / word count and "Edit" sit directly under the header, so the text area starts with the prose; the "⋯ menu" holds **export project / chapter version history**
 - **Project drawer**: the two lines in the top-left open a "work → volume → chapter" tree where you can switch works, open a chapter, create volumes and chapters, rename, delete, export, and view chapter version history; it eases in, rounds its two right corners, and closes on a tap outside or a left swipe
@@ -57,7 +57,7 @@ Storyloom **stands on OpenFicM's shoulders rather than rewriting it**: the UI, l
 
 **Model integration** (the focus of this project)
 - Three protocols: OpenAI-compatible / Google Gemini / Anthropic
-- **Free-model section**: a dedicated page with twelve free models — get a key, paste, enable
+- **Free-model section**: a dedicated page with fourteen free models — get a key, paste, enable; when one platform offers several free models you switch between them inside the card (Zhipu / SiliconFlow / Tencent Hunyuan / Baidu Qianfan / Qwen / ModelScope / Spark / Agnes AI / OpenRouter / Groq / Cloudflare)
 - **Provider quick-fill**: Zhipu, DeepSeek, Qwen, SiliconFlow, Kimi, OpenRouter — tap to fill the endpoint
 - **Provider advanced settings**: custom headers, custom auth header name & prefix, disable tools, swap `max_tokens` for `max_completion_tokens` — for relays and self-hosted gateways
 - Separate font & size for writing and chat: body size 11–28, three font choices, live preview
@@ -159,9 +159,9 @@ Changed: a **fixed signing certificate** (configured in repo Secrets), so every 
 
 ### 11. Ongoing writing & assistant rework
 
-Upstream only offers "chat and copy things over yourself": the AI rewrites directly and mistakes mean digging through history by hand. This project adds three things — **write confirmation** (confirmation cards inline in the conversation, with before/after and red/green line stats, group accept/reject, single-level undo), **creation tools** (the AI can create projects / volumes / chapters, also confirmed first), and a **navigation trail** (page visits and opened books are logged and exported with diagnostics).
+Upstream only offers "chat and copy things over yourself": the AI rewrites directly and mistakes mean digging through history by hand. This project adds three things — **write confirmation** (confirmation cards inline in the conversation, with before/after and red/green line stats, group accept/reject, undo offered per changed object), **creation tools** (the AI can create projects / volumes / chapters, also confirmed first), and a **navigation trail** (page visits and opened books are logged and exported with diagnostics).
 
-Supporting work: the **free-model section** (twelve free models) and **content-pack export/import** on the model side; a **drawer-style conversation directory** (opened by the two lines at the top-left, work → conversation), **attachments**, **streamed reasoning and prose** in a collapsible block, **write confirmation and tool questions inline in the chat**, and the **context meter** as its own button on the assistant side; the **project drawer** (work → volume → chapter), **chapter version history** (revisions kept before each overwrite, restorable) and the chapter title pinned at the top on the writing side; **project covers & info**, **note & world-info export**, **SillyTavern world info & character card import**, generated covers and grid / list / spine views on the bookshelf side; **update checks** and cover / avatar **downsampling** on the maintenance side.
+Supporting work: the **free-model section** (fourteen free models, grouped by platform) and **content-pack export/import** on the model side; a **drawer-style conversation directory** (opened by the two lines at the top-left, work → conversation), **attachments**, **streamed reasoning and prose** in a collapsible block, **write confirmation and tool questions inline in the chat**, and the **context meter** as its own button on the assistant side; the **project drawer** (work → volume → chapter), **chapter version history** (revisions kept before each overwrite, restorable) and the chapter title pinned at the top on the writing side; **project covers & info**, **note & world-info export**, **SillyTavern world info & character card import**, generated covers and grid / list / spine views on the bookshelf side; **update checks** and cover / avatar **downsampling** on the maintenance side.
 
 See the [Features](#features) section for what these look like, and [docs/上游来源与改动清单.md](docs/上游来源与改动清单.md) for the file-by-file log.
 
@@ -184,7 +184,7 @@ Chinese Android ROMs warn about non-store APKs — **this is system behavior, no
 
 ### 3. Configure a model
 
-The app **ships with no models**; you bring an API key. The easiest path is **Settings → Connection & Models → Free models**: pick one of twelve free models, get a key, enable. Manual setup and the function-calling caveat are in the Chinese guide.
+The app **ships with no models**; you bring an API key. The easiest path is **Settings → Connection & Models → Free models**: pick one of fourteen free models, get a key, enable. Manual setup and the function-calling caveat are in the Chinese guide.
 
 **Nothing is downloaded on first launch**; optional models for semantic retrieval and style distillation are under "Settings → Advanced → Optional content".
 
