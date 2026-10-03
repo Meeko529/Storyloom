@@ -708,9 +708,11 @@ function coverColor(title: string): string {
                             pressed && styles.rowPressed,
                           ]}
                         >
-                          {/* 书脊的圆柱感：左侧一道浅高光、右侧一道暗面。 */}
-                          <View style={styles.spineHighlight} />
-                          <View style={styles.spineShade} />
+                          {/* 书脊的圆柱感：外缘压暗、偏内一道亮脊、再收到内缘一道暗，四层叠出弧面。 */}
+                          <View style={styles.spineEdgeDark} />
+                          <View style={styles.spineRidgeLight} />
+                          <View style={styles.spineBodyLight} />
+                          <View style={styles.spineInnerDark} />
                           <View style={styles.spineTitleWrap}>
                             {spineTitleChars(project.title).map((char, index) => (
                               <Text key={index} style={styles.spineTitle}>{char}</Text>
@@ -953,7 +955,7 @@ const styles = StyleSheet.create({
   separator: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginLeft: 88 },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.sm, paddingVertical: 8, marginBottom: 2 },
   rowPressed: { backgroundColor: colors.surfaceMuted },
-  cover: { width: 52, height: 70, borderRadius: 8, alignItems: "flex-end", justifyContent: "center", overflow: "hidden" },
+  cover: { width: 52, height: 70, borderRadius: 2, alignItems: "flex-end", justifyContent: "center", overflow: "hidden" },
   coverImage: { width: 52, height: 70 },
   coverText: { color: "rgba(255,255,255,0.85)", fontSize: 34, fontWeight: "800", lineHeight: 40, marginBottom: 2 },
   statsRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: 6 },
@@ -964,7 +966,7 @@ const styles = StyleSheet.create({
   shelfRow: { paddingHorizontal: 14, marginBottom: 2 },
   shelfBooks: { flexDirection: "row", alignItems: "flex-end", paddingHorizontal: 6 },
   shelfCell: { alignItems: "center" },
-  bookObject: { width: "100%", aspectRatio: 3 / 4, borderRadius: 6, overflow: "hidden", justifyContent: "center" },
+  bookObject: { width: "100%", aspectRatio: 3 / 4, borderRadius: 2, overflow: "hidden", justifyContent: "center" },
   bookSpine: { position: "absolute", left: 0, top: 0, bottom: 0, width: "9%", backgroundColor: "#EDE6D8", borderRightWidth: 1, borderRightColor: "rgba(0,0,0,0.10)" },
   bookCoverTextWrap: { alignSelf: "stretch", alignItems: "center", gap: 2, paddingHorizontal: 18 },
   bookCoverLine: { color: "rgba(255,255,255,0.95)", fontSize: 16, fontWeight: "800", letterSpacing: 1 },
@@ -975,12 +977,16 @@ const styles = StyleSheet.create({
   spineBooks: { flexDirection: "row", alignItems: "flex-end", gap: 1 },
   spineBook: {
     overflow: "hidden",
-    borderTopLeftRadius: 2,
-    borderTopRightRadius: 2,
+    borderTopLeftRadius: 1,
+    borderTopRightRadius: 1,
     justifyContent: "center",
   },
-  spineHighlight: { position: "absolute", left: 0, top: 0, bottom: 0, width: "26%", backgroundColor: "rgba(255,255,255,0.28)" },
-  spineShade: { position: "absolute", right: 0, top: 0, bottom: 0, width: "34%", backgroundColor: "rgba(0,0,0,0.20)" },
+  // 圆柱感用四层半透明带叠出来（外暗 → 亮脊 → 收 → 内暗）：书脊只有十几到三十几 dp 宽，
+  // 四层已经接得上，不必为此引入渐变依赖。
+  spineEdgeDark: { position: "absolute", left: "0%", top: 0, bottom: 0, width: "14%", backgroundColor: "rgba(0,0,0,0.22)" },
+  spineRidgeLight: { position: "absolute", left: "14%", top: 0, bottom: 0, width: "26%", backgroundColor: "rgba(255,255,255,0.22)" },
+  spineBodyLight: { position: "absolute", left: "40%", top: 0, bottom: 0, width: "30%", backgroundColor: "rgba(255,255,255,0.06)" },
+  spineInnerDark: { position: "absolute", left: "70%", top: 0, bottom: 0, width: "30%", backgroundColor: "rgba(0,0,0,0.24)" },
   // 竖排书名：逐字一行，读起来就是书脊上竖着印的字。
   spineTitleWrap: { width: "100%", alignItems: "center", overflow: "hidden" },
   spineTitle: { color: "rgba(255,255,255,0.96)", fontSize: 11, fontWeight: "700", lineHeight: 13, height: 13, textAlign: "center" },
