@@ -1413,10 +1413,11 @@ export function AssistantScreen() {
               </Pressable>
             </View>
           ) : null}
-          {composerMenu ? (
-            <View style={styles.composerMenu}>
-              {composerMenu === "root" ? (
-                <>
+          <View style={styles.composerArea}>
+            {composerMenu ? (
+              <View style={styles.composerMenu}>
+                {composerMenu === "root" ? (
+                  <>
                   <Pressable
                     accessibilityLabel="添加附件"
                     disabled={attachments.length >= MAX_ATTACHMENTS_PER_MESSAGE}
@@ -1493,6 +1494,7 @@ export function AssistantScreen() {
             >
               {sending ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Ionicons name="arrow-up" size={20} color="#FFFFFF" />}
             </Pressable>
+          </View>
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -1751,12 +1753,17 @@ const styles = StyleSheet.create({
   failureRetryDisabled: { opacity: 0.5 },
   failureRetryText: { color: colors.danger, fontSize: 12, fontWeight: "700" },
   composerWrap: { marginHorizontal: spacing.md, marginBottom: spacing.sm, gap: 6 },
-  composerMenuScrim: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(20,21,19,0.05)" },
+  /** 输入框与它的菜单同处这一个容器：菜单绝对定位到这个容器里，容器高度不变，列表就不会被顶矮。 */
+  composerArea: { position: "relative" },
+  /** 只承接点击关闭，不做遮罩：早先那层 5% 黑几乎看不见，只让整列消息发灰。 */
+  composerMenuScrim: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
   composerMenu: {
-    marginLeft: 6,
-    marginBottom: spacing.xs,
+    position: "absolute",
+    bottom: "100%",
+    left: 6,
+    marginBottom: 6,
     width: 236,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
