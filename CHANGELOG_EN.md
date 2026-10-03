@@ -8,6 +8,37 @@ Important changes to this project. Format based on [Keep a Changelog](https://ke
 
 ---
 
+## [0.1.36] — 2026-10-03
+
+### Added
+
+- **A side drawer on both the writing page and the assistant page**: the two lines in the top-left corner open a drawer — the writing page holds "work → volume → chapter", the assistant page holds "work → conversation". Everything that used to sit in the "⋯ menu" (table of contents, switch work, conversation history, new volume / new chapter, rename, delete) now lives in the layer it belongs to; the writing page's ⋯ keeps only export and version history, and the assistant header keeps only context usage. The drawer eases in, rounds its two right corners, uses a very light scrim, and closes on a left swipe or a tap outside; pressing back while it is open closes the drawer instead of navigating
+- **Write permission split into two tiers**: "Request approval" and "Approve for me", in the composer's "+" menu and in settings. It is the second of two gates in series with tool permissions: a disabled tool never reaches it; "Approve for me" skips waiting for your tap but still records the preview and the undo snapshot; deletions always wait, because a deleted object cannot be restored
+- **The author-style evolution entry moved to the chapter header**: when the current chapter has something to evolve, a star icon appears next to "Edit"; chapters already evolved show the same icon in the table of contents as a plain marker. It only looks at the **latest** record for that chapter — if the assistant rewrites the chapter, a new record is created and the icon goes out, so it never claims "done" wrongly
+- **Style versions record their source chapter**: an existing database gains one column (added, never migrated); the style library shows "from: Chapter 1", and the source stays empty when the assistant triggers evolution directly in a conversation
+- **Spine view enlarged, varied and slightly leaned**: base size 34×150 → 48×180; width multiplies the word-count factor by a title-hash jitter (stable per book); about one book in five leans slightly (1.5–2.5° right / 1–2° left) while the rest stand straight, and the gap on the side a leaning book leans into narrows automatically. The lean range was checked against a real shelf and the reference implementation — most books should stand straight, and "everything leans" reads as about to fall over
+- **Spine cylinder rebuilt from four layers**: the project ships no gradient dependency, so four translucent bands (dark edge → bright spine → easing → dark inner edge) produce the bright-middle / dark-sides transition without adding a native dependency
+- **Bottom tab press feedback switched to scale**: the default grey Android ripple is gone
+
+### Fixed
+
+- **Books now sit on the plank**: a book's foot used to align with the plank's bottom edge (and sank into the plank in grid view); both views now land on the plank's **top edge** (measured from the texture: the brightest row sits 35.6% up from the bottom), leaving the full plank thickness visible below
+- **Squared-off book corners**: grid and list covers 6 / 8 → 2, spine top corners → 1, with a little bluntness kept to avoid aliasing
+- **Broken expansion of the trace**: the height-capped scroller did not clamp on the first frame (long traces rendered at full height for one frame), the expansion gesture claimed the responder on touch-down (killing every tappable element inside), and every streamed delta re-rendered the whole screen — all three fixed (deltas now throttle at 150 ms)
+- **Panel directions re-distributed**: the previous release unified every "pick one / take a look" panel to drop from the top; this release re-distributes them per the reference screenshots — only **chapter version history** and **context usage** stay at the top, the rest return to rising from the bottom. Bottom panels are edge-to-edge, 28 top corners, capped at 80% height, no grab handle
+- **Delete and restore use the centered card**: previously system dialogs, now the same card as the naming input; three buttons stack with cancel at the bottom; opening delete no longer closes the drawer first, so cancelling returns you to it
+- **Drawer and panel stacking**: opening export or rename from the drawer closes the drawer first
+- **Drawer gestures and state**: dragging right no longer pushes the panel past its right edge; leaving the tab closes it, so the back button is no longer eaten once by an invisible drawer
+- **Optional-content page**: the "local models" heading and description are back
+
+### Trade-offs
+
+- **Three symmetric layers in the drawer**: the work row's ＋ creates a volume, the volume row's ＋ creates a chapter, and a chapter has no next level; "new volume / new chapter" are not repeated inside ⋯
+- **The "evolved" marker in the table of contents reads only the latest record**: it means "this draft has been evolved", complementing the chapter header's "there is material to evolve" icon, so the two never light up together
+- **One shared centered card**: the writing page's naming input card became a shared component and the assistant page's rename uses it; the confirm label is unified to "确定" (fits both creating and renaming)
+
+---
+
 ## [0.1.35] — 2026-10-02
 
 ### Added
